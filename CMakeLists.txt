@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.12)
 
 option(USE_KOKKOS_CUDA "Enable Kokkos with CUDA backend" OFF)
 option(USE_KOKKOS_HIP "Enable Kokkos with HIP backend" OFF)
@@ -49,7 +49,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS on)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -mtune=native -g -fopenmp -DUSE_HDF5")
-find_package(HDF5 REQUIRED COMPONENTS CXX)
+find_package(HDF5 REQUIRED)
 
 set(SAMS_SOURCES
   src/main.cpp
@@ -82,7 +82,7 @@ endif()
 
 add_executable(sams ${SAMS_SOURCES})
 message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-  
+
 
 target_include_directories(sams PRIVATE ${HDF5_INCLUDE_DIRS})
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/PhysicsPackages/LARE")
