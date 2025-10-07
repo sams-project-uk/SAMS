@@ -174,7 +174,7 @@ void simulation::lagrangian_step(simulationData &data) {
                             cvl(ixp, iyp, izp);
         lagran.rho_v(ix, iy, iz) = sum_rho_cv / sum_cv;
         lagran.cv_v(ix, iy, iz) = 0.125 * sum_cv; // Assuming a constant factor for control volume
-    }, Range(-1,data.nz+1), Range(-1,data.ny+1), Range(-1,data.nx+1));
+    }, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
 
     shock_viscosity(data, lagran);
     set_dt(data, lagran);
