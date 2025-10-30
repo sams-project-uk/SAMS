@@ -261,7 +261,8 @@ void simulation::remap_x(simulationData &data, remapData &remap_data) {
         }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
     portableWrapper::fence();
     remap_data.xpass = 0;
-    boundary_conditions(data);
+    
+    this->boundary_conditions(data);
 } //END simulation::remap_x
 
 //Flux of by due to vx

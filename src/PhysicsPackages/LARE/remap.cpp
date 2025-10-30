@@ -42,15 +42,15 @@ void simulation::eulerian_remap(simulationData &data) {
 
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         data.bx(ix, iy, iz) *= data.dxab(ix, iy, iz);
-    }, Range(-2, data.nz + 2), Range(-1, data.ny + 2), Range(-1, data.nx + 2));
+    }, Range(-2, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         data.by(ix, iy, iz) *= data.dyab(ix, iy, iz);
-    }, Range(-1, data.nz + 2), Range(-2, data.ny + 2), Range(-1, data.nx + 2));
+    }, Range(-1, data.nx + 2), Range(-2, data.ny + 2), Range(-1, data.nz + 2));
 
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         data.bz(ix, iy, iz) *= data.dzab(ix, iy, iz);
-    }, Range(-1, data.nz + 2), Range(-1, data.ny + 2), Range(-2, data.nx + 2));
+    }, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-2, data.nz + 2));
 
 
     case_test = data.step % 6;
@@ -94,15 +94,15 @@ void simulation::eulerian_remap(simulationData &data) {
 
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         data.bx(ix, iy, iz) /= (data.dxab(ix, iy, iz) + data.none_zero);
-    }, Range(-2, data.nz + 2), Range(-1, data.ny + 2), Range(-1, data.nx + 2));
+    }, Range(-2, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         data.by(ix, iy, iz) /= (data.dyab(ix, iy, iz) + data.none_zero);
-    }, Range(-1, data.nz + 2), Range(-2, data.ny + 2), Range(-1, data.nx + 2));
+    }, Range(-1, data.nx + 2), Range(-2, data.ny + 2), Range(-1, data.nz + 2));
 
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         data.bz(ix, iy, iz) /= (data.dzab(ix, iy, iz) + data.none_zero);
-    }, Range(-1, data.nz + 2), Range(-1, data.ny + 2), Range(-2, data.nx + 2));
+    }, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-2, data.nz + 2));
 
     bfield_bcs(data);
 
@@ -111,6 +111,6 @@ void simulation::eulerian_remap(simulationData &data) {
         data.x(ix, iy, iz) = data.xb(ix);
         data.y(ix, iy, iz) = data.yb(iy);
         data.z(ix, iy, iz) = data.zb(iz);
-    }, Range(-2, data.nz + 2), Range(-1, data.ny + 2), Range(-1, data.nx + 2));
+    }, Range(-2, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
 }
