@@ -13,8 +13,7 @@ void z_mom_flux(simulationData &data, remapData &remap_data);
 void simulation::remap_z(simulationData &data, remapData &remap_data) {
     using Range = portableWrapper::Range;
     portableWrapper::portableArrayManager zRemapManager;
-		remap_data.flux.nullify();
-		assert(remap_data.flux.data()==nullptr);
+	remap_data.flux.nullify();
 
     zRemapManager.allocate(remap_data.flux, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-2, data.nz + 2));
 
@@ -82,7 +81,8 @@ void simulation::remap_z(simulationData &data, remapData &remap_data) {
             T_indexType ixp = ix + 1;
             T_indexType iyp = iy + 1;
             T_indexType izp = iz + 1;
-            remap_data.cvc1(ix, iy, iz) = 0.125 * (data.cv1(ix, iy, iz) + data.cv1(ixp, iy, iz) +
+            remap_data.cvc1(ix, iy, iz) =
+                                        0.125 * (data.cv1(ix, iy, iz) + data.cv1(ixp, iy, iz) +
                                         data.cv1(ix, iyp, iz) + data.cv1(ixp, iyp, iz) +
                                         data.cv1(ix, iy, izp) + data.cv1(ixp, iy, izp) +
                                         data.cv1(ix, iyp, izp) + data.cv1(ixp, iyp, izp));
@@ -94,11 +94,13 @@ void simulation::remap_z(simulationData &data, remapData &remap_data) {
     vz_bx_flux(data, remap_data);
 
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        data.bx(ix, iy, iz) = data.bx(ix, iy, iz) - remap_data.flux(ix,iy,iz) + remap_data.flux(ix,iy,iz);
+        T_indexType izm = iz - 1;
+        data.bx(ix, iy, iz) = data.bx(ix, iy, iz) - remap_data.flux(ix,iy,iz) + remap_data.flux(ix,iy,izm);
     }, Range(0, data.nx), Range(1, data.ny), Range(1, data.nz));
 
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        data.bz(ix, iy, iz) = data.bz(ix, iy, iz) + remap_data.flux(ix,iy,iz) - remap_data.flux(ix,iy,iz);
+        T_indexType ixm = ix - 1;
+        data.bz(ix, iy, iz) = data.bz(ix, iy, iz) + remap_data.flux(ixm,iy,iz) - remap_data.flux(ix,iy,iz);
     }, Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
 
     portableWrapper::fence();
@@ -161,7 +163,7 @@ void simulation::remap_z(simulationData &data, remapData &remap_data) {
 
             remap_data.rho_v(ix, iy, iz) *= 0.125 / remap_data.cvc1(ix, iy, iz);
 
-        }, Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
+        }, Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz+1));
     portableWrapper::fence();
 
     //Move cv2 to vertex using flux array as a temporary
@@ -188,10 +190,10 @@ void simulation::remap_z(simulationData &data, remapData &remap_data) {
         LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
             T_indexType izp = iz + 1;
             remap_data.flux(ix, iy, iz) = (data.vz1(ix, iy, iz) + data.vz1(ix, iy, izp)) * 0.5;
-        }, Range(0, data.nx), Range(-2, data.ny+1), Range(0, data.nz));
+        }, Range(0, data.nx), Range(0, data.ny), Range(-2, data.nz+1));
     portableWrapper::fence();
     //And copy it back
-    portableWrapper::assign(data.vy1(Range(0,data.nx), Range(-2,data.ny+1), Range(0,data.nz)), remap_data.flux(Range(0,data.nx), Range(-2,data.ny+1), Range(0,data.nz)));
+    portableWrapper::assign(data.vz1(Range(0,data.nx), Range(0,data.ny), Range(-2,data.nz+1)), remap_data.flux(Range(0,data.nx), Range(0,data.ny), Range(-2,data.nz+1)));
     portableWrapper::fence();
 
     //Vertex control volume mass change
@@ -507,7 +509,7 @@ void z_mom_flux(simulationData &data, remapData &remap_data)
         T_dataType Di = sign_v * ss * portableWrapper::min({std::abs(Da) * dzbu, std::abs(dfi), std::abs(dfu)});
 
         T_dataType rhou = remap_data.rho_v(ix, iy, iz) * vad_p + remap_data.rho_v(ix, iy, izp) * vad_m;
-        T_dataType dmu = std::abs(remap_data.dm(ix, iy, iz)) / dzbu / rhou;
+        T_dataType dmu = std::abs(remap_data.dm(ix, iy, iz))/ (dzbu * rhou);
 
         remap_data.flux(ix, iy, iz) = fu + Di * (1.0 - dmu);
       }, Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz));
@@ -531,10 +533,10 @@ void z_mom_flux(simulationData &data, remapData &remap_data)
                 T_dataType dk = ((data.*mPtr)(ix, iy, izp) - (data.*mPtr)(ix, iy, iz)) * (remap_data.flux(ix, iy, iz) - 0.5 * ((data.*mPtr)(ix, iy, izp) + (data.*mPtr)(ix, iy, iz))) - 0.5 * ai * ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) + 0.5 * aip * ((data.*mPtr)(ix, iy, izp) - remap_data.flux(ix, iy, iz));
 
                 dk = dk * remap_data.dm(ix, iy, iz) * 0.5;
-                data.delta_ke(ix, iy, izp) += dk;
-                data.delta_ke(ixp, iy, izp) += dk;
-                data.delta_ke(ix, iyp, izp) += dk;
-                data.delta_ke(ixp, iyp, izp) += dk;
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ix, iy, izp), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ixp, iy, izp), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ix, iyp, izp), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ixp, iyp, izp), dk);
             }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz-1));
             portableWrapper::fence();
         }

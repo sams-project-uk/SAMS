@@ -12,8 +12,7 @@ void x_mom_flux(simulationData &data, remapData &remap_data);
 void simulation::remap_x(simulationData &data, remapData &remap_data) {
     using Range = portableWrapper::Range;
     portableWrapper::portableArrayManager xRemapManager;
-		remap_data.flux.nullify();
-		assert(remap_data.flux.data()==nullptr);
+    remap_data.flux.nullify();
 
     xRemapManager.allocate(remap_data.flux, Range(-2, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
@@ -526,7 +525,7 @@ void x_mom_flux(simulationData &data, remapData &remap_data) {
             T_dataType dmu = std::abs(remap_data.dm(ix, iy, iz)) / dxbu / rhou;
 
             remap_data.flux(ix, iy, iz) = fu + Di * (1.0 - dmu);
-        }, Range(0, data.nx-1), Range(0, data.ny), Range(0, data.nz));
+        }, Range(-1, data.nx), Range(0, data.ny), Range(0, data.nz));
     portableWrapper::fence();
     if (data.rke)
     {
@@ -546,10 +545,10 @@ void x_mom_flux(simulationData &data, remapData &remap_data) {
                 T_dataType dk = ((data.*mPtr)(ixp, iy, iz) - (data.*mPtr)(ix, iy, iz)) * (remap_data.flux(ix, iy, iz) - 0.5 * ((data.*mPtr)(ixp, iy, iz) + (data.*mPtr)(ix, iy, iz))) - 0.5 * ai * ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) + 0.5 * aip * ((data.*mPtr)(ixp, iy, iz) - remap_data.flux(ix, iy, iz));
 
                 dk = dk * remap_data.dm(ix, iy, iz) * 0.5;
-                data.delta_ke(ixp, iy, iz) += dk;
-                data.delta_ke(ixp, iyp, iz)+= dk;
-                data.delta_ke(ixp, iy, izp) += dk;
-                data.delta_ke(ixp, iyp, izp) += dk;
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ixp, iy, iz), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ixp, iyp, iz), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ixp, iyp, izp), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ixp, iy, izp), dk);
             }, Range(0, data.nx-1), Range(0, data.ny), Range(0, data.nz));
     }
     portableWrapper::fence();

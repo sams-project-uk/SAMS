@@ -101,29 +101,38 @@ void simulation::lagrangian_step(simulationData &data) {
     lagranData lagran;
     portableWrapper::portableArrayManager lagranManager;
     using Range = portableWrapper::Range;
+    Range xcp = portableWrapper::Range(0, data.nx + 1);
+    Range ycp = portableWrapper::Range(0, data.ny + 1);
+    Range zcp = portableWrapper::Range(0, data.nz + 1);
+    Range xcpp = portableWrapper::Range(0, data.nx+2);
+    Range ycpp = portableWrapper::Range(0, data.ny+2);
+    Range zcpp = portableWrapper::Range(0, data.nz+2);
+    Range xbp = portableWrapper::Range(-1, data.nx + 1);
+    Range ybp = portableWrapper::Range(-1, data.ny + 1);
+    Range zbp = portableWrapper::Range(-1, data.nz + 1);
     // Allocate arrays using the portableArrayManager
-    lagranManager.allocate(lagran.bx1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-    lagranManager.allocate(lagran.by1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-    lagranManager.allocate(lagran.bz1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-    lagranManager.allocate(lagran.alpha1, Range(0,data.nx+1), Range(0,data.ny+2), Range(0,data.nz+2));
-    lagranManager.allocate(lagran.alpha2, Range(-1,data.nx+1), Range(0,data.ny+1), Range(0,data.nz+2));
-    lagranManager.allocate(lagran.alpha3, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(0,data.nz+1));
-    lagranManager.allocate(lagran.visc_heat, Range(0,data.nx+1), Range(0,data.ny+1), Range(0,data.nz+1));
-    lagranManager.allocate(lagran.pressure, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
-    lagranManager.allocate(lagran.p_e, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
-    lagranManager.allocate(lagran.p_i, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
-    lagranManager.allocate(lagran.rho_v, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-    lagranManager.allocate(lagran.cv_v, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-    lagranManager.allocate(lagran.fx, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.fy, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.fz, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.fx_visc, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.fy_visc, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.fz_visc, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.flux_x, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.flux_y, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.flux_z, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
-    lagranManager.allocate(lagran.curlb, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.bx1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+    lagranManager.allocate(lagran.by1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+    lagranManager.allocate(lagran.bz1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+    lagranManager.allocate(lagran.alpha1, xcp, ycpp, zcpp);
+    lagranManager.allocate(lagran.alpha2, xbp, ycp, zcpp);
+    lagranManager.allocate(lagran.alpha3, data.xcLocalRange, data.ycLocalRange, zcp);
+    lagranManager.allocate(lagran.visc_heat, xcp, ycp, zcp);
+    lagranManager.allocate(lagran.pressure, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+    lagranManager.allocate(lagran.p_e, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+    lagranManager.allocate(lagran.p_i, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+    lagranManager.allocate(lagran.rho_v, xbp, ybp, zbp);
+    lagranManager.allocate(lagran.cv_v, xbp, ybp, zbp);
+    lagranManager.allocate(lagran.fx, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+    lagranManager.allocate(lagran.fy, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+    lagranManager.allocate(lagran.fz, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+    lagranManager.allocate(lagran.fx_visc, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+    lagranManager.allocate(lagran.fy_visc, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+    lagranManager.allocate(lagran.fz_visc, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange); 
+    lagranManager.allocate(lagran.flux_x, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+    lagranManager.allocate(lagran.flux_y, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+    lagranManager.allocate(lagran.flux_z, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+    lagranManager.allocate(lagran.curlb, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
 
 
     //All of the arrays are deallocated when lagranManager goes out of scope
@@ -135,6 +144,7 @@ void simulation::lagrangian_step(simulationData &data) {
     volumeArray cvl = data.cv;
     volumeArray energy_el = data.energy_electron;
     volumeArray energy_il = data.energy_ion;
+
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izm = iz - 1;
         T_indexType iym = iy - 1;
@@ -147,7 +157,7 @@ void simulation::lagrangian_step(simulationData &data) {
         lagran.p_i(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_il(ix, iy, iz);
         lagran.pressure(ix, iy, iz) = lagran.p_e(ix, iy, iz) + lagran.p_i(ix, iy, iz);
 
-    }, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
+    }, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
 
     // Compute rho_v and cv_v
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -174,7 +184,7 @@ void simulation::lagrangian_step(simulationData &data) {
                             cvl(ixp, iyp, izp);
         lagran.rho_v(ix, iy, iz) = sum_rho_cv / sum_cv;
         lagran.cv_v(ix, iy, iz) = 0.125 * sum_cv; // Assuming a constant factor for control volume
-    }, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
+    }, xbp, ybp, zbp);
 
     shock_viscosity(data, lagran);
     set_dt(data, lagran);
@@ -206,9 +216,13 @@ void shock_viscosity(simulationData &data, lagranData &lagran) {
     portableWrapper::portableArrayManager svManager;
     // Temporary arrays for sound speed
     portableWrapper::portableArray<T_dataType, 3> cs, cs_v;
-    svManager.allocate(cs, portableWrapper::Range(-1, data.nx + 2), portableWrapper::Range(-1, data.ny + 2), portableWrapper::Range(-1, data.nz + 2));
-    svManager.allocate(cs_v, portableWrapper::Range(-1, data.nx + 1), portableWrapper::Range(-1, data.ny + 1), portableWrapper::Range(-1, data.nz + 1));
+    Range xp1 = portableWrapper::Range(-1, data.nx + 1);
+    Range yp1 = portableWrapper::Range(-1, data.ny + 1);
+    Range zp1 = portableWrapper::Range(-1, data.nz + 1);
+    svManager.allocate(cs, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+    svManager.allocate(cs_v, xp1, yp1, zp1);
 
+    //FIXME
     portableWrapper::assign(data.p_visc, 0.0);
     portableWrapper::assign(lagran.visc_heat, 0.0);
     portableWrapper::assign(lagran.fx_visc, 0.0);
@@ -221,8 +235,9 @@ void shock_viscosity(simulationData &data, lagranData &lagran) {
         T_dataType b2 = lagran.bx1(ix, iy, iz) * lagran.bx1(ix, iy, iz) +
                         lagran.by1(ix, iy, iz) * lagran.by1(ix, iy, iz) +
                         lagran.bz1(ix, iy, iz) * lagran.bz1(ix, iy, iz);
-        cs(ix, iy, iz) = std::sqrt((data.gas_gamma * lagran.pressure(ix, iy, iz) + b2) / rmin);
-    }, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
+        T_dataType p = lagran.pressure(ix, iy, iz);
+        cs(ix, iy, iz) = std::sqrt((data.gas_gamma * p + b2) / rmin);
+    }, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
     portableWrapper::fence();
     // Compute cs_v
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -240,7 +255,7 @@ void shock_viscosity(simulationData &data, lagranData &lagran) {
             cs(ix, iyp, izp) * data.cv(ix, iyp, izp) +
             cs(ixp, iyp, izp) * data.cv(ixp, iyp, izp);
         cs_v(ix, iy, iz) = 0.125 * sum / lagran.cv_v(ix, iy, iz);
-    }, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
+    }, xp1, yp1, zp1);
     portableWrapper::fence();
 
     // alpha1
@@ -363,9 +378,9 @@ void shock_viscosity(simulationData &data, lagranData &lagran) {
         T_indexType iym = iy - 1, iyp = iy + 1;
         T_indexType ixm = ix - 1, ixp = ix + 1;
 
-        T_dataType dx = data.dxb(ix);
-        T_dataType dy = data.dyb(iy) * data.hyc(ix);
-        T_dataType dz = data.dzb(iz) * data.hz2(ix, iy);
+        T_dataType dx = 1;//data.dxb(ix);
+        T_dataType dy = 1;//data.dyb(iy) * data.hyc(ix);
+        T_dataType dz = 1;//data.dzb(iz) * data.hz2(ix, iy);
 
         T_dataType a1 = lagran.alpha1(ix, iyp, izp) * dy * dz;
         T_dataType a2 = lagran.alpha1(ixp, iyp, izp) * dy * dz;
@@ -621,7 +636,6 @@ void predictor_corrector_step(simulation &sim, simulationData &data, lagranData 
         lagran.p_e(ix, iy, iz) = e1_e * (data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.cv(ix, iy, iz)/ data.cv1(ix, iy, iz);
         lagran.p_i(ix, iy, iz) = e1_i * (data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.cv(ix, iy, iz)/ data.cv1(ix, iy, iz);
         lagran.pressure(ix, iy, iz) = lagran.p_e(ix, iy, iz) + lagran.p_i(ix, iy, iz);
-        //data.energy_electron(ix,iy,iz) = data.cv(ix,iy,iz);
 
     }, Range(0,data.nx+1), Range(0,data.ny+1), Range(0,data.nz+1));
 
@@ -792,7 +806,7 @@ void predictor_corrector_step(simulation &sim, simulationData &data, lagranData 
 
         T_dataType dv = (dvxdx + dvydy + dvzdz) * data.dt;
 
-        data.cv1(ix, iy, iz) = vol * (1.0 + dv);
+        data.cv1(ix, iy, iz) = vol;// * (1.0 + dv);
 
         // Energy at end of Lagrangian step
         data.energy_electron(ix, iy, iz) -= dv * lagran.p_e(ix, iy, iz) / data.rho(ix, iy, iz);
@@ -835,7 +849,7 @@ void b_field_and_cv1_update(simulation &sim, simulationData &data, lagranData &l
         T_dataType dvzdz = (vzb * data.dzab(ix, iy, iz) - vzbm * data.dzab(ix, iy, izm)) / vol;
 
         T_dataType dv = (dvxdx + dvydy + dvzdz) * data.dt/2.0;
-        data.cv1(ix, iy, iz) = vol*(1.0 + dv);
+        data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
         // vx at By(i,j,k)
         vxb = 0.25 * (data.vx(ix, iy, iz) + data.vx(ixm, iy, iz) +data.vx(ix, iy, izm) + data.vx(ixm, iy, izm));
@@ -986,7 +1000,10 @@ void shock_heating(simulationData &data, lagranData &lagran) {
         T_dataType dz = data.dzb(iz) * data.hz2(ix, iy);
 
         lagran.visc_heat(ix, iy, iz) =
-            (-0.25 * dy * dz * lagran.alpha1(ix, iy, iz) * a1 - 0.25 * dx * dz * lagran.alpha2(ix, iy, iz) * a2 - 0.25 * dy * dz * lagran.alpha1(ix, iyp, iz) * a3 - 0.25 * dx * dz * lagran.alpha2(ixm, iy, iz) * a4 - 0.25 * dy * dz * lagran.alpha1(ix, iy, izp) * a5 - 0.25 * dx * dz * lagran.alpha2(ix, iy, izp) * a6 - 0.25 * dy * dz * lagran.alpha1(ix, iyp, izp) * a7 - 0.25 * dx * dz * lagran.alpha2(ixm, iy, izp) * a8 - 0.25 * dy * dy * lagran.alpha3(ix, iy, iz) * a9 - 0.25 * dx * dy * lagran.alpha3(ixm, iy, iz) * a10 - 0.25 * dy * dy * lagran.alpha3(ixm, iym, iz) * a11 - 0.25 * dx * dy * lagran.alpha3(ix, iym, iz) * a12);
+            (-0.25 * dy * dz * lagran.alpha1(ix, iy, iz) * a1 - 0.25 * dx * dz * lagran.alpha2(ix, iy, iz) * a2 - 0.25 * dy * dz * lagran.alpha1(ix, iyp, iz) * a3 - 
+            0.25 * dx * dz * lagran.alpha2(ixm, iy, iz) * a4 - 0.25 * dy * dz * lagran.alpha1(ix, iy, izp) * a5 - 0.25 * dx * dz * lagran.alpha2(ix, iy, izp) * a6 - 
+            0.25 * dy * dz * lagran.alpha1(ix, iyp, izp) * a7 - 0.25 * dx * dz * lagran.alpha2(ixm, iy, izp) * a8 - 0.25 * dy * dy * lagran.alpha3(ix, iy, iz) * a9 - 
+            0.25 * dx * dy * lagran.alpha3(ixm, iy, iz) * a10 - 0.25 * dy * dy * lagran.alpha3(ixm, iym, iz) * a11 - 0.25 * dx * dy * lagran.alpha3(ix, iym, iz) * a12);
 
         lagran.visc_heat(ix, iy, iz) = portableWrapper::max(lagran.visc_heat(ix, iy, iz) / data.cv(ix, iy, iz), 0.0);
 

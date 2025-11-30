@@ -16,15 +16,15 @@
 #include "remapData.h"
 
 void simulation::eulerian_remap(simulationData &data) {
-
     using Range = portableWrapper::Range;
     int case_test;
     remapData remap_data;
     portableWrapper::portableArrayManager remapManager;
+    remap_data.dm = data.dm;
 
     //We can allocate everything other than flux here
     remapManager.allocate(remap_data.rho1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-    remapManager.allocate(remap_data.dm, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+    //remapManager.allocate(remap_data.dm, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
     remapManager.allocate(remap_data.cv2, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
     remapManager.allocate(remap_data.cvc1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
     remapManager.allocate(remap_data.db1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));

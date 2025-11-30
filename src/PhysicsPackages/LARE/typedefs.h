@@ -15,7 +15,7 @@
 #ifndef TYPEDDEFS_H
 #define TYPEDDEFS_H
 
-#include "include/parallelWrapper.h"
+#include "pp/parallelWrapper.h"
 
 //Swap between float and double for numerical variables
 #ifdef USE_FLOAT

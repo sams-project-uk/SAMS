@@ -18,6 +18,7 @@
 #include <chrono>
 #include <string>
 #include <iostream>
+#include "mpiManager.h"
 
 struct timer{
 
@@ -27,7 +28,7 @@ struct timer{
   void begin(std::string name = "unnamed"){ this->name = name; start = std::chrono::high_resolution_clock::now();}
   float end(){
 		float dt = end_silent();
-    std::cout << "Time taken by " << name << " is " << dt  << " seconds\n";
+    SAMS::cout << "Time taken by " << name << " is " << dt  << " seconds\n";
 		return dt;
   }
 	float end_silent(){

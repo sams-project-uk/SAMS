@@ -18,10 +18,25 @@
 #include "defs.h"
 #include "utils.h"
 #include "range.h"
+#include <cstring>
 
 namespace portableWrapper
 {
     namespace openmp {
+
+        //Constants for OpenMP version checking
+        #define OMP1_0 199810
+        #define OMP2_0 200203 //C++ OpenMP 2.0 Fortran = 200011
+        #define OMP2_5 200505
+        #define OMP3_0 200805
+        #define OMP3_1 201107
+        #define OMP4_0 201307
+        #define OMP4_5 201511
+        #define OMP5_0 201811
+        #define OMP5_1 202011
+        #define OMP5_2 202211
+        #define OMP6_0 202311
+
         // Forward declaration for the core CPU forEach function
         template <int rank, int level = 0, typename T_func, typename T_cRange, typename... T_oRanges>
         INLINE DEVICEPREFIX void forEachCore(
@@ -315,6 +330,119 @@ namespace portableWrapper
             // OpenMP initialization can be done here if needed
             // For now, we assume OpenMP is already initialized by the compiler/runtime
         }
+
+        namespace atomic {
+            /**
+             * Atomic addition operation
+             * @param target The target variable to add to
+             * @param value The value to add
+             */
+            template <typename T, typename T2>
+            DEVICEPREFIX void Add(T& target, const T2 value)
+            {
+                #pragma omp atomic
+                target += value;
+            }
+
+            /**
+             * Atomic and operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to and with
+             */
+            template <typename T, typename T2>            
+            DEVICEPREFIX void And(T& target, const T2 value)
+            {
+                #pragma omp atomic
+                target &= value;
+            }
+
+            /**
+             * Atomic decrement operation
+             * @param target The target variable to decrement
+             */
+            template <typename T>
+            DEVICEPREFIX void Dec(T& target)
+            {
+                #pragma omp atomic
+                --target;
+            }
+
+            /**
+             * Atomic increment operation
+             * @param target The target variable to increment
+             */
+            template <typename T>            
+            DEVICEPREFIX void Inc(T& target)
+            {
+                #pragma omp atomic
+                ++target;
+            }
+
+            /**
+             * Atomic Max operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to compare with
+             */
+            template< typename T, typename T2>            
+            DEVICEPREFIX void Max(T& target, const T2 value)
+            {
+                //Check for OpenMP 5.1 or higher
+                #if defined(_OPENMP) && (_OPENMP >= OMP5_1)
+                #pragma omp atomic compare
+                target = value>target ? value : target;
+                #else
+                #pragma omp critical
+                {
+                    target = value>target ? value : target;
+                }
+                #endif
+            }
+
+            /**
+             * Atomic Min operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to compare with
+             */
+            template<typename T, typename T2>            
+            DEVICEPREFIX void Min(T& target, const T2 value)
+            {
+                //Check for OpenMP 5.1 or higher
+                #if defined(_OPENMP) && (_OPENMP >= OMP5_1)
+                #pragma omp atomic compare
+                target = value<target ? value : target;
+                #else
+                #pragma omp critical
+                {
+                    target = value<target ? value : target;
+                }
+                #endif
+            }
+
+            /**
+             * Atomic OR operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to or with
+             */
+            template<typename T, typename T2>            
+            DEVICEPREFIX void Or(T& target, const T2 value)
+            {
+                #pragma omp atomic
+                target |= value;
+            }
+
+            /**
+             * Atomic subtraction operation
+             * @param target The target variable to subtract from
+             * @param value The value to subtract
+             */
+            template<typename T, typename T2>            
+            DEVICEPREFIX void Sub(T& target, const T2 value)
+            {
+                #pragma omp atomic
+                target -= value;
+            }
+
+        } // namespace atomic
 
     } // namespace openmp
 } // namespace portableWrapper

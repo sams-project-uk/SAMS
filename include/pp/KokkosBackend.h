@@ -33,7 +33,7 @@ namespace portableWrapper{
         template <typename T_func, typename... T_ranges>
         UNREPEATED void forEachKokkosCore(const char *name, T_func func, T_ranges... ranges)
         {
-            using iType = int64_t;
+            using iType = SIGNED_INDEX_TYPE;
             Kokkos::Array<iType, sizeof...(ranges)> starts, ends;
             int i=0;
             ((starts[i] = ranges.lower_bound, ends[i] = ranges.upper_bound + 1, i++), ...);
@@ -151,7 +151,7 @@ namespace portableWrapper{
         UNREPEATED auto reductionKokkosCore(
             T_mapper mapper, T_reducer reducer, T_data initialValue, T_ranges... ranges)
         {
-            Kokkos::Array<int64_t, sizeof...(ranges)> starts, ends;
+            Kokkos::Array<SIGNED_INDEX_TYPE, sizeof...(ranges)> starts, ends;
             int i = 0;
             ((starts[i] = ranges.lower_bound, ends[i] = ranges.upper_bound + 1, ++i), ...);
             auto RangePolicy = [&starts, &ends]()
@@ -256,11 +256,11 @@ namespace portableWrapper{
          * This function prints the Kokkos execution space and concurrency information.
          */
         UNREPEATED void printInfo(){
-            std::cout << "Kokkos" << std::endl;
+            SAMS::cout << "Kokkos" << std::endl;
             // Get the Kokkos execution space
             auto exec_space = KOKKOS_EXECUTION_SPACE();
-            std::cout << "Kokkos execution space: " << exec_space.name() << std::endl;
-            std::cout << "Kokkos concurrency: " << exec_space.concurrency() << std::endl;
+            SAMS::cout << "Kokkos execution space: " << exec_space.name() << std::endl;
+            SAMS::cout << "Kokkos concurrency: " << exec_space.concurrency() << std::endl;
         }
 
         template<typename T>
@@ -268,6 +268,94 @@ namespace portableWrapper{
         {
             // Use Kokkos atomic operations to compare and swap
             return Kokkos::atomic_compare_exchange(ptr, expected, desired);
+        }
+
+        namespace atomic{
+            /**
+             * Atomic addition operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to add
+             */
+            template<typename T1, typename T2>
+            DEVICEPREFIX void Add(T1& target, const T2 value)
+            {
+                Kokkos::atomic_add(&target, static_cast<T1>(value));
+            }
+
+            /**
+             * Atomic and operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to and with
+             */
+            template<typename T1, typename T2>            
+            DEVICEPREFIX void And(T1& target, const T2 value)
+            {
+                Kokkos::atomic_and(&target, static_cast<T1>(value));
+            }
+
+            /**
+             * Atomic decrement operation
+             * @param target The target variable to decrement
+             */
+            template<typename T>            
+            DEVICEPREFIX void Dec(T& target)
+            {
+                Kokkos::atomic_decrement(&target);
+            }
+
+            /**
+             * Atomic increment operation
+             * @param target The target variable to increment
+             */
+            template<typename T>            
+            DEVICEPREFIX void Inc(T& target)
+            {
+                Kokkos::atomic_increment(&target);
+            }
+
+            /**
+             * Atomic Max operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to compare with
+             */
+            template<typename T, typename T2>            
+            DEVICEPREFIX void Max(T& target, const T2 value)
+            {
+                Kokkos::atomic_max(&target, static_cast<T>(value));
+            }
+
+            /**
+             * Atomic Min operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to compare with
+             */
+            template<typename T, typename T2>            
+            DEVICEPREFIX void Min(T& target, const T2 value)
+            {
+                Kokkos::atomic_min(&target, static_cast<T>(value));
+            }
+
+            /**
+             * Atomic OR operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to or with
+             */
+            template<typename T1, typename T2>            
+            DEVICEPREFIX void Or(T1& target, const T2 value)
+            {
+                Kokkos::atomic_or(&target, static_cast<T1>(value));
+            }
+
+            /**
+             * Atomic subtraction operation
+             * @param target The target variable to perform the operation on
+             * @param value The value to subtract
+             */
+            template<typename T1, typename T2>            
+            DEVICEPREFIX void Sub(T1& target, const T2 value)
+            {
+                Kokkos::atomic_sub(&target, static_cast<T1>(value));
+            }
         }
     }; // namespace kokkos
 };// namespace portableWrapper

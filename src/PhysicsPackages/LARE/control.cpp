@@ -24,7 +24,7 @@ void simulation::controlvariables(simulationData &data) {
   data.dt=0.0;
 
   // Maximum number of iterations; if nsteps < 0, run until t_end
-  data.nsteps = 40;
+  data.nsteps = 100;
   data.t_end = 60.0 * 60.0 * 24.0; // One day in seconds
 
   // Geometry options: cartesian, cylindrical, spherical
@@ -78,17 +78,24 @@ void simulation::initial_conditions(simulationData &data) {
 
   using Range = portableWrapper::Range;
 
-  //std::cout << "Setting up initial conditions" << std::endl;
+  SAMS::cout << "Setting up initial conditions" << std::endl;
   // Set initial conditions for the simulation
   portableWrapper::assign(data.vx,0.0);
   portableWrapper::assign(data.vy,0.0);
   portableWrapper::assign(data.vz,0.0);
-
-  printf("Setting up initial conditions\n");
-  
+ 
   T_dataType v0 = 0.e3;
   T_dataType a0 = 1.0e5;
   T_dataType a2 = a0 * a0;
+  T_dataType amp = 0.5;
+
+  T_dataType xcentre = 0.0;
+  T_dataType ycentre = 0.5e6;
+  T_dataType zcentre = 0.0;
+
+  if (SAMS::getMPIManager().getRank() == 0 && SAMS::getMPIManager().getSize() > 1) {
+    amp=0.0;
+  }
 
   // Set the initial thermal energy of electrons and ions
   T_dataType T0 = 1.e6;
@@ -98,23 +105,19 @@ void simulation::initial_conditions(simulationData &data) {
 
   portableWrapper::applyKernel(
     LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-      T_dataType r2 = data.xb(ix) * data.xb(ix) + data.yb(iy) * data.yb(iy) + data.zb(iz) * data.zb(iz);
+      T_dataType x2 = (data.xc(ix)-xcentre) * (data.xc(ix)-xcentre);
+      T_dataType y2 = (data.yc(iy)-ycentre) * (data.yc(iy)-ycentre);
+      T_dataType z2 = (data.zc(iz)-zcentre) * (data.zc(iz)-zcentre);
+      T_dataType r2 = x2 + y2 + z2;
       T_dataType v = v0 * std::exp(-r2 / a2);
-      data.vx(ix, iy, iz) = data.xb(ix)/1.0e6 * v;
-      data.vy(ix, iy, iz) = data.yb(iy)/1.0e6 * v;
-      data.vz(ix, iy, iz) = data.zb(iz)/1.0e6 * v;
-
-      data.energy_electron(ix,iy,iz) *= (1.0+std::exp(-r2 / a2));
-      data.energy_ion(ix,iy,iz) *= (1.0+std::exp(-r2 / a2));
+      data.energy_electron(ix,iy,iz) *= (1.0+amp*std::exp(-r2 / a2));
+      data.energy_ion(ix,iy,iz) *= (1.0+amp*std::exp(-r2 / a2));
     },
-    portableWrapper::Range(0, data.nx),
-    portableWrapper::Range(0, data.ny),
-    portableWrapper::Range(0, data.nz)
+    portableWrapper::Range(-1, data.nx+2),
+    portableWrapper::Range(-1, data.ny+2),
+    portableWrapper::Range(-1, data.nz+2)
   );
 
-  std::cout << "Range of vx: " << portableWrapper::minval(data.vx) << " to " << portableWrapper::maxval(data.vx) << "\n";
-  std::cout << "Range of vy: " << portableWrapper::minval(data.vy) << " to " << portableWrapper::maxval(data.vy) << "\n";
-  std::cout << "Range of vz: " << portableWrapper::minval(data.vz) << " to " << portableWrapper::maxval(data.vz) << "\n";
 
   T_dataType bmult = 000.0;
   portableWrapper::assign(data.bx,0.01*bmult);
@@ -122,5 +125,7 @@ void simulation::initial_conditions(simulationData &data) {
   portableWrapper::assign(data.bz,0.00*bmult);
   // Set the initial density field in kg/m^3
   portableWrapper::assign(data.rho, 1.0e-6);
+
+  if (data.rke) portableWrapper::assign(data.delta_ke, 0.0);
 
 }

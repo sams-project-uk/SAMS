@@ -521,18 +521,10 @@ namespace portableWrapper
             applyKernelCore<true>(rp1, threads, blocks, chunks, shared_memory, ranges...);
             cudaDeviceSynchronize(); // Ensure all threads have completed before proceeding to phase 2
 
-            /*int s=0;
-            for (int i=0;i<nBlocks;++i) {
-                //std::cout << "Reduction site " << i << ": " << reductionSites[i] << std::endl;
-                s+= reductionSites[i];
-            }
-            //std::cout << "Reduction sites sum: " << s << std::endl;*/
-
             //while (nBlocks > 1)
             {
                 impl::reductionPhase2<T_reducer, T_data> rp2(reducer, reductionSites, nBlocks);
                 impl::buildDecompLogic<false, decltype(rp2)>(threads, blocks, chunks, 0, Range(0,nBlocks-1));
-                /*std::cout << "Reduction phase 2 with " << blocks.x << " x blocks, " << blocks.y << " y blocks, " << blocks.z << " z blocks" << std::endl;*/
                 applyKernelCore(impl::reductionPhase2<T_reducer, T_data>(reducer, reductionSites, nBlocks), threads, blocks, chunks, 0 ,Range(0,nBlocks-1));
                 cudaDeviceSynchronize(); // Ensure all threads have completed before next cycle
                 nBlocks/=2;
@@ -599,14 +591,14 @@ namespace portableWrapper
          * Function to print CUDA device information
          */
         UNREPEATED void printInfo(){
-            std::cout << "CUDA" << std::endl;
+            SAMS::cout << "CUDA" << std::endl;
             int device;
             CUDA_ERROR_CHECK(cudaGetDevice(&device));
             cudaDeviceProp prop;
             CUDA_ERROR_CHECK(cudaGetDeviceProperties(&prop, device));
-            std::cout << "CUDA device: " << prop.name << std::endl;
-            std::cout << "CUDA device compute capability: " << prop.major << "." << prop.minor << std::endl;
-            std::cout << "CUDA device total memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
+            SAMS::cout << "CUDA device: " << prop.name << std::endl;
+            SAMS::cout << "CUDA device compute capability: " << prop.major << "." << prop.minor << std::endl;
+            SAMS::cout << "CUDA device total memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
         }
 
         UNREPEATED void initialize(int &argc, char *argv[])
@@ -633,6 +625,193 @@ namespace portableWrapper
                 CUDA_ERROR_CHECK(cudaSetDevice(0)); // Set the first CUDA device as the default
             }
         }
+
+        //CUDA atomic operations
+        namespace atomic
+        {
+            /**
+             * Atomic addition function for CUDA
+             * @param data Data to perform the atomic addition on
+             * @param val Value to add atomically
+             */
+            template<typename T1, typename T2>
+            DEVICEPREFIX void Add(T1& data, T2 val) {
+                ::atomicAdd(&data, val);
+            }
+
+            /**
+             * Atomic AND function for CUDA
+             * @param data Data to perform the atomic AND on
+             * @param val Value to AND atomically
+             */
+            template<typename T>
+            __device__ void And(T& data, T val) {
+                if constexpr(std::is_integral_v<T>) {
+                    ::atomicAnd(&data, val);
+                } else if constexpr(std::is_same_v<T, float>) {
+                    //Get an integer with the same bit length as the float
+                    using intType = int32_t;
+                    intType* data_as_int = reinterpret_cast<intType*>(&data);
+                    intType orig = *data_as_int, swapped;
+                    do {
+                        swapped = orig;
+                        orig = ::atomicCAS(data_as_int, swapped,
+                            __float_as_int(__int_as_float(swapped) & val));
+                    } while (swapped != orig);
+                    data = __int_as_float(orig);
+                } else if constexpr(std::is_same_v<T, double>) {
+                    //Get an integer with the same bit length as the double
+                    using intType = int64_t;
+                    intType* data_as_int = reinterpret_cast<intType*>(&data);
+                    intType orig = *data_as_int, swapped;
+                    do {
+                        swapped = orig;
+                        orig = ::atomicCAS(data_as_int, swapped,
+                            __double_as_longlong(__longlong_as_double(swapped) & val));
+                    } while (swapped != orig);
+                    data = __longlong_as_double(orig);
+                } else {
+                    //static_assert(always_false<T>::value, "Atomic And not supported for this type");
+                }
+            }
+
+            /**
+             * Atomic DECREMENT function for CUDA
+             * @param data Data to perform the atomic DECREMENT on
+             */
+            template<typename T1>
+            DEVICEPREFIX void Dec(T1& data) {
+                ::atomicSub(&data, T1(1));
+            }
+
+            /**
+             * Atomic INCREMENT function for CUDA
+             * @param data Data to perform the atomic INCREMENT on
+             */
+            template<typename T1>
+            DEVICEPREFIX void Inc(T1& data) {
+                ::atomicAdd(&data, T1(1));
+            }
+
+            /**
+             * Atomic MAX function for CUDA
+             * @param data Data to perform the atomic MAX on
+             * @param val Value to compare for MAX atomically
+             */
+            template<typename T>
+            __device__ void Max(T& data, T val) {
+                if constexpr(std::is_integral_v<T>) {
+                    ::atomicMax(&data, val);
+                } else if constexpr(std::is_same_v<T, float>) {
+                    //Get an integer with the same bit length as the float
+                    using intType = int32_t;
+                    intType* data_as_int = reinterpret_cast<intType*>(&data);
+                    intType orig = *data_as_int, swapped;
+                    do {
+                        swapped = orig;
+                        orig = ::atomicCAS(data_as_int, swapped,
+                            __float_as_int(fmaxf(val, __int_as_float(swapped))));
+                    } while (swapped != orig);
+                    data = __int_as_float(orig);
+                } else if constexpr(std::is_same_v<T, double>) {
+                    //Get an integer with the same bit length as the double
+                    using intType = int64_t;
+                    intType* data_as_int = reinterpret_cast<intType*>(&data);
+                    intType orig = *data_as_int, swapped;
+                    do {
+                        swapped = orig;
+                        orig = ::atomicCAS(data_as_int, swapped,
+                            __double_as_longlong(fmax(val, __longlong_as_double(swapped))));
+                    } while (swapped != orig);
+                    data = __longlong_as_double(orig);
+                } else {
+                    //static_assert(always_false<T>::value, "Atomic Max not supported for this type");
+                }
+            }
+
+            /**
+             * Atomic MIN function for CUDA
+             * @param data Data to perform the atomic MIN on
+             * @param val Value to compare for MIN atomically
+             */
+            template<typename T>
+            __device__ void Min(T& data, T val) {
+                if constexpr(std::is_integral_v<T>) {
+                    ::atomicMin(&data, val);
+                } else if constexpr(std::is_same_v<T, float>) {
+                    //Get an integer with the same bit length as the float
+                    using intType = int32_t;
+                    intType* data_as_int = reinterpret_cast<intType*>(&data);
+                    intType orig = *data_as_int, swapped;
+                    do {
+                        swapped = orig;
+                        orig = ::atomicCAS(data_as_int, swapped,
+                            __float_as_int(fminf(val, __int_as_float(swapped))));
+                    } while (swapped != orig);
+                    data = __int_as_float(orig);
+                } else if constexpr(std::is_same_v<T, double>) {
+                    //Get an integer with the same bit length as the double
+                    using intType = int64_t;
+                    intType* data_as_int = reinterpret_cast<intType*>(&data);
+                    intType orig = *data_as_int, swapped;
+                    do {
+                        swapped = orig;
+                        orig = ::atomicCAS(data_as_int, swapped,
+                            __double_as_longlong(fmin(val, __longlong_as_double(swapped))));
+                    } while (swapped != orig);
+                    data = __longlong_as_double(orig);
+                } else {
+                    //static_assert(always_false<T>::value, "Atomic Min not supported for this type");
+                }
+            }
+
+            /**
+             * Atomic OR function for CUDA
+             * @param data Data to perform the atomic OR on
+             * @param val Value to OR atomically
+             */
+            template<typename T>
+            __device__ void Or(T& data, T val) {
+                if constexpr(std::is_integral_v<T>) {
+                    ::atomicOr(&data, val);
+                } else if constexpr(std::is_same_v<T, float>) {
+                    //Get an integer with the same bit length as the float
+                    using intType = int32_t;
+                    intType* data_as_int = reinterpret_cast<intType*>(&data);
+                    intType orig = *data_as_int, swapped;
+                    do {
+                        swapped = orig;
+                        orig = ::atomicCAS(data_as_int, swapped,
+                            __float_as_int(__int_as_float(swapped) | val));
+                    } while (swapped != orig);
+                    data = __int_as_float(orig);
+                } else if constexpr(std::is_same_v<T, double>) {
+                    //Get an integer with the same bit length as the double
+                    using intType = int64_t;
+                    intType* data_as_int = reinterpret_cast<intType*>(&data);
+                    intType orig = *data_as_int, swapped;
+                    do {
+                        swapped = orig;
+                        orig = ::atomicCAS(data_as_int, swapped,
+                            __double_as_longlong(__longlong_as_double(swapped) | val));
+                    } while (swapped != orig);
+                    data = __longlong_as_double(orig);
+                } else {
+                    //static_assert(always_false<T>::value, "Atomic Or not supported for this type");
+                }
+            }
+
+            /**
+             * Atomic Subtraction function for CUDA
+             * @param data Data to perform the atomic Subtraction on
+             * @param val Value to subtract atomically
+             */
+            template<typename T1, typename T2>
+            DEVICEPREFIX void Sub(T1& data, T2 val) {
+                ::atomicSub(&data, val);
+            }
+
+        } // namespace atomic
 
     } // namespace cuda
 } // namespace portableWrapper

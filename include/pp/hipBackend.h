@@ -502,14 +502,14 @@ namespace portableWrapper
         }
 
         UNREPEATED void printInfo(){
-            std::cout << "HIP" << std::endl;
+            SAMS::cout << "HIP" << std::endl;
             int device;
             HIP_ERROR_CHECK(hipGetDevice(&device));
             hipDeviceProp_t prop;
             HIP_ERROR_CHECK(hipGetDeviceProperties(&prop, device));
-            std::cout << "HIP device: " << prop.name << std::endl;
-            std::cout << "HIP device compute capability: " << prop.major << "." << prop.minor << std::endl;
-            std::cout << "HIP device total memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
+            SAMS::cout << "HIP device: " << prop.name << std::endl;
+            SAMS::cout << "HIP device compute capability: " << prop.major << "." << prop.minor << std::endl;
+            SAMS::cout << "HIP device total memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
         }
 
         UNREPEATED void initialize(int &argc, char *argv[])

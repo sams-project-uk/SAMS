@@ -15,6 +15,8 @@
 #ifndef MANAGER_H
 #define MANAGER_H
 
+#include <map>
+
 #include "defs.h"
 #include "range.h"
 #include "utils.h"
@@ -74,6 +76,7 @@ namespace portableWrapper {
                 data[index].~T(); // Call the destructor manually
             }
         };
+
 
         /**
          * Class representing arbitrary data and how to delete it when needed
@@ -277,6 +280,12 @@ namespace portableWrapper {
             static_assert(std::is_default_constructible_v<T>, "Can only allocate arrays of types that have parameterless constructors.");
             wrapper.setSizes(lbounds, ubounds);
             SIZE_TYPE elements = wrapper.getElements();
+            if constexpr (!std::is_trivially_default_constructible_v<T>)
+            {
+                // If T is not trivially default constructible, we need to initialize the data
+                // using placement new.
+                applyKernel(placementNewFunctor<T>(data_), Range(0, elements - 1));
+            }
             wrapper.bind(data_);
             return data_;
         }
@@ -378,7 +387,7 @@ namespace portableWrapper {
         void wrap(portableArray<T, rank, tag> &wrapper, T* data_, const T_bounds *lbounds, const T_bounds *ubounds)
         {
             deallocate(wrapper); // Ensure any previous allocation is cleaned up
-            wrapCore<false>(wrapper, lbounds, ubounds);
+            wrapCore<false>(wrapper, data_, lbounds, ubounds);
             storeWrappedData<tag>(data_, wrapper.getElements());
         }
 
@@ -524,11 +533,19 @@ namespace portableWrapper {
                 auto it = destructors.find(wrapper.data());
                 if (it != destructors.end())
                 {
-
                     destructors.erase(it);
                 }
             }
-						wrapper.bind(nullptr);
+			wrapper.bind(nullptr);
+        }
+
+        void deallocate(void *data)
+        {
+            auto it = destructors.find(data);
+            if (it != destructors.end())
+            {
+                destructors.erase(it);
+            }
         }
 
         template <typename T, int rank, typename... T_ranges>

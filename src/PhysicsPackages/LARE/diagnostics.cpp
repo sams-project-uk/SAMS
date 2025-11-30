@@ -24,6 +24,7 @@
 #include "io/writerSimple.h"
 #endif
 #include "shared_data.h"
+#include "mpiManager.h"
 
 /**
  * Get the part of the data that should be written to disk
@@ -42,12 +43,12 @@ void getHostVersion(simulationData &data, portableWrapper::portableArrayManager 
 }
 
 template <typename T_writer>
-void writeDiagnosticsCore(simulationData &data, writer<T_writer> &writer)
+void writeDiagnosticsCore(std::string Name, simulationData &data, writer<T_writer> &writer)
 {
     portableWrapper::portableArrayManager manager;
     hostVolumeArray host;
 
-    writer.openFile("finalState");
+    writer.openFile(Name.c_str());
     writer.template registerRectilinearMesh<T_dataType>("MeshCC", data.nx, data.ny, data.nz);
 
     writer.template registerData<T_dataType>("rho", "MeshCC");
@@ -99,7 +100,8 @@ void simulation::output(simulationData &data)
 #else
     simpleFile writer;
 #endif
-    writeDiagnosticsCore(data, writer);
+    std::string Name = "diagnostics_step_" + std::to_string(data.step);
+    writeDiagnosticsCore(Name, data, writer);
 }
 
 void simulation::energy_correction(simulationData &data)
@@ -111,5 +113,5 @@ void simulation::energy_correction(simulationData &data)
             data.energy_electron(ix, iy, iz) += 0.5 * dke;
             data.energy_ion(ix, iy, iz) += 0.5 * dke;
         },
-        Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 }

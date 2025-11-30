@@ -394,7 +394,6 @@ namespace{
       return 0;
 #endif
     }
-
   };
 };
 
