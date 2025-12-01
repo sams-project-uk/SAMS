@@ -22,6 +22,8 @@
 #include <fstream>
 #if __has_include(<hdf5.h>)
 #include <hdf5.h>
+#include "harnessDef.h"
+#include "mpiManager.h"
 
 class HDF5File : public writer<HDF5File> {
 	friend class writer<HDF5File>;
@@ -39,12 +41,18 @@ class HDF5File : public writer<HDF5File> {
 
 	void openFileImpl(const char* filename){
     std::string h5filename = filename;
-    h5filename += ".h5";
     //If the file exists delete it
     if (std::filesystem::exists(h5filename)) {
-      std::cout << "File " << h5filename << " already exists. Deleting it." << std::endl;
+      SAMS::cout << "File " << h5filename << " already exists. Deleting it." << std::endl;
       std::filesystem::remove(h5filename);
     }
+    #ifdef USE_MPI
+    SAMS::MPIManager<SAMS::MPI_DECOMPOSITION_RANK> &mpi = SAMS::getMPIManager<SAMS::MPI_DECOMPOSITION_RANK>();
+    int rank = mpi.getRank();
+    h5filename += "_rank" + std::to_string(rank);
+    #endif
+
+    h5filename += ".h5";
     //Create the file
     fileHandle = H5Fcreate(h5filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (fileHandle < 0) {

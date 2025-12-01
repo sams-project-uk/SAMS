@@ -19,9 +19,10 @@
 #include <cassert>
 #include <string>
 #include "constants.h"
-#include "include/parallelWrapper.h"
+#include "pp/parallelWrapper.h"
 #include "remapData.h"
 #include "typedefs.h"
+#include "mpiManager.h"
 
 //Possible geometry types
 enum class geometryType {
@@ -46,6 +47,19 @@ enum class BCType {
 struct simulationData{
 
     bool configured = false; // Indicates if the simulation data has been configured
+
+    portableWrapper::Range xcLocalRange;
+    portableWrapper::Range xcLocalDomainRange;
+    portableWrapper::Range ycLocalRange;
+    portableWrapper::Range ycLocalDomainRange;
+    portableWrapper::Range zcLocalRange;
+    portableWrapper::Range zcLocalDomainRange;
+    portableWrapper::Range xbLocalRange;
+    portableWrapper::Range xbLocalDomainRange;
+    portableWrapper::Range ybLocalRange;
+    portableWrapper::Range ybLocalDomainRange;
+    portableWrapper::Range zbLocalRange;
+    portableWrapper::Range zbLocalDomainRange;
 
     T_dataType none_zero = std::numeric_limits<T_dataType>::epsilon(); // Smallest non-zero value for T_dataTyp
     T_dataType largest_number = std::numeric_limits<T_dataType>::max(); // Largest number for T_dataType
@@ -140,9 +154,20 @@ struct simulationData{
     volumeArray delta_ke; //Remap kinetic energy correction
     volumeArray x,y,z;
     volumeArray xp, yp, zp;
+
+    volumeArray dm;
+
+    bool isxLB = false; // Is this processor on the x-min boundary
+    bool isxUB = false; // Is this processor on the x-max boundary
+    bool isyLB = false; // Is this processor on the y-min boundary
+    bool isyUB = false; // Is this processor on the y-max boundary
+    bool iszLB = false; // Is this processor on the z-min boundary
+    bool iszUB = false; // Is this processor on the z-max boundary
 };
 
 class simulation{
+private:
+
 public:
 
     /**

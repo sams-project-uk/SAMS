@@ -1,5 +1,4 @@
-/*
- *    Copyright 2025 SAMS Team
+/*    Copyright 2025 SAMS Team
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -20,15 +19,35 @@
 #include <unordered_map>
 #include <vector>
 #include "variableDef.h"
+#include "mpiManager.h"
 
 namespace SAMS{
 
     class variableRegistry{
         friend variableRegistry& getvariableRegistry();
         private:
+        template<int i>
+        friend struct MPIManager;
         std::unordered_map<std::string, variableDef> variables;
         std::vector<std::function<void(std::string)>> allocateCallbacks;
         variableRegistry() = default;
+        std::unordered_map<std::string, variableDef>& getVariableMap() {
+            return variables;
+        }
+
+        /**
+         * Get a variable definition by name. Throws an error if the variable does not exist.
+         * @param name The name of the variable
+         * @return The variable definition
+         */
+        variableDef& getVariable(const std::string& name) {
+            auto it = variables.find(name);
+            if(it == variables.end()){
+                throw std::runtime_error("Error: variable " + name + " not found in registry\n");
+            }
+            return it->second;
+        }
+
         public:
 
         /**
@@ -38,13 +57,13 @@ namespace SAMS{
          */
         void registerVariable(const std::string& name, const variableDef& varDef){
             auto it = variables.find(name);
-            if(it != variables.end()){
-                //Variable already exists, make consistent
-                it->second.makeConsistent(varDef);
-            } else {
+            if(it == variables.end()){
                 //New variable, insert
                 variables.emplace(name, varDef);
+                it = variables.find(name);
             }
+            //Make consistent does some additional work, so must be called even for new variables
+            it->second.makeConsistent(varDef);
         }
 
         /**
@@ -66,7 +85,7 @@ namespace SAMS{
          * @param name The name of the variable
          * @return The variable definition
          */
-        const variableDef& getVariable(const std::string& name) {
+        const variableDef& getVariable(const std::string& name) const {
             auto it = variables.find(name);
             if(it == variables.end()){
                 throw std::runtime_error("Error: variable " + name + " not found in registry\n");
@@ -83,6 +102,7 @@ namespace SAMS{
             if(it == variables.end()){
                 throw std::runtime_error("Error: variable " + name + " not found in registry\n");
             }
+            SAMS::debug2 << "Allocating variable: " << name << std::endl;
             it->second.allocate();
             for(auto& callback : allocateCallbacks){
                 callback(name);
@@ -94,6 +114,7 @@ namespace SAMS{
          */
         void allocateAll(){
             for(auto& [name, var] : variables){
+                SAMS::debugAll3 << "Setting up allocation for variable: " << name << std::endl;
                 allocate(name);
             }
         }
@@ -120,8 +141,40 @@ namespace SAMS{
             }
         }
 
+        /**
+         * Finalize all variables in the registry
+         */
+        void finalize(){
+            deallocateAll();
+            variables.clear();
+        }
+
+        /**
+         * Add a callback function to be called whenever a variable is allocated
+         * @param callback The callback function taking the variable name as a parameter
+         */
         void addAllocateCallback(std::function<void(std::string)> callback){
             allocateCallbacks.push_back(callback);
+        }
+
+        /**
+         * Fill an internal library performance portable array from the description of a variable in the registry
+         */
+        template<typename T, int Arank , portableWrapper::arrayTags tag>
+        void fillPPArray(const std::string name, portableWrapper::portableArray<T, Arank, tag> & array) const {
+            const auto & varDef = getVariable(name);
+            varDef.fillPPArray(array);
+        }
+
+        /** 
+         * Do a halo exchange for a named variable
+         */
+        void haloExchange(const std::string &name){
+            auto it = variables.find(name);
+            if(it == variables.end()){
+                throw std::runtime_error("Error: variable " + name + " not found in registry\n");
+            }
+            it->second.haloExchange();
         }
 
     };

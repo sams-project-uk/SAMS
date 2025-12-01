@@ -15,6 +15,8 @@
 #ifndef PORTABLEWRAPPERFRONTEND_H
 #define PORTABLEWRAPPERFRONTEND_H
 
+#include "atomic.h"
+
 namespace portableWrapper
 {
 
@@ -136,12 +138,12 @@ namespace portableWrapper
 #endif
 
 #ifdef USE_MPI
-        mpi::initialize(argc, argv);
+        //mpi::initialize(argc, argv);
 #endif
 
         {
 #ifdef PRINT_PARALLELIZATION_INFO
-        std::cout << "Parallelization mode: ";
+        SAMS::cout << "On node parallelization mode: ";
 #ifdef USE_KOKKOS
         kokkos::printInfo();
 #elif defined(USE_CUDA)
@@ -150,10 +152,10 @@ namespace portableWrapper
         hip::printInfo();
 #else
 #ifdef _OPENMP
-        std::cout << "OpenMP" << std::endl;
-        std::cout << "Number of threads: " << getOMPMaxThreads() << std::endl;
+        SAMS::cout << "OpenMP" << std::endl;
+        SAMS::cout << "Number of threads: " << getOMPMaxThreads() << std::endl;
 #else
-        std::cout << "Serial" << std::endl;
+        SAMS::cout << "Serial" << std::endl;
 #endif
 #endif
 #endif

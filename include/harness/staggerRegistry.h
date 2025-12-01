@@ -36,16 +36,36 @@ namespace SAMS{
         private:
         /**
          * How many extra cells are needed for each staggering type
-         * CENTRED: 0 extra cells
-         * HALF_CELL: 1 extra cell
+         * CENTRED: 1 fewer cell
+         * HALF_CELL: nominal cell count
          */
-        std::array<size_t, 2> extraCells{0,1};
+        std::array<SIGNED_INDEX_TYPE, 2> extraCells{-1,0};
+
+        /**
+         * How shoud the lower bound index be adjusted for each staggering type
+         * CENTRED: No adjustment
+         * HALF_CELL: Decrease by 1
+         */
+        std::array<SIGNED_INDEX_TYPE, 2> lowerAdjust{0,-1};
+
+        /**
+         * How shoud the upper bound index be adjusted for each staggering type
+         */
+        std::array<SIGNED_INDEX_TYPE, 2> upperAdjust{0,0};
 
         staggerRegistry() = default;
         public:
 
-        size_t getExtraCells(staggerType s) const {
+        SIGNED_INDEX_TYPE getExtraCells(staggerType s) const {
             return extraCells[static_cast<int>(s)];
+        }
+
+        SIGNED_INDEX_TYPE getLowerAdjust(staggerType s) const {
+            return lowerAdjust[static_cast<int>(s)];
+        }
+
+        SIGNED_INDEX_TYPE getUpperAdjust(staggerType s) const {
+            return upperAdjust[static_cast<int>(s)];
         }
 
     };

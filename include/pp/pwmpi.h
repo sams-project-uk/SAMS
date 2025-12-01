@@ -108,26 +108,26 @@ namespace portableWrapper
                     exit(EXIT_FAILURE);
                 }
         }
-    } // namespace mpi
 
-/**
- * Function to get an MPI_Datatype for a specified slice of a portableArray
- */
-template <typename T_data, int rank, portableWrapper::arrayTags tag, typename... T_ranges>
-inline MPI_Datatype getMPISliceType(const portableArray<T_data, rank, tag> &array, T_ranges... ranges)
-{
-    static_assert(sizeof...(ranges) == rank, "Number of ranges must match the rank of the portable array.");
-    int starts[rank];
-    int subsizes[rank];
-    int sizes[rank];
-    for (int i = 0; i < rank; ++i)
-        sizes[i] = array.getSize(i);
-    mpi::populateSubarrayRanges(starts, subsizes, array.getLowerBounds(), ranges...);
-    MPI_Datatype mpiType;
-    MPI_Type_create_subarray(rank, sizes, subsizes, starts, MPI_ORDER_C, mpi::getMPIDatatype<T_data>(), &mpiType);
-    MPI_Type_commit(&mpiType);
-    return mpiType;
-}
+        /**
+         * Function to get an MPI_Datatype for a specified slice of a portableArray
+         */
+        template <typename T_data, int rank, portableWrapper::arrayTags tag, typename... T_ranges>
+        inline MPI_Datatype getMPISliceType(const portableArray<T_data, rank, tag> &array, T_ranges... ranges)
+        {
+            static_assert(sizeof...(ranges) == rank, "Number of ranges must match the rank of the portable array.");
+            int starts[rank];
+            int subsizes[rank];
+            int sizes[rank];
+            for (int i = 0; i < rank; ++i)
+                sizes[i] = array.getSize(i);
+            mpi::populateSubarrayRanges(starts, subsizes, array.getLowerBounds(), ranges...);
+            MPI_Datatype mpiType;
+            MPI_Type_create_subarray(rank, sizes, subsizes, starts, MPI_ORDER_C, mpi::getMPIDatatype<T_data>(), &mpiType);
+            MPI_Type_commit(&mpiType);
+            return mpiType;
+        }
+    } // namespace mpi
 
 } // namespace portableWrapper
 

@@ -18,6 +18,9 @@
 #include <unordered_map>
 #include "harnessDef.h"
 
+#include "pp/manager.h"
+#include "pp/array.h"
+
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
 #elif defined(USE_HIP)
@@ -50,135 +53,52 @@ namespace SAMS{
 
     class memoryRegistry{
         friend memoryRegistry& getmemoryRegistry();
-        private:
-        /**
-         * This class represents a single block of memory allocated on either the CPU or GPU
-         * Uses macros to determine which backend to use and then wraps the memory with RAII semantics
-         */
-            class memoryBlock{
-                private:
-                    void* dataPtr=nullptr;
-                    size_t size=0;
-                    memorySpace memSpace=memorySpace::NONE;
-
-                    //Allocators
-                    void allocateCPU(size_t size){
-                        dataPtr = malloc(size);
-                    }
-#ifdef USE_CUDA //CUDA backend
-                    void allocateGPU(size_t size){
-                        cudaMalloc(&dataPtr, size);
-                    }
-#elif defined(USE_HIP) //HIP backend
-                    void allocateGPU(size_t size){
-                        hipMalloc(&dataPtr, size);
-                    }
-#elif defined(USE_KOKKOS) //Kokkos backend
-                    void allocateGPU(size_t size){
-                        dataPtr = Kokkos::kokkos_malloc<KOKKOS_EXECUTION_SPACE>(size);
-                    }
-#else //Fallback to full CPU
-                    void allocateGPU(size_t size){
-                        dataPtr = malloc(size);
-                    }
-#endif
-                    //Deallocators
-                    void deallocateCPU(){
-                        //nullptr is safe here
-                        free(dataPtr);
-                    }
-#ifdef USE_CUDA //CUDA backend
-                    void deallocateGPU(){
-                        if (!dataPtr) return;
-                        cudaFree(dataPtr);
-                    }
-#elif defined(USE_HIP) //HIP backend
-                    void deallocateGPU(){
-                        if (!dataPtr) return;
-                        hipFree(dataPtr);
-                    }
-#elif defined(USE_KOKKOS) //Kokkos backend
-                    void deallocateGPU(){
-                        if (!dataPtr) return;
-                        Kokkos::kokkos_free<KOKKOS_EXECUTION_SPACE>(dataPtr);
-                    }
-#else //Fallback to full CPU
-                    void deallocateGPU(){
-                        if (!dataPtr) return;
-                        free(dataPtr);
-                    }
-#endif
-
-                public:
-                    /**
-                     * Constructor allocates memory in the given memory space
-                     */
-                    memoryBlock(size_t size, memorySpace memSpace)
-                        : size(size), memSpace(memSpace) {
-                        if(memSpace==memorySpace::HOST){
-                            allocateCPU(size);
-                        }
-                        else if(memSpace==memorySpace::DEVICE){
-                            allocateGPU(size);
-                        }
-                    }
-                    /**
-                     * Destructor deallocates memory
-                     */
-                    ~memoryBlock(){
-                        if (!dataPtr) return;
-                        if(memSpace==memorySpace::HOST){
-                            deallocateCPU();
-                        }
-                        else if(memSpace==memorySpace::DEVICE){
-                            deallocateGPU();
-                        }
-                    }
-                    /**
-                     * Disable copy semantics, enable move semantics
-                     */
-                    memoryBlock(const memoryBlock&) = delete; //disable copy constructor
-                    memoryBlock& operator=(const memoryBlock&) = delete; //disable copy assignment
-                    memoryBlock(memoryBlock&& other) noexcept //move constructor
-                        : dataPtr(other.dataPtr), size(other.size), memSpace(other.memSpace) {
-                        other.dataPtr = nullptr;
-                        other.size = 0;
-                        other.memSpace = memorySpace::NONE;
-                    }
-
-                    /**
-                     * Returns a pointer to the data
-                     */
-                    void* getDataPtr(){
-                        return dataPtr;
-                    }
-
-            };
-            std::unordered_map<void*, memoryBlock> blocks;
-            memoryRegistry() = default;
+        //Array manager from portableWrapper to handle allocations
+        portableWrapper::portableArrayManager arrayManager; 
+        memoryRegistry() = default;
         public:
+
+        /**
+         * Returns the portable array manager used by the memory registry
+         */
+        portableWrapper::portableArrayManager& getArrayManager(){
+            return arrayManager;
+        }
 
         /**
          * Allocates a block of memory in a given memory space with a given byte size
          */
         void* allocate(size_t size, memorySpace memSpace){
-            //Relies on move semantics of memoryBlock
-            memoryBlock block(size, memSpace);
-            void* ptr = block.getDataPtr();
-            if (!ptr) return nullptr; //allocation failed
-            blocks.emplace(ptr, std::move(block));
-            return ptr;
+            //Just provide a wrapper around the portableArrayManager
+            void* data;
+            if (memSpace == memorySpace::NONE) {
+                throw std::runtime_error("Cannot allocate memory in NONE memory space.");
+            }
+            if (memSpace == memorySpace::HOST) {
+                auto array = arrayManager.allocate<char, portableWrapper::arrayTags::host>(size);
+                data = array.data();
+            }
+            else if (memSpace == memorySpace::DEVICE) {
+                auto array = arrayManager.allocate<char, portableWrapper::arrayTags::accelerated>(size);
+                data = array.data();
+            }
+            else {
+                throw std::runtime_error("Unknown memory space.");
+            }
+            if (!data) {
+                throw std::runtime_error("Memory allocation failed.");
+            }
+            return data;
         }
 
         /**
          * Deallocates a previously allocated block of memory
          */
         void deallocate(void* ptr){
-            auto it = blocks.find(ptr);
-            if(it != blocks.end()){
-                blocks.erase(it);
-            }
+            // Use arrayManager to deallocate
+            arrayManager.deallocate(ptr);
         }
+
     };
 
 

@@ -15,9 +15,13 @@
 #ifndef DEFS_H
 #define DEFS_H
 
+#include "harnessDef.h"
+
 #define SIGNED_INDEX_TYPE int64_t
 #define UNSIGNED_INDEX_TYPE size_t
 #define SIZE_TYPE size_t
+
+#define COUNT_TYPE size_t
 
 //We're using a custom tuple implementation
 //That could easily be a bad idea, so this should make
@@ -33,6 +37,7 @@
 #define DEVICEPREFIX KOKKOS_FUNCTION
 #define INLINE KOKKOS_FORCEINLINE_FUNCTION
 #define LAMBDA KOKKOS_LAMBDA
+#define CLASS_LAMBDA KOKKOS_CLASS_LAMBDA
 #define NCLAMBDA(...) [__VA_ARGS__] DEVICEPREFIX
 #define FUNCTORMETHODPREFIX KOKKOS_FUNCTION
 #if defined(KOKKOS_CUDA)
@@ -63,6 +68,7 @@
 #define UNREPEATED inline
 #define INLINE inline __attribute__((always_inline))
 #define LAMBDA [=] __device__ __host__
+#define CLASS_LAMBDA [=, *this] __device__ __host__
 #define NCLAMBDA(...) [__VA_ARGS__] __device__ __host__
 #define FUNCTORMETHODPREFIX __device__ __host__
 #if __cplusplus >= 202002L
@@ -78,6 +84,7 @@
 #define UNREPEATED inline
 #define INLINE inline __attribute__((always_inline))
 #define LAMBDA [=] __device__ __host__
+#define CLASS_LAMBDA [=, *this] __device__ __host__
 #define NCLAMBDA(...) [__VA_ARGS__] __device__ __host__
 #define FUNCTORMETHODPREFIX __device__ __host__
 #if __cplusplus >= 202002L
@@ -92,6 +99,7 @@
 #define UNREPEATED inline
 #define INLINE inline __attribute__((always_inline))
 #define LAMBDA [=]
+#define CLASS_LAMBDA [=, *this]
 #define NCLAMBDA(...) [__VA_ARGS__]
 #define FUNCTORMETHODPREFIX
 #if __cplusplus >= 202002L

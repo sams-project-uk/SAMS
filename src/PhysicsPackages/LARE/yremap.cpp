@@ -14,7 +14,6 @@ void simulation::remap_y(simulationData &data, remapData &remap_data) {
     using Range = portableWrapper::Range;
     portableWrapper::portableArrayManager yRemapManager;
 	remap_data.flux.nullify();
-	assert(remap_data.flux.data()==nullptr);
 
     yRemapManager.allocate(remap_data.flux, Range(-1, data.nx + 2), Range(-2, data.ny + 2), Range(-1, data.nz + 2));
 
@@ -83,11 +82,12 @@ void simulation::remap_y(simulationData &data, remapData &remap_data) {
             T_indexType iyp = iy + 1;
             T_indexType izp = iz + 1;
             remap_data.cvc1(ix, iy, iz) = 0.125 *(
-                data.cv1(ix, iy, iz) + data.cv1(ixp, iy, iz) +
-                data.cv1(ix, iyp, iz) + data.cv1(ixp, iyp, iz) +
-                data.cv1(ix, iy, izp) + data.cv1(ixp, iy, izp) +
-                data.cv1(ix, iyp, izp) + data.cv1(ixp, iyp, izp));
-        }, Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz + 1));
+                data.cv1(ix, iy, iz) + data.cv1(ixp, iy, iz)
+                + data.cv1(ix, iyp, iz) + data.cv1(ixp, iyp, iz)
+                + data.cv1(ix, iy, izp) + data.cv1(ixp, iy, izp)
+                + data.cv1(ix, iyp, izp) + data.cv1(ixp, iyp, izp)
+            );
+        }, Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz+1));
     portableWrapper::fence();
 
     //Evans and Hawley constrained transport remap of magnetic fluxes
@@ -133,7 +133,8 @@ void simulation::remap_y(simulationData &data, remapData &remap_data) {
             T_indexType iym = iy - 1;
             data.rho(ix, iy, iz) = (remap_data.rho1(ix, iy, iz) * data.cv1(ix, iy, iz) +
                                     remap_data.dm(ix, iym, iz) - remap_data.dm(ix, iy, iz)) /
-                                    remap_data.cv2(ix, iy, iz);            
+                                    remap_data.cv2(ix, iy, iz);
+
         }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
     portableWrapper::fence();
 
@@ -185,7 +186,7 @@ void simulation::remap_y(simulationData &data, remapData &remap_data) {
 
             remap_data.rho_v(ix, iy, iz) *= 0.125 / remap_data.cvc1(ix, iy, iz);
 
-        }, Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
+        }, Range(0, data.nx), Range(-1, data.ny+1), Range(0, data.nz));
     portableWrapper::fence();
 
     //Move cv2 to vertex using flux array as a temporary
@@ -242,8 +243,9 @@ void simulation::remap_y(simulationData &data, remapData &remap_data) {
             T_indexType iym = iy - 1;
             remap_data.rho_v1(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.cv1(ix,iy,iz) + remap_data.dm(ix,iym,iz) - remap_data.dm(ix,iy,iz)) /
                 remap_data.cv2(ix, iy, iz);
-        }, Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
+        }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
     portableWrapper::fence();
+
 
     y_mom_flux<&simulationData::vx>(data, remap_data);
     portableWrapper::applyKernel(
@@ -253,6 +255,7 @@ void simulation::remap_y(simulationData &data, remapData &remap_data) {
                           remap_data.flux(ix, iym, iz) - remap_data.flux(ix, iy, iz)) /
                          (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
         }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    portableWrapper::fence();
 
     y_mom_flux<&simulationData::vy>(data, remap_data);
     portableWrapper::applyKernel(
@@ -262,6 +265,7 @@ void simulation::remap_y(simulationData &data, remapData &remap_data) {
                           remap_data.flux(ix, iym, iz) - remap_data.flux(ix, iy, iz)) /
                          (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
         }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    portableWrapper::fence();
 
     y_mom_flux<&simulationData::vz>(data, remap_data);
     portableWrapper::applyKernel(
@@ -271,6 +275,7 @@ void simulation::remap_y(simulationData &data, remapData &remap_data) {
                           remap_data.flux(ix, iym, iz) - remap_data.flux(ix, iy, iz)) /
                          (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
         }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    portableWrapper::fence();
 
     this->boundary_conditions(data);
     remap_data.ypass = 0.0;
@@ -489,7 +494,7 @@ void y_energy_flux(simulationData &data, remapData &remap_data) {
             T_dataType dmu = std::abs(remap_data.dm(ix, iy, iz)) / dybu / rhou;
 
             remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - dmu)) * remap_data.dm(ix, iy, iz);
-        }, Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
+        }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
     portableWrapper::fence();
 }
 
@@ -497,6 +502,7 @@ template<auto mPtr>
 void y_mom_flux(simulationData &data, remapData &remap_data)
 {
     using Range = portableWrapper::Range;
+    portableWrapper::assign(remap_data.flux, 0.0);
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz){
     // Main flux calculation loop
         T_indexType iym = iy - 1;
@@ -541,6 +547,8 @@ void y_mom_flux(simulationData &data, remapData &remap_data)
         remap_data.flux(ix, iy, iz) = fu + Di * (1.0 - dmu);
       }, Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
 
+    portableWrapper::fence();
+
         // Kinetic energy correction if rke is enabled
         if (data.rke)
         {
@@ -553,17 +561,20 @@ void y_mom_flux(simulationData &data, remapData &remap_data)
                 T_dataType m = remap_data.rho_v1(ix, iy, iz) * remap_data.cv2(ix, iy, iz);
                 T_dataType mp = remap_data.rho_v1(ix, iyp, iz) * remap_data.cv2(ix, iyp, iz);
 
-                T_dataType ai = ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iym, iz)) * remap_data.dm(ix, iym, iz) / m - ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) * remap_data.dm(ix, iy, iz) / m;
+                T_dataType ai =((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iym, iz)) * remap_data.dm(ix, iym, iz) / m - ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) * remap_data.dm(ix, iy, iz) / m;
 
                 T_dataType aip = ((data.*mPtr)(ix, iyp, iz) - remap_data.flux(ix, iy, iz)) * remap_data.dm(ix, iy, iz) / mp - ((data.*mPtr)(ix, iyp, iz) - remap_data.flux(ix, iyp, iz)) * remap_data.dm(ix, iyp, iz) / mp;
 
-                T_dataType dk = ((data.*mPtr)(ix, iyp, iz) - (data.*mPtr)(ix, iy, iz)) * (remap_data.flux(ix, iy, iz) - 0.5 * ((data.*mPtr)(ix, iyp, iz) + (data.*mPtr)(ix, iy, iz))) - 0.5 * ai * ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) + 0.5 * aip * ((data.*mPtr)(ix, iyp, iz) - remap_data.flux(ix, iy, iz));
+                T_dataType dk = ((data.*mPtr)(ix, iyp, iz) - (data.*mPtr)(ix, iy, iz)) *
+                    (remap_data.flux(ix, iy, iz) - 0.5 * ((data.*mPtr)(ix, iyp, iz) + (data.*mPtr)(ix, iy, iz))) - 
+                    0.5 * ai * ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) + 
+                    0.5 * aip * ((data.*mPtr)(ix, iyp, iz) - remap_data.flux(ix, iy, iz));
 
                 dk = dk * remap_data.dm(ix, iy, iz) * 0.5;
-                data.delta_ke(ix, iyp, iz) += dk;
-                data.delta_ke(ixp, iyp, iz) += dk;
-                data.delta_ke(ix, iyp, izp) += dk;
-                data.delta_ke(ixp, iyp, izp) += dk;
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ixp,iyp,iz), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ix ,iyp,iz), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ixp,iyp,izp), dk);
+                portableWrapper::atomic::accelerated::Add(data.delta_ke(ix ,iyp,izp), dk);
             }, Range(0, data.nx), Range(0, data.ny-1), Range(0, data.nz));
             portableWrapper::fence();
         }
