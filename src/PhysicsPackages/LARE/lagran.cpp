@@ -92,81 +92,96 @@ namespace LARE
         return q_k_bar * (1.0 - psi) * dvdots;
     }
 
-    void LARE3D::lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns)
-    {   
-        using Range = pw::Range;
+void simulation::lagrangian_step(simulationData &data) {
+    lagranData lagran;
+    portableWrapper::portableArrayManager lagranManager;
+    using Range = portableWrapper::Range;
+    // Allocate arrays using the portableArrayManager
+    lagranManager.allocate(lagran.bx1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+    lagranManager.allocate(lagran.by1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+    lagranManager.allocate(lagran.bz1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+    lagranManager.allocate(lagran.alpha1, Range(0,data.nx+1), Range(0,data.ny+2), Range(0,data.nz+2));
+    lagranManager.allocate(lagran.alpha2, Range(-1,data.nx+1), Range(0,data.ny+1), Range(0,data.nz+2));
+    lagranManager.allocate(lagran.alpha3, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(0,data.nz+1));
+    lagranManager.allocate(lagran.visc_heat, Range(0,data.nx+1), Range(0,data.ny+1), Range(0,data.nz+1));
+    lagranManager.allocate(lagran.pressure, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
+    lagranManager.allocate(lagran.p_e, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
+    lagranManager.allocate(lagran.p_i, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
+    lagranManager.allocate(lagran.rho_v, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
+    lagranManager.allocate(lagran.cv_v, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
+    lagranManager.allocate(lagran.fx, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.fy, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.fz, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.fx_visc, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.fy_visc, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.fz_visc, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.flux_x, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.flux_y, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.flux_z, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+    lagranManager.allocate(lagran.curlb, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
 
-        Range xbp = pw::Range(-1, data.nx + 1);
-        Range ybp = pw::Range(-1, data.ny + 1);
-        Range zbp = pw::Range(-1, data.nz + 1);
 
-        // All of the arrays are deallocated when lagranManager goes out of scope
-        //  Initialize bx1, by1, bz1, p_e, p_i, pressure
-        T_dataType gas_gamma = data.gas_gamma;
-        volumeArray bxl = data.bx;
-        volumeArray byl = data.by;
-        volumeArray bzl = data.bz;
-        volumeArray cvl = data.cv;
-        volumeArray energy_el = data.energy_electron;
-        volumeArray energy_il = data.energy_ion;
+    //All of the arrays are deallocated when lagranManager goes out of scope
+    // Initialize bx1, by1, bz1, p_e, p_i, pressure
+    T_dataType gas_gamma = data.gas_gamma;
+    volumeArray bxl = data.bx;
+    volumeArray byl = data.by;
+    volumeArray bzl = data.bz;
+    volumeArray cvl = data.cv;
+    volumeArray energy_el = data.energy_electron;
+    volumeArray energy_il = data.energy_ion;
+    portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        T_indexType izm = iz - 1;
+        T_indexType iym = iy - 1;
+        T_indexType ixm = ix - 1;
+        lagran.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
+        lagran.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
+        lagran.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
 
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-            T_indexType izm = iz - 1;
-            T_indexType iym = iy - 1;
-            T_indexType ixm = ix - 1;
-            data.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
-            data.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
-            data.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
+        lagran.p_e(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_el(ix, iy, iz);
+        lagran.p_i(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_il(ix, iy, iz);
+        lagran.pressure(ix, iy, iz) = lagran.p_e(ix, iy, iz) + lagran.p_i(ix, iy, iz);
 
-            data.p_e(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_el(ix, iy, iz);
-            data.p_i(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_il(ix, iy, iz);
-            data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
-        },
-                        data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+    }, Range(-1,data.nx+2), Range(-1,data.ny+2), Range(-1,data.nz+2));
 
-        // Compute rho_v and cv_v
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-            T_indexType izp = iz + 1;
-            T_indexType iyp = iy + 1;
-            T_indexType ixp = ix + 1;
+    // Compute rho_v and cv_v
+    portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        T_indexType izp = iz + 1;
+        T_indexType iyp = iy + 1;
+        T_indexType ixp = ix + 1;
 
-            T_dataType sum_rho_cv = data.rho(ix, iy, iz) * cvl(ix, iy, iz) +
-                                    data.rho(ixp, iy, iz) * cvl(ixp, iy, iz) +
-                                    data.rho(ix, iyp, iz) * cvl(ix, iyp, iz) +
-                                    data.rho(ixp, iyp, iz) * cvl(ixp, iyp, iz) +
-                                    data.rho(ix, iy, izp) * cvl(ix, iy, izp) +
-                                    data.rho(ixp, iy, izp) * cvl(ixp, iy, izp) +
-                                    data.rho(ix, iyp, izp) * cvl(ix, iyp, izp) +
-                                    data.rho(ixp, iyp, izp) * cvl(ixp, iyp, izp);
+        T_dataType sum_rho_cv = data.rho(ix, iy, iz) * cvl(ix, iy, iz) +
+                            data.rho(ixp, iy, iz) * cvl(ixp, iy, iz) +
+                            data.rho(ix, iyp, iz) * cvl(ix, iyp, iz) +
+                            data.rho(ixp, iyp, iz) * cvl(ixp, iyp, iz) +
+                            data.rho(ix, iy, izp) * cvl(ix, iy, izp) +
+                            data.rho(ixp, iy, izp) * cvl(ixp, iy, izp) +
+                            data.rho(ix, iyp, izp) * cvl(ix, iyp, izp) +
+                            data.rho(ixp, iyp, izp) * cvl(ixp, iyp, izp);
 
-            T_dataType sum_cv = cvl(ix, iy, iz) +
-                                cvl(ixp, iy, iz) +
-                                cvl(ix, iyp, iz) +
-                                cvl(ixp, iyp, iz) +
-                                cvl(ix, iy, izp) +
-                                cvl(ixp, iy, izp) +
-                                cvl(ix, iyp, izp) +
-                                cvl(ixp, iyp, izp);
-            data.rho_v(ix, iy, iz) = sum_rho_cv / sum_cv;
-            data.cv_v(ix, iy, iz) = 0.125 * sum_cv; // Assuming a constant factor for control volume
-        },
-                        xbp, ybp, zbp);
+        T_dataType sum_cv = cvl(ix, iy, iz) +
+                            cvl(ixp, iy, iz) +
+                            cvl(ix, iyp, iz) +
+                            cvl(ixp, iyp, iz) +
+                            cvl(ix, iy, izp) +
+                            cvl(ixp, iy, izp) +
+                            cvl(ix, iyp, izp) +
+                            cvl(ixp, iyp, izp);
+        lagran.rho_v(ix, iy, iz) = sum_rho_cv / sum_cv;
+        lagran.cv_v(ix, iy, iz) = 0.125 * sum_cv; // Assuming a constant factor for control volume
+    }, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
 
-        shock_viscosity(data);
-        controlFns.calculateTimestep();
-        if (data.resistiveMHD)
-        {
-            T_dataType dt_sub = data.dtr;
-            int substeps = static_cast<int>(data.dt / dt_sub) + 1;
+    shock_viscosity(data, lagran);
+    set_dt(data, lagran);
+    if (data.resistiveMHD){
+        T_dataType dt_sub = data.dtr;
+        int substeps = static_cast<int>(data.dt / dt_sub)+1;
 
-            T_dataType actual_dt = data.dt;
-            data.dt /= static_cast<T_dataType>(substeps);
-            for (int i = 0; i < substeps; ++i)
-            {
-                this->eta_calc(data);
-                resistive_effects(*this, data);
-            }
-            data.dt = actual_dt; // Restore the original dt after sub-stepping
+        T_dataType actual_dt = data.dt;
+        data.dt /= static_cast<T_dataType>(substeps);
+        for (int i = 0; i < substeps; ++i) {
+            this->eta_calc(data);
+            resistive_effects(*this, data, lagran);
         }
 
         this->predictor_step(data);

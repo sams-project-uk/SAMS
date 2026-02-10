@@ -234,42 +234,132 @@ namespace LARE
 
         x_mom_flux<&simulationData::vx>(data, remap_data); // Momentum flux in x-direction
 
-        pw::applyKernel(
-            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                T_indexType ixm = ix - 1;
-                data.vx(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.vx(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
-            },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixm = ix - 1;
+            data.energy_ion(ix, iy, iz) = 
+                (
+                    data.energy_ion(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + 
+                    remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)
+                ) / 
+                (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
+        },
+    Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 
-        pw::fence();
+    portableWrapper::fence();
 
-        x_mom_flux<&simulationData::vy>(data, remap_data); // Momentum flux in y-direction
-        pw::applyKernel(
-            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                T_indexType ixm = ix - 1;
-                data.vy(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.vy(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
-            },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
+  // Redefine db1, cv1, cv2, dm and vx1 for velocity (vertex) cells.
+  // In some of these calculations the flux variable is used as a temporary array
 
-        x_mom_flux<&simulationData::vz>(data, remap_data); // Momentum flux in z-direction
-        pw::applyKernel(
-            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                T_indexType ixm = ix - 1;
-                data.vz(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.vz(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
-            },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-        remap_data.xpass = 0;
+    //Calculate vertex density
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixp = ix + 1;
+            T_indexType iyp = iy + 1;
+            T_indexType izp = iz + 1;
 
-        this->boundary_conditions();
-    } // END LARE3D::remap_x
+                remap_data.rho_v(ix, iy, iz) = (
+                    remap_data.rho1(ix, iy, iz) * data.cv1(ix, iy, iz) + 
+                    remap_data.rho1(ixp, iy, iz) * data.cv1(ixp, iy, iz) + 
+                    remap_data.rho1(ix, iyp, iz) * data.cv1(ix, iyp, iz) + 
+                    remap_data.rho1(ixp, iyp, iz) * data.cv1(ixp, iyp, iz) + 
+                    remap_data.rho1(ix, iy, izp) * data.cv1(ix, iy, izp) + 
+                    remap_data.rho1(ixp, iy, izp) * data.cv1(ixp, iy, izp) + 
+                    remap_data.rho1(ix, iyp, izp) * data.cv1(ix, iyp, izp) + 
+                    remap_data.rho1(ixp, iyp, izp) * data.cv1(ixp, iyp, izp)) * 
+                    0.125 / remap_data.cvc1(ix, iy, iz);
+        },
+    Range(-1, data.nx+1), Range(0, data.ny), Range(0, data.nz));
 
-    // Flux of by due to vx
-    void vx_by_flux(simulationData &data, remapData &remap_data)
-    {
-        using Range = pw::Range;
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+    //Use flux as a temporary to store the new cv2
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixp = ix + 1;
+            T_indexType iyp = iy + 1;
+            T_indexType izp = iz + 1;
+
+            remap_data.flux(ix, iy, iz) = (remap_data.cv2(ix, iy, iz) + remap_data.cv2(ixp, iy, iz) + remap_data.cv2(ix, iyp, iz) + remap_data.cv2(ixp, iyp, iz) + remap_data.cv2(ix, iy, izp) + remap_data.cv2(ixp, iy, izp) + remap_data.cv2(ix, iyp, izp) + remap_data.cv2(ixp, iyp, izp))*0.125;
+
+        }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+
+    portableWrapper::fence();
+
+    //Now copy it back to cv2
+    portableWrapper::assign(remap_data.cv2(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(0,data.nx), Range(0, data.ny), Range(0, data.nz)));
+
+    //Now shift vx
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixp = ix + 1;
+
+            remap_data.flux(ix,iy,iz) = (data.vx1(ix, iy, iz) + data.vx1(ixp, iy, iz)) * 0.5;
+        }, Range(-2, data.nx+1), Range(0, data.ny), Range(0, data.nz));
+
+    portableWrapper::fence();
+
+    portableWrapper::assign(data.vx1(Range(-2, data.nx+1), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(-2, data.nx+1), Range(0, data.ny), Range(0, data.nz)));
+
+    //Now shift mass flux to temporary
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixp = ix + 1;
+            T_indexType iyp = iy + 1;
+            T_indexType izp = iz + 1;
+
+            remap_data.flux(ix, iy, iz) = (remap_data.dm(ix, iy, iz) + remap_data.dm(ixp, iy, iz) + remap_data.dm(ix, iyp, iz) + remap_data.dm(ixp, iyp, iz) + remap_data.dm(ix, iy, izp) + remap_data.dm(ixp, iy, izp) + remap_data.dm(ix, iyp, izp) + remap_data.dm(ixp, iyp, izp))*0.125;
+        }, Range(-1, data.nx), Range(0, data.ny), Range(0, data.nz));
+
+    portableWrapper::fence();
+
+    //And copy back to dm
+    portableWrapper::assign(remap_data.dm(Range(-1, data.nx), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(-1, data.nx), Range(0, data.ny), Range(0, data.nz)));
+
+    portableWrapper::fence();
+
+    //Calculate vertex density after remap
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixm = ix - 1;
+            // Vertex density after remap
+            remap_data.rho_v1(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.cv1(ix, iy, iz) + remap_data.dm(ixm, iy, iz) - remap_data.dm(ix, iy, iz)) / remap_data.cv2(ix, iy, iz);
+        }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    portableWrapper::fence();
+
+
+    x_mom_flux<&simulationData::vx>(data, remap_data); // Momentum flux in x-direction
+
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixm = ix - 1;
+            data.vx(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.vx(ix, iy, iz) * data.cv1(ix, iy, iz) + remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
+        }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+
+    portableWrapper::fence();
+
+    x_mom_flux<&simulationData::vy>(data, remap_data); // Momentum flux in y-direction
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixm = ix - 1;
+            data.vy(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.vy(ix, iy, iz) * data.cv1(ix, iy, iz) + remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
+        }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    portableWrapper::fence();
+
+    x_mom_flux<&simulationData::vz>(data, remap_data); // Momentum flux in z-direction
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixm = ix - 1;
+            data.vz(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.vz(ix, iy, iz) * data.cv1(ix, iy, iz) + remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
+        }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    portableWrapper::fence();
+    remap_data.xpass = 0;
+    
+    this->boundary_conditions(data);
+} //END simulation::remap_x
+
+//Flux of by due to vx
+void vx_by_flux(simulationData &data, remapData &remap_data) {
+    using Range = portableWrapper::Range;
+    portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType ixp = ix + 1;
         T_indexType iyp = iy + 1;
         T_indexType izm = iz - 1;
