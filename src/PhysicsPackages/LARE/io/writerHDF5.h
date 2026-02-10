@@ -22,6 +22,8 @@
 #include <fstream>
 #if __has_include(<hdf5.h>)
 #include <hdf5.h>
+#include "harnessDef.h"
+#include "mpiManager.h"
 
 class HDF5File : public writer<HDF5File> {
 	friend class writer<HDF5File>;
@@ -39,12 +41,18 @@ class HDF5File : public writer<HDF5File> {
 
 	void openFileImpl(const char* filename){
     std::string h5filename = filename;
-    h5filename += ".h5";
     //If the file exists delete it
     if (std::filesystem::exists(h5filename)) {
-      std::cout << "File " << h5filename << " already exists. Deleting it." << std::endl;
+      SAMS::cout << "File " << h5filename << " already exists. Deleting it." << std::endl;
       std::filesystem::remove(h5filename);
     }
+    #ifdef USE_MPI
+    SAMS::MPIManager<SAMS::MPI_DECOMPOSITION_RANK> &mpi = SAMS::getMPIManager<SAMS::MPI_DECOMPOSITION_RANK>();
+    int rank = mpi.getRank();
+    h5filename += "_rank" + std::to_string(rank);
+    #endif
+
+    h5filename += ".h5";
     //Create the file
     fileHandle = H5Fcreate(h5filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (fileHandle < 0) {
@@ -57,11 +65,11 @@ class HDF5File : public writer<HDF5File> {
   */
 	void startRegisterImpl(){}
 	void startWriteImpl(){}
-	void registerRectilinearMeshImpl(const char* name, const writerRLMeshInfo &info, const size_t nx, const size_t ny, const size_t nz){
+	void registerRectilinearMeshImpl([[maybe_unused]] const char* name, [[maybe_unused]] const writerRLMeshInfo &info, [[maybe_unused]] const size_t nx, [[maybe_unused]] const size_t ny, [[maybe_unused]] const size_t nz){
 	}
-	void registerRectilinearMeshImpl(const char* name, const writerRLMeshInfo &info, const size_t nx, const size_t ny){
+	void registerRectilinearMeshImpl([[maybe_unused]] const char* name, [[maybe_unused]] const writerRLMeshInfo &info, [[maybe_unused]] const size_t nx, [[maybe_unused]] const size_t ny){
 	}
-	void registerRectilinearMeshImpl(const char* name, const writerRLMeshInfo &info, const size_t nx){
+	void registerRectilinearMeshImpl([[maybe_unused]] const char* name, [[maybe_unused]] const writerRLMeshInfo &info, [[maybe_unused]] const size_t nx){
 	}
 
   /**
@@ -123,64 +131,35 @@ class HDF5File : public writer<HDF5File> {
       }
     }
 
-	//Write 3d rectilinear mesh
-	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, const writerMeshInfo &info, const T_data *x, const T_data *y, const T_data *z){
+  template<int elements, typename T_current, typename... T_otherData>
+  void writeRectilinearMeshInner(hid_t& group, const writerMeshInfo &info, const T_current *currentData, const T_otherData*... otherData){
+    static constexpr std::array<std::string_view, 8> axisNames = {"x", "y", "z", "a", "b", "c", "d", "e"};
+    const writerRLMeshInfo &rlInfo = std::get<writerRLMeshInfo>(info.specificInfo);
+    //Write the current axis
+    int index = elements - sizeof...(T_otherData) - 1;
+    writeSingleAxis(axisNames[index].data(), currentData, group, rlInfo.sizes[index]);
+    //If there are more axes to write, call this function again
+    if constexpr (sizeof...(otherData) > 0){
+      writeRectilinearMeshInner<elements>(group, info, otherData...);
+    }
+  }
 
-      hid_t group = H5Gcreate(fileHandle, name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-      if (group < 0) {
-        throw std::runtime_error("Could not create group " + std::string(name));
-      }
-      const writerRLMeshInfo &rlInfo = std::get<writerRLMeshInfo>(info.specificInfo);
-      //Use the writeSingleAxis function to write the x, y, and z coordinates
-      writeSingleAxis("x", x, group, rlInfo.sizes[0]);
-      writeSingleAxis("y", y, group, rlInfo.sizes[1]);
-      writeSingleAxis("z", z, group, rlInfo.sizes[2]);
-      //Close the group
-      if (H5Gclose(group) < 0) {
-        throw std::runtime_error("Could not close group " + std::string(name));
-      }
+  //Write arbitary rank mesh data
+  template<typename T_current, typename... T_otherData>
+  void writeRectilinearMeshImpl(const char* name, const writerMeshInfo &info, const T_current *currentData, const T_otherData*... otherData){
+    hid_t group = H5Gcreate(fileHandle, name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    if (group < 0) {
+      throw std::runtime_error("Could not create group " + std::string(name));
+    }
+    writeRectilinearMeshInner<sizeof...(T_otherData) + 1>(group, info, currentData, otherData...);
+    //Close the group
+    if (H5Gclose(group) < 0) {
+      throw std::runtime_error("Could not close group " + std::string(name));
+    }
+  }
 
-		}
-	//Write 2d rectilinear mesh
-	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, const writerMeshInfo &info, const T_data *x, const T_data *y) {
-      //Write the mesh data as a set of 2 1D arrays
-      //File is already open
-      //Create the group for the mesh
-      hid_t group = H5Gcreate(fileHandle, name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-      if (group < 0) {
-        throw std::runtime_error("Could not create group " + std::string(name));
-      }
-      const writerRLMeshInfo &rlInfo = info.specificInfo;
-      //Use the writeSingleAxis function to write the x and y coordinates
-      writeSingleAxis("x", x, group, rlInfo.sizes[0]);
-      writeSingleAxis("y", y, group, rlInfo.sizes[1]);
-      //Close the group
-      if (H5Gclose(group) < 0) {
-        throw std::runtime_error("Could not close group " + std::string(name));
-      }
-		}
-	//Write 1d rectilinear mesh
-	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, const writerMeshInfo &info, const T_data *x){
-      //Write the mesh data as a set of 1 1D arrays
-      //File is already open
-      //Create the group for the mesh
-      hid_t group = H5Gcreate(fileHandle, name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-      if (group < 0) {
-        throw std::runtime_error("Could not create group " + std::string(name));
-      }
-      const writerRLMeshInfo &rlInfo = info.specificInfo;
-      //Use the writeSingleAxis function to write the x coordinates
-      writeSingleAxis("x", x, group, rlInfo.sizes[0]);
-      //Close the group
-      if (H5Gclose(group) < 0) {
-        throw std::runtime_error("Could not close group " + std::string(name));
-      }
-		}
 
-	void registerDataImpl(const char* name, const char* meshName, writerDataInfo &dataInfo, writerMeshInfo &meshInfo){
+	void registerDataImpl([[maybe_unused]] const char* name, [[maybe_unused]] const char* meshName, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo){
 	}
 
 	//Write data against a mest
@@ -189,7 +168,8 @@ class HDF5File : public writer<HDF5File> {
       const writerRLMeshInfo &rlMeshInfo = std::get<writerRLMeshInfo>(meshInfo.specificInfo);
       //Just write a dataset into the root group and add the mesh name as an attribute
       //Create the dataspace for the data
-      hsize_t dims[3] = {rlMeshInfo.sizes[0], rlMeshInfo.sizes[1], rlMeshInfo.sizes[2]};
+      hsize_t dims[8] = {rlMeshInfo.sizes[0], rlMeshInfo.sizes[1], rlMeshInfo.sizes[2], rlMeshInfo.sizes[3],
+                        rlMeshInfo.sizes[4], rlMeshInfo.sizes[5], rlMeshInfo.sizes[6], rlMeshInfo.sizes[7]};
       hid_t dataspace = H5Screate_simple(rlMeshInfo.rank, dims, NULL);
       if (dataspace < 0) {
         throw std::runtime_error("Could not create dataspace for " + std::string(name) + " data");

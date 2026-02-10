@@ -15,28 +15,53 @@
 #ifndef SAMS_HARNESSDEF_H
 #define SAMS_HARNESSDEF_H
 
-#ifdef USE_KOKKOS
-#include <Kokkos_Core.hpp>
-#if defined(KOKKOS_CUDA)
-#define KOKKOS_EXECUTION_SPACE Kokkos::Cuda
-#elif defined(KOKKOS_HIP)
-#define KOKKOS_EXECUTION_SPACE Kokkos::HIP
-#elif defined(KOKKOS_SYCL)
-#define KOKKOS_EXECUTION_SPACE Kokkos::SYCL
-#elif defined(KOKKOS_OPENMP)
-#define KOKKOS_EXECUTION_SPACE Kokkos::OpenMP
+#include "streams.h"
+#include "handles.h"
+#include <complex>
+
+namespace SAMS
+{
+    // Swap between float and double for numerical variables
+#ifdef USE_FLOAT
+    using T_dataType = float;
 #else
-#define KOKKOS_EXECUTION_SPACE Kokkos::DefaultExecutionSpace
-#endif
+    using T_dataType = double;
 #endif
 
-namespace SAMS {
+    // Complex data type
+    using T_complexType = std::complex<T_dataType>;
+
+// Swap between int32_t and size_t for indexing
+// This is to set the sizes of objects so should be unsigned
+#ifdef USE_INT32_SIZES
+    using T_sizeType = uint32_t;
+#else
+    using T_sizeType = size_t;
+#endif
+
+    // The indexType is the signed version of sizeType
+    using T_indexType = std::make_signed<T_sizeType>::type;
 
     /**
      * Maximum rank of a variable
      */
     constexpr int MAX_RANK = 7;
 
-} //namespace SAMS
+    /**
+     * Rank of the MPI decomposition
+     */
+    constexpr int MPI_DECOMPOSITION_RANK = 3;
+
+    namespace domain
+    {
+        enum class edges
+        {
+            lower = 0,
+            upper = 1,
+            EDGE_COUNT = 2
+        };
+    };
+
+} // namespace SAMS
 
 #endif

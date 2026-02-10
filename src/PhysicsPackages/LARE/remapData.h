@@ -17,16 +17,20 @@
 
 #include "typedefs.h"
 
-struct remapData{
-  T_dataType xpass, ypass, zpass;
-  volumeArray rho1;
-  volumeArray dm;
-  volumeArray cv2;
-  volumeArray cvc1;
-  volumeArray db1;
-  volumeArray rho_v;
-  volumeArray rho_v1;
-  volumeArray flux;
-};
+namespace LARE
+{
+
+  struct remapData
+  {
+    T_dataType xpass, ypass, zpass;
+    volumeArray rho1;
+    volumeArray cv2;
+    volumeArray cvc1;
+    volumeArray db1;
+    volumeArray rho_v;
+    volumeArray rho_v1;
+    volumeArray flux;
+  };
+}
 
 #endif // REMAPDATA_H

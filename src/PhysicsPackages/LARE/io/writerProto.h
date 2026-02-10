@@ -136,7 +136,7 @@ class writer {
 	DEFAULTVALUE(registerOrder, meshDataOrder, meshDataOrder::noOrder);
 	//Do you have to write the mesh before the data, vice versa, or does it not matter
 	DEFAULTVALUE(writeOrder, meshDataOrder, meshDataOrder::noOrder);
-	constexpr static size_t maximumRank = 3;
+	constexpr static size_t maximumRank = 8;
 	//Does the writer support key-value pairs globally
 	DEFAULTVALUE(supportsKeyValue, bool, false);
 	//Does the writer support setting the key-value pairs for a specific mesh
@@ -217,10 +217,10 @@ class writer {
 	//Structure to hold data info
 	struct dataInfo{
 		std::string meshName;
-		std::array<size_t, maximumRank> staggers;
+		size_t elementSize;		
 		const std::type_info* type = nullptr;
+		std::array<size_t, maximumRank> staggers;
 		bool written = false;
-		size_t elementSize;
 		dataInfo() = default;
 		dataInfo(const char* meshName, const size_t elementSize, const std::type_info* type) : meshName(meshName), elementSize(elementSize), type(type){};
 	};
@@ -392,7 +392,7 @@ class writer {
 	 */
 	template<typename T>
 	void registerMeshCommon(const char* name){
-		using p = typename use_allowedMeshTypes<primitive>::type;
+		//using p = typename use_allowedMeshTypes<primitive>::type;
 		//static_assert(typeInTuple<T, allowedMeshTypes, 0>(), "Type not allowed");
 		if (meshMap.find(name)!=meshMap.end()){
 			throw std::invalid_argument("Mesh already registered");
@@ -655,7 +655,7 @@ class writer {
 	 * @details This is a convenience function that allows you to register data without having to specify the type. The type is determined from the pointer. This is because the "object.template method" syntax is not very clear
 	 */
 	template<typename T>
-	void registerData(const char* name, const char* meshName, T* data)
+	void registerData(const char* name, const char* meshName, [[maybe_unused]] T* data)
 	{
 		registerData<T>(name, meshName);
 	}
@@ -766,7 +766,7 @@ class demoFile : public writer<demoFile> {
 	void startWriteImpl(){}
 
 	template<typename... Args>
-	void registerRectilinearMeshImpl(const char* name, writerRLMeshInfo &info, Args... args){
+	void registerRectilinearMeshImpl(const char* name,[[maybe_unused]] writerRLMeshInfo &info, Args... args){
 		std::cout << "Rectilinear mesh registration called\n";
 		std::cout << "Registering mesh \"" << name << "\" with rank " << sizeof...(args) << "\n";
 		//Print the sizes using a fold
@@ -776,7 +776,7 @@ class demoFile : public writer<demoFile> {
 	}
 
 	template<typename... Args>
-	void registerMeshImpl(const char* name, writerMeshInfo &info, Args... args){
+	void registerMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info, Args... args){
 		std::cout << "Generic registerMeshImpl called\n";
 		std::cout << "Registering mesh \"" << name << "\" with rank " << sizeof...(args) << "\n";
 		//Print the sizes using a fold
@@ -787,24 +787,24 @@ class demoFile : public writer<demoFile> {
 
 	//Write 3d rectilinear mesh
 	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, writerMeshInfo &info, const T_data *x, const T_data *y, const T_data *z){
+		void writeRectilinearMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info, [[maybe_unused]] const T_data *x, [[maybe_unused]] const T_data *y, [[maybe_unused]] const T_data *z){
 			auto specificInfo = std::get<rlMeshInfo>(info.specificInfo);
 			std::cout << "Writing mesh \"" << name << "\" " << specificInfo.sizes[0] << "x"<<specificInfo.sizes[1]<<"x"<<specificInfo.sizes[2]<<"\n";
 		}
 	//Write 2d rectilinear mesh
 	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, writerMeshInfo &info, const T_data *x, const T_data *y) {
+		void writeRectilinearMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info, [[maybe_unused]] const T_data *x, [[maybe_unused]] const T_data *y) {
 			auto specificInfo = std::get<rlMeshInfo>(info.specificInfo);
 			std::cout << "Writing mesh \"" << name << "\" " << specificInfo.sizes[0] << "x"<<specificInfo.sizes[1]<<"\n";
 		}
 	//Write 1d rectilinear mesh
 	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, writerMeshInfo &info, const T_data *x){
+		void writeRectilinearMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info, [[maybe_unused]] const T_data *x){
 			auto specificInfo = std::get<rlMeshInfo>(info.specificInfo);
 			std::cout << "Writing mesh \"" << name << "\" " << specificInfo.sizes[0] << "\n";
 		}
 
-	void registerDataImpl(const char* name, const char* meshName, writerDataInfo &dataInfo, writerMeshInfo &meshInfo){
+	void registerDataImpl(const char* name, const char* meshName, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo){
 		auto specificMeshInfo = std::get<rlMeshInfo>(meshInfo.specificInfo);
 		std::cout << "Registering data \"" << name << "\" on mesh \"" << meshName << "\" with size " << specificMeshInfo.sizes[0];
 		if (specificMeshInfo.rank > 1) {
@@ -818,7 +818,7 @@ class demoFile : public writer<demoFile> {
 
 	//Write data against a mesh
 	template<typename T_data>
-		void writeDataImpl(const char* name, const T_data *data, writerDataInfo &dataInfo, writerMeshInfo &meshInfo) {
+		void writeDataImpl(const char* name, [[maybe_unused]] const T_data *data, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo) {
 			auto specificMeshInfo = std::get<rlMeshInfo>(meshInfo.specificInfo);
 			std::cout << "Writing data \"" << name << "\" on mesh \"" << dataInfo.meshName << "\" with size " << specificMeshInfo.sizes[0];
 			if (specificMeshInfo.rank > 1) {
