@@ -24,92 +24,113 @@
 #include "io/writerSimple.h"
 #endif
 #include "shared_data.h"
+#include "mpiManager.h"
 
-/**
- * Get the part of the data that should be written to disk
- */
-void getHostVersion(simulationData &data, portableWrapper::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host)
+namespace LARE
 {
-    using Range = portableWrapper::Range;
-    // Copy the data if needed
-    auto fullHost = manager.makeHostAvailable(device);
-    // Now allocate memory for just the part we want to write
-    manager.allocate(host, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-    // This should DEFINITELY be in the backend somewhere, but for now just copy
-    portableWrapper::applyKernelHost(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) { host(ix, iy, iz) = fullHost(ix, iy, iz); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-    // manager.copyData(host, fullHost(Range(1,data.nx), Range(1,data.ny), Range(1,data.nz)));
-    manager.deallocate(fullHost);
-}
 
-template <typename T_writer>
-void writeDiagnosticsCore(simulationData &data, writer<T_writer> &writer)
-{
-    portableWrapper::portableArrayManager manager;
-    hostVolumeArray host;
+    namespace pw = portableWrapper;
+    /**
+     * Get the part of the data that should be written to disk
+     */
+    void getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host)
+    {
+        using Range = pw::Range;
+        // Copy the data if needed
+        auto fullHost = manager.makeHostAvailable(device);
 
-    writer.openFile("finalState");
-    writer.template registerRectilinearMesh<T_dataType>("MeshCC", data.nx, data.ny, data.nz);
+        // Now allocate memory for just the part we want to write
+        manager.allocate(host, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+        //Have to copy data since the HDF writer expects contiguous data
+        manager.copyDataHost(host, fullHost(Range(1,data.nx), Range(1,data.ny), Range(1,data.nz)));
+        manager.deallocate(fullHost);
+    }
 
-    writer.template registerData<T_dataType>("rho", "MeshCC");
-    writer.template registerData<T_dataType>("energy_electron", "MeshCC");
-    writer.template registerData<T_dataType>("energy_ion", "MeshCC");
-    writer.template registerData<T_dataType>("vx", "MeshCC");
-    writer.template registerData<T_dataType>("vy", "MeshCC");
-    writer.template registerData<T_dataType>("vz", "MeshCC");
-    writer.template registerData<T_dataType>("bx", "MeshCC");
-    writer.template registerData<T_dataType>("by", "MeshCC");
-    writer.template registerData<T_dataType>("bz", "MeshCC");
+    template<typename T_writer>
+    void LARE3D::registerOutputMeshes(writer<T_writer> &writer, simulationData &data)
+    {
+        writer.template registerRectilinearMesh<T_dataType>("MeshCC", data.nx, data.ny, data.nz);
 
-    writer.writeRectilinearMesh("MeshCC", &data.xc(1), &data.yc(1), &data.zc(1));
+    }
 
-    getHostVersion(data, manager, data.rho, host);
-    writer.writeData("rho", host.data());
+    template<typename T_writer>
+    void LARE3D::registerOutputVariables(writer<T_writer> &writer, simulationData &)
+    {
+        writer.template registerData<T_dataType>("rho", "MeshCC");
+        writer.template registerData<T_dataType>("energy_electron", "MeshCC");
+        writer.template registerData<T_dataType>("energy_ion", "MeshCC");
+        writer.template registerData<T_dataType>("vx", "MeshCC");
+        writer.template registerData<T_dataType>("vy", "MeshCC");
+        writer.template registerData<T_dataType>("vz", "MeshCC");
+        writer.template registerData<T_dataType>("bx", "MeshCC");
+        writer.template registerData<T_dataType>("by", "MeshCC");
+        writer.template registerData<T_dataType>("bz", "MeshCC");
+    }
 
-    getHostVersion(data, manager, data.energy_electron, host);
-    writer.writeData("energy_electron", host.data());
+    template<typename T_writer>
+    void LARE3D::writeOutputMeshes(writer<T_writer> &writer, simulationData &data){
+        writer.writeRectilinearMesh("MeshCC", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
+    }
 
-    getHostVersion(data, manager, data.energy_ion, host);
-    writer.writeData("energy_ion", host.data());
+    template <typename T_writer>
+    void LARE3D::writeOutputVariables(writer<T_writer> &writer, simulationData &data)
+    {
+        pw::portableArrayManager manager;
+        hostVolumeArray host;
 
-    getHostVersion(data, manager, data.vx, host);
-    writer.writeData("vx", host.data());
+        getHostVersion(data, manager, data.rho, host);
+        writer.writeData("rho", host.data());
 
-    getHostVersion(data, manager, data.vy, host);
-    writer.writeData("vy", host.data());
+        getHostVersion(data, manager, data.energy_electron, host);
+        writer.writeData("energy_electron", host.data());
 
-    getHostVersion(data, manager, data.vz, host);
-    writer.writeData("vz", host.data());
+        getHostVersion(data, manager, data.energy_ion, host);
+        writer.writeData("energy_ion", host.data());
 
-    getHostVersion(data, manager, data.bx, host);
-    writer.writeData("bx", host.data());
+        getHostVersion(data, manager, data.vx, host);
+        writer.writeData("vx", host.data());
 
-    getHostVersion(data, manager, data.by, host);
-    writer.writeData("by", host.data());
+        getHostVersion(data, manager, data.vy, host);
+        writer.writeData("vy", host.data());
 
-    getHostVersion(data, manager, data.bz, host);
-    writer.writeData("bz", host.data());
+        getHostVersion(data, manager, data.vz, host);
+        writer.writeData("vz", host.data());
 
-    writer.closeFile();
-}
+        getHostVersion(data, manager, data.bx, host);
+        writer.writeData("bx", host.data());
 
-void simulation::output(simulationData &data)
-{
+        getHostVersion(data, manager, data.by, host);
+        writer.writeData("by", host.data());
+
+        getHostVersion(data, manager, data.bz, host);
+        writer.writeData("bz", host.data());
+    }
+
+//Need a better solution than this against future additions of writers
+//Perhaps another X macro?
 #if defined(USE_HDF5)
-    HDF5File writer;
+//Instantiate the templates for HDF5 writer
+    template void LARE3D::registerOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D::registerOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D::writeOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D::writeOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
 #else
-    simpleFile writer;
+//Instantiate the templates for simple writer
+    template void LARE3D::registerOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D::registerOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D::writeOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D::writeOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
 #endif
-    writeDiagnosticsCore(data, writer);
-}
 
-void simulation::energy_correction(simulationData &data)
-{
-    using Range = portableWrapper::Range;
-    portableWrapper::applyKernel(
-        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-            T_dataType dke = portableWrapper::max(-data.delta_ke(ix, iy, iz), 0.0) / (data.rho(ix, iy, iz) * data.cv(ix, iy, iz));
-            data.energy_electron(ix, iy, iz) += 0.5 * dke;
-            data.energy_ion(ix, iy, iz) += 0.5 * dke;
-        },
-        Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+    void LARE3D::energy_correction(simulationData &data)
+    {
+        using Range = pw::Range;
+        pw::applyKernel(
+            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                T_dataType dke = pw::max(-data.delta_ke(ix, iy, iz), 0.0) / (data.rho(ix, iy, iz) * data.cv(ix, iy, iz));
+                data.energy_electron(ix, iy, iz) += 0.5 * dke;
+                data.energy_ion(ix, iy, iz) += 0.5 * dke;
+            },
+            Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+    }
 }

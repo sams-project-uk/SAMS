@@ -45,13 +45,13 @@ class simpleFile : public writer<simpleFile> {
 	void startRegisterImpl(){}
 	void startWriteImpl(){}
 
-	void registerRectilinearMeshImpl(const char* name, const writerRLMeshInfo &info, const size_t nx, const size_t ny, const size_t nz){
+	void registerRectilinearMeshImpl([[maybe_unused]] const char* name, [[maybe_unused]] const writerRLMeshInfo &info, [[maybe_unused]] const size_t nx, [[maybe_unused]] const size_t ny, [[maybe_unused]] const size_t nz){
 	}
 
-	void registerRectilinearMeshImpl(const char* name,  const writerRLMeshInfo &info, const size_t nx, const size_t ny){
+	void registerRectilinearMeshImpl([[maybe_unused]] const char* name,  [[maybe_unused]] const writerRLMeshInfo &info, [[maybe_unused]] const size_t nx, [[maybe_unused]] const size_t ny){
 	}
 
-	void registerRectilinearMeshImpl(const char* name,  const writerRLMeshInfo &info,  const size_t nx){
+	void registerRectilinearMeshImpl([[maybe_unused]] const char* name,  [[maybe_unused]] const writerRLMeshInfo &info, [[maybe_unused]] const size_t nx){
 	}
 
 	//Write 3d rectilinear mesh
@@ -68,15 +68,15 @@ class simpleFile : public writer<simpleFile> {
             //Write the mesh data to the file
             file << rlInfo.sizes[0] << " " << rlInfo.sizes[1] << " " << rlInfo.sizes[2] << "\n";
 						file << "#x\n";
-						for (int i=0;i<rlInfo.sizes[0];++i){
+						for ( size_t i=0;i<rlInfo.sizes[0];++i){
 							file << x[i] << "\n";
 						}
 						file << "#y\n";
-            for (int j=0;j<rlInfo.sizes[1];++j){
+            for (size_t j=0;j<rlInfo.sizes[1];++j){
               file << y[j] << "\n";
             }
 						file << "#z\n";
-            for (int k=0;k<rlInfo.sizes[2];++k){
+            for (size_t k=0;k<rlInfo.sizes[2];++k){
               file << z[k] << "\n";
             }
             file.close();
@@ -96,11 +96,11 @@ class simpleFile : public writer<simpleFile> {
             //Write the mesh data to the file
             file << rlInfo.sizes[0] << " " << rlInfo.sizes[1] << " " << "\n";
             file << "#x\n";
-            for (int i=0;i<rlInfo.sizes[0];++i){
+            for (size_t i=0;i<rlInfo.sizes[0];++i){
               file << x[i] << "\n";
             }
 						file << "#y\n";
-            for (int j=0;j<rlInfo.sizes[1];++j){
+            for (size_t j=0;j<rlInfo.sizes[1];++j){
               file << y[j] << "\n";
             }
             file.close();
@@ -119,19 +119,18 @@ class simpleFile : public writer<simpleFile> {
             //Write the mesh data to the file
             file << rlInfo.sizes[0] << " " << rlInfo.sizes[1] << " " << "\n";
             file << "#x\n";
-            for (int i=0;i<rlInfo.sizes[0];++i){
+            for (size_t i=0;i<rlInfo.sizes[0];++i){
               file << x[i] << "\n";
             }
             file.close();
 		}
 
-	void registerDataImpl(const char* name, const char* meshName, writerDataInfo &dataInfo, writerMeshInfo &meshInfo){
+	void registerDataImpl([[maybe_unused]] const char* name, [[maybe_unused]] const char* meshName, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo){
 	}
 
 	//Write data against a mest
 	template<typename T_data>
 		void writeDataImpl(const char* name, const T_data *data, writerDataInfo &dataInfo, writerMeshInfo &meshInfo) {
-            const writerRLMeshInfo &rlMeshInfo = std::get<writerRLMeshInfo>(meshInfo.specificInfo);
             //Open the file. Combine the "filename" (which is actually the directory) with the mesh name and ".data"
             std::string dataFileName = std::string(this->filename) + "/" + std::string(name) + ".data";
             //Open the file for writing
