@@ -24,7 +24,6 @@
 	#define HAS_DEMANGLE 0
 #endif
 
-
 inline std::string demangle(std::string mangled){
 	int status;
 #ifdef HAS_DEMANGLE
@@ -55,5 +54,4 @@ inline std::string demangle(){
 	if (std::is_const_v<T>) s="const " + s;
 	return s;
 }
-
 #endif
