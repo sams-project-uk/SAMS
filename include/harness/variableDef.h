@@ -634,11 +634,35 @@ namespace SAMS {
             return array;
         }
 
+        /**
+         * Casting operator to allow implicit conversion to a portable array. This allows the variableDef to be passed directly to functions expecting a portable array, which can be very convenient. The template parameters must be specified explicitly to avoid ambiguity.
+         */
         template<typename T, int Arank , portableWrapper::arrayTags tag>
-        operator portableWrapper::portableArray<T, Arank, tag>() const {
+        explicit operator portableWrapper::portableArray<T, Arank, tag>() const {
             return getPPArray<T, Arank, tag>();
         }
 
+        #ifdef USE_KOKKOS
+        /**
+         * Get a Kokkos view wrapping the variable data. Only available if Kokkos is enabled and the variable memory space is compatible with Kokkos.
+         * @return The Kokkos view
+         */
+        template<typename T, int Arank, portableWrapper::arrayTags tag = portableWrapper::arrayTags::accelerated>
+        auto getKokkosView() const {
+            auto pp = getPPArray<T, Arank, tag>();
+            return portableWrapper::kokkos::toView(pp);
+        }
+
+        /**
+         * Get a Kokkos offset view wrapping the variable data. Only available if Kokkos is enabled and the variable memory space is compatible with Kokkos, and if Kokkos offset views are supported by the version of Kokkos being used.
+         * @return The Kokkos offset view
+         */
+        template<typename T, int Arank, portableWrapper::arrayTags tag = portableWrapper::arrayTags::accelerated>
+        auto getKokkosOffsetView() const {
+            auto pp = getPPArray<T, Arank, tag>();
+            return portableWrapper::kokkos::toOffsetView(pp);
+        }
+        #endif
     };
 
 } //namespace SAMS
