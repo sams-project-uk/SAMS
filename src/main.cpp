@@ -11,6 +11,7 @@
 #include "variableRegistry.h"
 #include "mpiManager.h"
 #include "welcome.h"
+#include "twofluid.h"
 
 //Example initial conditions
 #include "SodShockTube.h"
@@ -37,7 +38,7 @@ int main(int argc, char *argv[]){
     SAMS::printWelcomeMessage();
 
     //Create and initialize the runner
-    SAMS::runner<LARE::LARE3D, LARE::LARE3DInitialConditions, TWOFLUID, examples::SodShockTube, examples::BrioAndWu, examples::MHDRotor, examples::OrszagTang, examples::OrszagTang3D, examples::EmeryWindTunnel, 
+    SAMS::runner<LARE::LARE3D, LARE::LARE3DInitialConditions, TWOFLUID::PIP, examples::SodShockTube, examples::BrioAndWu, examples::MHDRotor, examples::OrszagTang, examples::OrszagTang3D, examples::EmeryWindTunnel, 
         examples::KarmanVortex> runner;
     runner.initialize(argc, argv);
     //Finish welcome message

@@ -129,6 +129,14 @@ namespace LARE
         T_dataType eta_background; // Background resisivity
         T_dataType mf;             // Average mass of an ion in proton masses
         T_dataType mu0;             // Vacuum permeability
+        
+        //Two-fluid specifics (possibly to move elsewhere)
+        T_dataType alpha0; //flag for collisional coefficent
+        bool is_neutral=false; //Flag for if neutral
+        volumeArray Gm_rec;
+        volumeArray Gm_ion;
+        T_dataType T_reference=10000.0;
+        T_dataType ne_reference=1.0e16;
 
         // IO control
         T_dataType dt_snapshots; // Time between snapshots
@@ -137,6 +145,7 @@ namespace LARE
         // Physical arrays
         volumeArray energy_electron; // Electron specific internal energy
         volumeArray energy_ion;      // Ion specific
+        volumeArray energy_neutral;      // Neutral specific
         volumeArray p_visc;          // Viscous pressure
         volumeArray rho;             // Density
         volumeArray vx;              // X-velocity

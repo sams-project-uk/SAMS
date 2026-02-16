@@ -1,0 +1,134 @@
+/*
+* This is a two-fluid routine for all the multi-fluid physics modules
+*/
+
+#ifndef TWOFLUID_H
+#define TWOFLUID_H
+
+#include <cstdint>
+#include <cassert>
+#include <string>
+#include "constants.h"
+#include "pp/parallelWrapper.h"
+#include "remapData.h"
+#include "typedefs.h"
+#include "mpiManager.h"
+#include "variableDef.h"
+#include "harness.h"
+#include "runner.h"
+#include "io/writerProto.h"
+
+#include "shared_data.h"
+#include "variableRegistry.h"
+#include "axisRegistry.h"
+
+namespace TWOFLUID
+{
+    namespace pw = portableWrapper;
+
+    class PIP
+    {
+        private:
+            //SAMS::harness &harness;
+
+
+        public:
+        
+            static constexpr std::string_view name = "PIP";
+            
+            using dataPack = SAMS::dataPacks::multiPack<LARE::simulationData, LARE::remapData>;
+
+            /**
+             * Initialize the simulation. Called by the runner at the start of the simulation.
+             */
+            void initialize();
+            //}
+
+            /**
+             * Register axes with the harness's axis registry.
+             * Called by the runner before registering variables.
+             * @param harnessRef SAMS harness
+             */
+            //void registerAxes(SAMS::harness &harnessRef);
+
+            /**
+             * Register variables with the harness
+             * Called by the runner after registering axes.
+             * @param harnessRef SAMS harness
+             */
+            void registerVariables(SAMS::harness &harnessRef);
+            
+            //void registerVariables(SAMS::harness &harnessRef){
+            //};
+
+
+            /**
+             * Set default values for control parameters
+             */
+            void defaultValues(LARE::simulationData &data,LARE::simulationData &dataNeutral);
+
+            /**
+             * Set default values for control parameters
+             */
+            //void defaultVariables(LARE::simulationData &dataNeutral);
+
+            /**
+             * Get the variables needed for LARE3D
+             * i.e. convert the raw memory from the variable registry into
+             * the volumeArray/lineArray types used by LARE3D
+             * @param harnessRef SAMS harness
+             * @param data LARE3D simulation data
+             */
+            void getVariables(SAMS::harness &harnessRef, LARE::simulationData &dataNeutral){
+                //allocate(harnessRef, data);
+                //grid(data);
+            };
+
+            /**
+             * Physics timestep functions
+             * This is the predictor step of the LARE3D timestep
+             * @param data LARE3D simulation data
+             */
+            void startOfTimestep(LARE::simulationData &dataNeutral, SAMS::controlFunctions &controlFns){
+                //lagrangian_step(data, controlFns);
+            };
+
+
+            /**
+             * This is called at the end of the LARE3D timestep
+             * @param data LARE3D simulation data
+             */
+            void endOfTimestep(LARE::simulationData &dataNeutral, LARE::remapData &remap_dataNeutral){
+                //eulerian_remap(data, remap_data);
+                //if (data.rke){
+                //    energy_correction(data);
+                //}
+                //eta_calc(data);
+            };
+
+            /**
+             * Set the timestep based on LARE3D data
+             * @note This function is called in response to the control function setTimestep being called
+             * by a package. The runner will NOT call this function directly.
+             * @param timeData SAMS timeState data
+             * @param data LARE3D simulation data
+             */
+            void calculateTimestep(SAMS::timeState &timeData, LARE::simulationData &dataNeutral){
+                //set_dt(data);
+                //timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
+            };
+
+            /**
+             * Gather the timestep back after all packages have calculated it
+             * @param timeData SAMS timeState data
+             * @param data LARE3D simulation data
+             */
+            void getTimestep(SAMS::timeState &timeData, LARE::simulationData &dataNeutral){
+                //data.dt = timeData.dt;
+            };
+
+    };
+}
+
+
+#endif // TWOFLUID_H

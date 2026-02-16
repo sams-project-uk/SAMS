@@ -34,7 +34,7 @@ namespace examples
             data.t_end = 0.2;
             data.dt_snapshots = data.t_end / 10;
 
-            data.nx = 1024;
+            data.nx = 64;
             data.ny = 2;
             data.nz = 2;
 
