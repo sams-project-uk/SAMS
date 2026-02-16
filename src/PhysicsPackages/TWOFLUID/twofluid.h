@@ -89,7 +89,8 @@ namespace TWOFLUID
              * This is the predictor step of the LARE3D timestep
              * @param data LARE3D simulation data
              */
-            void startOfTimestep(LARE::simulationData &dataNeutral, SAMS::controlFunctions &controlFns){
+            void startOfTimestep(LARE::simulationData &data,LARE::simulationData &dataNeutral, SAMS::controlFunctions &controlFns){
+                two_fluid_source(data,dataNeutral);
                 //lagrangian_step(data, controlFns);
             };
 
@@ -126,6 +127,8 @@ namespace TWOFLUID
             void getTimestep(SAMS::timeState &timeData, LARE::simulationData &dataNeutral){
                 //data.dt = timeData.dt;
             };
+            
+            void two_fluid_source(LARE::simulationData &data,LARE::simulationData &dataNeutral);
 
     };
 }
