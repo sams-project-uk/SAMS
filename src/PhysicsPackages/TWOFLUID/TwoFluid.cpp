@@ -58,6 +58,7 @@ namespace TWOFLUID
     //SAMS::debugAll3 << "Initialising twofluid" 
     //                << std::endl;
     SAMS::cout << "Initialising twofluid" << std::endl;
+    //LARE::simulationData dataNeutral;
     }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //void registerAxes(SAMS::harness &harnessRef);
@@ -90,6 +91,8 @@ namespace TWOFLUID
         varRegistry.registerVariable<LARE::T_dataType>("bx_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
         varRegistry.registerVariable<LARE::T_dataType>("by_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
         varRegistry.registerVariable<LARE::T_dataType>("bz_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
+        
+        varRegistry.registerVariable<T_dataType>("LARE/dm_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Y", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Z", ghosts, SAMS::staggerType::CENTRED));
     }
             
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

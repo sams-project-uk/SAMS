@@ -37,6 +37,8 @@ namespace TWOFLUID
             static constexpr std::string_view name = "PIP";
             
             using dataPack = SAMS::dataPacks::multiPack<LARE::simulationData, LARE::remapData>;
+            
+            //pw::portableArrayManager& manager;
 
             /**
              * Initialize the simulation. Called by the runner at the start of the simulation.
@@ -80,8 +82,8 @@ namespace TWOFLUID
              * @param data LARE3D simulation data
              */
             void getVariables(SAMS::harness &harnessRef, LARE::simulationData &dataNeutral){
-                //allocate(harnessRef, data);
-                //grid(data);
+                //allocate_neutral(harnessRef, dataNeutral);
+                //LARE::grid(dataNeutral);
             };
 
             /**
@@ -130,6 +132,8 @@ namespace TWOFLUID
             
             void two_fluid_source(LARE::simulationData &data,LARE::simulationData &dataNeutral);
 
+
+            //void allocate_neutral(SAMS::harness &harness, LARE::simulationData &data);
     };
 }
 
