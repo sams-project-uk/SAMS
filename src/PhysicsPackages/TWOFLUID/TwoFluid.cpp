@@ -48,6 +48,7 @@ namespace TWOFLUID
     void two_fluid_source(LARE::simulationData &data,LARE::simulationData &dataNeutral);
     void ion_rec_rates_empirical(LARE::simulationData &data, LARE::simulationData &dataNeutral);
     void get_collisional_source_terms(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source);
+    void get_ion_rec_source_terms(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //static constexpr std::string_view name = "TwoFluid";
@@ -106,6 +107,191 @@ namespace TWOFLUID
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /*void PIP::allocate_neutral(SAMS::harness &harness, LARE::simulationData &data)
+    {
+        //pw::portableArrayManager& manager;
+        
+        LARE::T_sizeType nx, ny, nz;
+
+        auto &axRegistry = harness.axisRegistry;
+        auto &varRegistry = harness.variableRegistry;
+        // Centred since LARE thinks in terms of cell centres for nx, ny, nz
+        nx = axRegistry.getLocalDomainElements("X", SAMS::staggerType::CENTRED);
+        ny = axRegistry.getLocalDomainElements("Y", SAMS::staggerType::CENTRED);
+        nz = axRegistry.getLocalDomainElements("Z", SAMS::staggerType::CENTRED);
+
+        // Get the ranges for the whole local domain
+        data.xcLocalRange = axRegistry.getLocalRange("X", SAMS::staggerType::CENTRED);
+        data.ycLocalRange = axRegistry.getLocalRange("Y", SAMS::staggerType::CENTRED);
+        data.zcLocalRange = axRegistry.getLocalRange("Z", SAMS::staggerType::CENTRED);
+        data.xbLocalRange = axRegistry.getLocalRange("X", SAMS::staggerType::HALF_CELL);
+        data.ybLocalRange = axRegistry.getLocalRange("Y", SAMS::staggerType::HALF_CELL);
+        data.zbLocalRange = axRegistry.getLocalRange("Z", SAMS::staggerType::HALF_CELL);
+
+        // Get the ranges for the ghost cells for centred axes
+        data.xcminBCRange = axRegistry.getLocalNonDomainRange("X", SAMS::staggerType::CENTRED, SAMS::domain::edges::lower );
+        data.xcmaxBCRange = axRegistry.getLocalNonDomainRange("X", SAMS::staggerType::CENTRED, SAMS::domain::edges::upper);
+        data.ycminBCRange = axRegistry.getLocalNonDomainRange("Y", SAMS::staggerType::CENTRED, SAMS::domain::edges::lower);
+        data.ycmaxBCRange = axRegistry.getLocalNonDomainRange("Y", SAMS::staggerType::CENTRED, SAMS::domain::edges::upper);
+        data.zcminBCRange = axRegistry.getLocalNonDomainRange("Z", SAMS::staggerType::CENTRED, SAMS::domain::edges::lower);
+        data.zcmaxBCRange = axRegistry.getLocalNonDomainRange("Z", SAMS::staggerType::CENTRED, SAMS::domain::edges::upper);
+
+        // Get the ranges for the ghost cells for half cell staggered axes
+        data.xbminBCRange = axRegistry.getLocalNonDomainRange("X", SAMS::staggerType::HALF_CELL, SAMS::domain::edges::lower);
+        data.xbmaxBCRange = axRegistry.getLocalNonDomainRange("X", SAMS::staggerType::HALF_CELL, SAMS::domain::edges::upper);
+        data.ybminBCRange = axRegistry.getLocalNonDomainRange("Y", SAMS::staggerType::HALF_CELL, SAMS::domain::edges::lower);
+        data.ybmaxBCRange = axRegistry.getLocalNonDomainRange("Y", SAMS::staggerType::HALF_CELL, SAMS::domain::edges::upper);
+        data.zbminBCRange = axRegistry.getLocalNonDomainRange("Z", SAMS::staggerType::HALF_CELL, SAMS::domain::edges::lower);
+        data.zbmaxBCRange = axRegistry.getLocalNonDomainRange("Z", SAMS::staggerType::HALF_CELL, SAMS::domain::edges::upper);
+
+
+        // Get the ranges for the actual domain (no ghost cells)
+        data.xcLocalDomainRange = axRegistry.getLocalDomainRange("X", SAMS::staggerType::CENTRED);
+        data.ycLocalDomainRange = axRegistry.getLocalDomainRange("Y", SAMS::staggerType::CENTRED);
+        data.zcLocalDomainRange = axRegistry.getLocalDomainRange("Z", SAMS::staggerType::CENTRED);
+        data.xbLocalDomainRange = axRegistry.getLocalDomainRange("X", SAMS::staggerType::HALF_CELL);
+        data.ybLocalDomainRange = axRegistry.getLocalDomainRange("Y", SAMS::staggerType::HALF_CELL);
+        data.zbLocalDomainRange = axRegistry.getLocalDomainRange("Z", SAMS::staggerType::HALF_CELL);
+
+        data.nx = nx;
+        data.ny = ny;
+        data.nz = nz;
+
+        data.nx_global = axRegistry.getDimension("X").getGlobalDomainCount(SAMS::staggerType::CENTRED);
+        data.ny_global = axRegistry.getDimension("Y").getGlobalDomainCount(SAMS::staggerType::CENTRED);
+        data.nz_global = axRegistry.getDimension("Z").getGlobalDomainCount(SAMS::staggerType::CENTRED);
+
+        using Range = pw::Range;
+        // Grab the final variable sizes from the registry and wrap the arrays
+        //varRegistry.fillPPArray("energy_electron", data.energy_electron);
+        //pw::assign(data.energy_electron, 0.0);
+        //varRegistry.fillPPArray("energy_ion", data.energy_ion);
+        //pw::assign(data.energy_ion, 0.0);
+        varRegistry.fillPPArray("energy_neutral", data.energy_neutral);
+        pw::assign(data.energy_neutral, 0.0);
+        varRegistry.fillPPArray("rho_n", data.rho);
+        pw::assign(data.rho, 0.0);
+        varRegistry.fillPPArray("vx_n", data.vx);
+        pw::assign(data.vx, 0.0);
+        varRegistry.fillPPArray("vy_n", data.vy);
+        pw::assign(data.vy, 0.0);
+        varRegistry.fillPPArray("vz_n", data.vz);
+        pw::assign(data.vz, 0.0);
+        varRegistry.fillPPArray("bx_n", data.bx);
+        pw::assign(data.bx, 0.0);
+        varRegistry.fillPPArray("by_n", data.by);
+        pw::assign(data.by, 0.0);
+        varRegistry.fillPPArray("bz_n", data.bz);
+        pw::assign(data.bz, 0.0);
+        varRegistry.fillPPArray("LARE/vx1_n", data.vx1);
+        pw::assign(data.vx1, 0.0);
+        varRegistry.fillPPArray("LARE/vy1_n", data.vy1);
+        pw::assign(data.vy1, 0.0);
+        varRegistry.fillPPArray("LARE/vz1_n", data.vz1);
+        pw::assign(data.vz1, 0.0);
+        varRegistry.fillPPArray("LARE/dm_n", data.dm);
+        pw::assign(data.dm, 0.0);
+
+        data.isxLB = harness.MPIManager.isEdge(0, SAMS::domain::edges::lower);
+        data.isxUB = harness.MPIManager.isEdge(0, SAMS::domain::edges::upper);
+        data.isyLB = harness.MPIManager.isEdge(1, SAMS::domain::edges::lower);
+        data.isyUB = harness.MPIManager.isEdge(1, SAMS::domain::edges::upper);
+        data.iszLB = harness.MPIManager.isEdge(2, SAMS::domain::edges::lower);
+        data.iszUB = harness.MPIManager.isEdge(2, SAMS::domain::edges::upper);
+
+        SAMS::debugAll3 << "Edge detection: "
+                        << " XLB: " << data.isxLB << " XUB: " << data.isxUB
+                        << " YLB: " << data.isyLB << " YUB: " << data.isyUB
+                        << " ZLB: " << data.iszLB << " ZUB: " << data.iszUB
+                        << std::endl;
+
+        manager.allocate(data.p_visc, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.eta, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.dxab, data.xbLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.dyab, data.xcLocalRange, data.ybLocalRange, data.zcLocalRange);
+        manager.allocate(data.dzab, data.xcLocalRange, data.ycLocalRange, data.zbLocalRange);
+        manager.allocate(data.dxac, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.dyac, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.dzac, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.cv, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.cv1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.cvc, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+
+        Range xcp = pw::Range(0, data.nx + 1);
+        Range ycp = pw::Range(0, data.ny + 1);
+        Range zcp = pw::Range(0, data.nz + 1);
+        Range ycpp = pw::Range(0, data.ny + 2);
+        Range zcpp = pw::Range(0, data.nz + 2);
+        Range xbp = pw::Range(-1, data.nx + 1);
+        Range ybp = pw::Range(-1, data.ny + 1);
+        Range zbp = pw::Range(-1, data.nz + 1);
+        // Allocate arrays using the portableArrayManager
+        manager.allocate(data.bx1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.by1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.bz1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.alpha1, xcp, ycpp, zcpp);
+        manager.allocate(data.alpha2, xbp, ycp, zcpp);
+        manager.allocate(data.alpha3, data.xcLocalRange, data.ycLocalRange, zcp);
+        manager.allocate(data.visc_heat, xcp, ycp, zcp);
+        manager.allocate(data.pressure, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.p_e, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.p_i, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        manager.allocate(data.rho_v, xbp, ybp, zbp);
+        manager.allocate(data.cv_v, xbp, ybp, zbp);
+        manager.allocate(data.fx, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.fy, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.fz, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.fx_visc, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.fy_visc, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.fz_visc, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.flux_x, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.flux_y, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.flux_z, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+        manager.allocate(data.curlb, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
+
+        axRegistry.fillPPLocalAxis("X", data.xc, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPLocalAxis("Y", data.yc, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPLocalAxis("Z", data.zc, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPLocalAxis("X", data.xb, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPLocalAxis("Y", data.yb, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPLocalAxis("Z", data.zb, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPLocalAxis("X", data.xb_host, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPLocalAxis("Y", data.yb_host, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPLocalAxis("Z", data.zb_host, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPLocalAxis("X", data.xc_host, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPLocalAxis("Y", data.yc_host, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPLocalAxis("Z", data.zc_host, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPAxis("X", data.xb_global, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPAxis("Y", data.yb_global, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPAxis("Z", data.zb_global, SAMS::staggerType::CENTRED);
+
+        axRegistry.fillPPLocalDelta("X", data.dxc, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPLocalDelta("Y", data.dyc, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPLocalDelta("Z", data.dzc, SAMS::staggerType::CENTRED);
+        axRegistry.fillPPLocalDelta("X", data.dxb, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPLocalDelta("Y", data.dyb, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPLocalDelta("Z", data.dzb, SAMS::staggerType::HALF_CELL);
+
+        manager.allocate(data.hy, Range(-2, nx + 2));
+        manager.allocate(data.hz, Range(-2, nx + 2), Range(-2, ny + 2));
+        manager.allocate(data.hyc, Range(-1, nx + 2));
+        manager.allocate(data.hzc, Range(-1, nx + 2), Range(-1, ny + 2));
+        manager.allocate(data.hz1, Range(-2, nx + 2), Range(-1, ny + 2));
+        manager.allocate(data.hz2, Range(-1, nx + 2), Range(-2, ny + 2));
+        manager.allocate(data.x, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
+        manager.allocate(data.y, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
+        manager.allocate(data.z, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
+        manager.allocate(data.xp, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
+        manager.allocate(data.yp, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
+        manager.allocate(data.zp, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
+        if (data.rke)
+        {
+            manager.allocate(data.delta_ke, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+        }
+
+        data.mpiType = SAMS::gettypeRegistry().getMPIType<LARE::T_dataType>();
+    }
+    */
 ////////////////////////////////////////////////////////////////////////////////////////
     void PIP::two_fluid_source(LARE::simulationData &data,LARE::simulationData &dataNeutral){
 
@@ -150,7 +336,7 @@ namespace TWOFLUID
         
         //Get the ionisation rates
         if (two_fluid_flags.ion_rec_empirical){        
-        //    ion_rec_rates_empirical(data,dataNeutral);
+            ion_rec_rates_empirical(data,dataNeutral);
         }
         if (two_fluid_flags.ion_rec_nlevel){        
         //    ion_rec_rates_nlevel(data,dataNeutral);
@@ -160,7 +346,7 @@ namespace TWOFLUID
         get_collisional_source_terms(data,dataNeutral,plasma_source,neutral_source);
         
         //Calculate the source terms for Ionisation/recombination
-        //if (two_fluid_flags.ion_rec) get_ion_rec_source_terms(data,dataNeutral,plasma_ir_source,neutral_ir_source);
+        if (two_fluid_flags.ion_rec_empirical) get_ion_rec_source_terms(data,dataNeutral,plasma_source,neutral_source);
         
         
         // Make sure the timestep is the same in both species NEEDS MOVING ELSEWHERE
@@ -413,6 +599,155 @@ void get_collisional_source_terms(LARE::simulationData &data, LARE::simulationDa
 
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////
+//Get the source terms for the IR rates
+void get_ion_rec_source_terms(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source){	
+
+    using Range = portableWrapper::Range;
+    portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
+    
+        //Mass source terms
+        plasma_source.source_mass(ix,iy,iz)  += data.Gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)-data.Gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);
+        neutral_source.source_mass(ix,iy,iz) +=-data.Gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)+data.Gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);
+        
+        LARE::T_dataType rho_plasma_vertex=  (data.rho(ix  , iy  , iz  ) + 
+                                        data.rho(ix+1, iy  , iz  ) + 
+                                        data.rho(ix  , iy+1, iz  ) + 
+                                        data.rho(ix+1, iy+1, iz  ) + 
+                                        data.rho(ix  , iy  , iz+1) + 
+                                        data.rho(ix+1, iy  , iz+1) + 
+                                        data.rho(ix  , iy+1, iz+1) + 
+                                        data.rho(ix+1, iy+1, iz+1))* 
+                                        0.125;
+        LARE::T_dataType Gm_ion_vertex=      (data.Gm_ion(ix  , iy  , iz  ) + 
+                                        data.Gm_ion(ix+1, iy  , iz  ) + 
+                                        data.Gm_ion(ix  , iy+1, iz  ) + 
+                                        data.Gm_ion(ix+1, iy+1, iz  ) + 
+                                        data.Gm_ion(ix  , iy  , iz+1) + 
+                                        data.Gm_ion(ix+1, iy  , iz+1) + 
+                                        data.Gm_ion(ix  , iy+1, iz+1) + 
+                                        data.Gm_ion(ix+1, iy+1, iz+1))* 
+                                        0.125;
+        LARE::T_dataType Gm_rec_vertex=      (data.Gm_rec(ix  , iy  , iz  ) + 
+                                        data.Gm_rec(ix+1, iy  , iz  ) + 
+                                        data.Gm_rec(ix  , iy+1, iz  ) + 
+                                        data.Gm_rec(ix+1, iy+1, iz  ) + 
+                                        data.Gm_rec(ix  , iy  , iz+1) + 
+                                        data.Gm_rec(ix+1, iy  , iz+1) + 
+                                        data.Gm_rec(ix  , iy+1, iz+1) + 
+                                        data.Gm_rec(ix+1, iy+1, iz+1))* 
+                                        0.125;
+        LARE::T_dataType rho_neutral_vertex=  (dataNeutral.rho(ix  , iy  , iz  ) + 
+                                         dataNeutral.rho(ix+1, iy  , iz  ) + 
+                                         dataNeutral.rho(ix  , iy+1, iz  ) + 
+                                         dataNeutral.rho(ix+1, iy+1, iz  ) + 
+                                         dataNeutral.rho(ix  , iy  , iz+1) + 
+                                         dataNeutral.rho(ix+1, iy  , iz+1) + 
+                                         dataNeutral.rho(ix  , iy+1, iz+1) + 
+                                         dataNeutral.rho(ix+1, iy+1, iz+1))* 
+                                         0.125;
+        
+        //Velocity source terms
+        LARE::T_dataType v_D_x  =  data.vx(ix,iy,iz) - dataNeutral.vx(ix,iy,iz); //Drift velocity in the x-direction
+        LARE::T_dataType v_D_y  =  data.vy(ix,iy,iz) - dataNeutral.vy(ix,iy,iz); //Drift velocity in the y-direction
+        LARE::T_dataType v_D_z  =  data.vz(ix,iy,iz) - dataNeutral.vz(ix,iy,iz); //Drift velocity in the z-direction
+        plasma_source.source_v_x(ix,iy,iz) += -Gm_ion_vertex*rho_neutral_vertex*v_D_x/rho_plasma_vertex;
+        plasma_source.source_v_y(ix,iy,iz) += -Gm_ion_vertex*rho_neutral_vertex*v_D_y/rho_plasma_vertex;
+        plasma_source.source_v_z(ix,iy,iz) += -Gm_ion_vertex*rho_neutral_vertex*v_D_z/rho_plasma_vertex;
+        neutral_source.source_v_x(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_x/rho_neutral_vertex;
+        neutral_source.source_v_y(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_y/rho_neutral_vertex;
+        neutral_source.source_v_z(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_z/rho_neutral_vertex;
+        
+        
+        //Get velocity at cell centres
+        LARE::T_dataType v_x_plasma_centre=  (data.vx(ix  , iy  , iz  ) + 
+                                        data.vx(ix-1, iy  , iz  ) + 
+                                        data.vx(ix  , iy-1, iz  ) + 
+                                        data.vx(ix-1, iy-1, iz  ) + 
+                                        data.vx(ix  , iy  , iz-1) + 
+                                        data.vx(ix-1, iy  , iz-1) + 
+                                        data.vx(ix  , iy-1, iz-1) + 
+                                        data.vx(ix-1, iy-1, iz-1))* 
+                                        0.125;
+        LARE::T_dataType v_y_plasma_centre=  (data.vy(ix  , iy  , iz  ) + 
+                                        data.vy(ix-1, iy  , iz  ) + 
+                                        data.vy(ix  , iy-1, iz  ) + 
+                                        data.vy(ix-1, iy-1, iz  ) + 
+                                        data.vy(ix  , iy  , iz-1) + 
+                                        data.vy(ix-1, iy  , iz-1) + 
+                                        data.vy(ix  , iy-1, iz-1) + 
+                                        data.vy(ix-1, iy-1, iz-1))* 
+                                        0.125;
+        LARE::T_dataType v_z_plasma_centre=  (data.vz(ix  , iy  , iz  ) + 
+                                        data.vz(ix-1, iy  , iz  ) + 
+                                        data.vz(ix  , iy-1, iz  ) + 
+                                        data.vz(ix-1, iy-1, iz  ) + 
+                                        data.vz(ix  , iy  , iz-1) + 
+                                        data.vz(ix-1, iy  , iz-1) + 
+                                        data.vz(ix  , iy-1, iz-1) + 
+                                        data.vz(ix-1, iy-1, iz-1))* 
+                                        0.125;
+        LARE::T_dataType v_x_neutral_centre= (dataNeutral.vx(ix  , iy  , iz  ) + 
+                                        dataNeutral.vx(ix-1, iy  , iz  ) + 
+                                        dataNeutral.vx(ix  , iy-1, iz  ) + 
+                                        dataNeutral.vx(ix-1, iy-1, iz  ) + 
+                                        dataNeutral.vx(ix  , iy  , iz-1) + 
+                                        dataNeutral.vx(ix-1, iy  , iz-1) + 
+                                        dataNeutral.vx(ix  , iy-1, iz-1) + 
+                                        dataNeutral.vx(ix-1, iy-1, iz-1))* 
+                                        0.125;
+        LARE::T_dataType v_y_neutral_centre= (dataNeutral.vy(ix  , iy  , iz  ) + 
+                                        dataNeutral.vy(ix-1, iy  , iz  ) + 
+                                        dataNeutral.vy(ix  , iy-1, iz  ) + 
+                                        dataNeutral.vy(ix-1, iy-1, iz  ) + 
+                                        dataNeutral.vy(ix  , iy  , iz-1) + 
+                                        dataNeutral.vy(ix-1, iy  , iz-1) + 
+                                        dataNeutral.vy(ix  , iy-1, iz-1) + 
+                                        dataNeutral.vy(ix-1, iy-1, iz-1))* 
+                                        0.125;
+        LARE::T_dataType v_z_neutral_centre= (dataNeutral.vz(ix  , iy  , iz  ) + 
+                                        dataNeutral.vz(ix-1, iy  , iz  ) + 
+                                        dataNeutral.vz(ix  , iy-1, iz  ) + 
+                                        dataNeutral.vz(ix-1, iy-1, iz  ) + 
+                                        dataNeutral.vz(ix  , iy  , iz-1) + 
+                                        dataNeutral.vz(ix-1, iy  , iz-1) + 
+                                        dataNeutral.vz(ix  , iy-1, iz-1) + 
+                                        dataNeutral.vz(ix-1, iy-1, iz-1))* 
+                                        0.125;
+        
+        //Energy source terms
+        plasma_source.source_energy(ix,iy,iz) += -0.5*(data.Gm_rec(ix,iy,iz)*(pow(v_x_plasma_centre,2)+
+                                                                                 pow(v_y_plasma_centre,2)+
+                                                                                 pow(v_z_plasma_centre,2))
+                                                        -data.Gm_ion(ix,iy,iz)*(pow(v_x_neutral_centre,2)+
+                                                                                pow(v_y_neutral_centre,2)+
+                                                                                pow(v_z_neutral_centre,2))
+                                                                              *dataNeutral.rho(ix,iy,iz)/data.rho(ix,iy,iz)                                                                                
+                                                        )
+                                                   -(data.Gm_rec(ix,iy,iz)*data.energy_ion(ix,iy,iz)-data.Gm_ion(ix,iy,iz)*dataNeutral.energy_neutral(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/data.rho(ix,iy,iz))/(data.gas_gamma-1.0); //Is this electron or ion energy (or mean energy)? is the half needed?
+        
+        neutral_source.source_energy(ix,iy,iz) += 0.5*(data.Gm_rec(ix,iy,iz)*(data.vx(ix,iy,iz)*data.vx(ix,iy,iz)+
+                                                                                data.vy(ix,iy,iz)*data.vy(ix,iy,iz)+
+                                                                                data.vz(ix,iy,iz)*data.vz(ix,iy,iz))
+                                                                                *data.rho(ix,iy,iz)/dataNeutral.rho(ix,iy,iz)
+                                                        -data.Gm_ion(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)*data.vx(ix,iy,iz)+
+                                                                                dataNeutral.vy(ix,iy,iz)*data.vy(ix,iy,iz)+
+                                                                                dataNeutral.vz(ix,iy,iz)*data.vz(ix,iy,iz))
+                                                        )
+                                                   +(data.Gm_rec(ix,iy,iz)*data.energy_ion(ix,iy,iz)*data.rho(ix,iy,iz)/dataNeutral.rho(ix,iy,iz)-data.Gm_ion(ix,iy,iz)*dataNeutral.energy_neutral(ix,iy,iz))/(data.gas_gamma-1.0); //Is this electron or ion energy (or mean energy)? is the half needed?
+        
+        //Work out how much energy is spent/gained by IR processes
+        //if(data.ion_rec_empirical){ 
+        //    LARE::T_dataType ionisation_energy=(data.Gm_rec(ix,iy,iz)-
+        //                          data.Gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/(data.gas_gamma-1.0)/data.rho(ix,iy,iz))*
+        //                          13.6/kb_si/data.T_reference;     
+        //    //plasma_ir_source.source_electron_energy(ix,iy,iz)+=ionisation_energy; 
+        //}
+        
+    }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+
+
+}
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
