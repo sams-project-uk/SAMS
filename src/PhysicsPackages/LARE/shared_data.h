@@ -12,16 +12,16 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#ifndef SHARED_DATA_H
-#define SHARED_DATA_H
+#ifndef SHARED_DATA_KOKKOS_H
+#define SHARED_DATA_KOKKOS_H
 
 #include <cstdint>
 #include <cassert>
 #include <string>
-#include "constants.h"
+#include "../LARE/constants.h"
+#include "LARECommon/types.h"
 #include "pp/parallelWrapper.h"
 #include "remapData.h"
-#include "typedefs.h"
 #include "mpiManager.h"
 #include "variableDef.h"
 #include "harness.h"
@@ -31,33 +31,68 @@
 namespace LARE
 {
 
-
-
     namespace pw = portableWrapper;
-    // Possible geometry types
-    enum class geometryType
+
+    class LARE3D
     {
-        Cartesian = 0,
-        Cylindrical = 1,
-        Spherical = 2,
+
+    private:
+
+        using T_dataType = SAMS::T_dataType;
+        using T_sizeType = SAMS::T_sizeType;
+        using T_indexType = SAMS::T_indexType;
+
+        using volumeArray = portableWrapper::acceleratedArray<T_dataType, 3>;
+        using hostVolumeArray = portableWrapper::hostArray<T_dataType, 3>;
+        using planeArray = portableWrapper::acceleratedArray<T_dataType, 2>;
+        using hostPlaneArray = portableWrapper::hostArray<T_dataType, 2>;
+        using lineArray = portableWrapper::acceleratedArray<T_dataType, 1>;
+        using hostLineArray = portableWrapper::hostArray<T_dataType, 1>;
+
+    public:
+
+    struct remapData
+    {
+        T_dataType xpass, ypass, zpass;
+        volumeArray rho1;
+        volumeArray cv2;
+        volumeArray cvc1;
+        volumeArray db1;
+        volumeArray rho_v;
+        volumeArray rho_v1;
+        volumeArray flux;
     };
 
-    // Boundary condition types
-    enum class BCType
-    {
-        BC_OTHER = 0,      // Other boundary condition
-        BC_PERIODIC = 1,   // Periodic boundary condition
-        BC_REFLECTIVE = 2, // Reflective boundary condition
-        BC_OUTFLOW = 3,    // Outflow boundary condition
-        BC_INFLOW = 4,     // Inflow boundary condition
-        BC_EXTERNAL = 5   // External boundary condition (do not apply Lare Style BCs)
-    };
-
-    /**
-     * This is a struct that hold all LARE3D data
-     * Putting this is a struct allows separate LARE3Ds in the same code
+   /**
+     * Class representing data only needed during the lagrangian step
      */
-    struct simulationData
+    struct lagranData
+    {
+        volumeArray bx1;       // X-magnetic field at half timestep
+        volumeArray by1;       // Y-magnetic field at half timestep
+        volumeArray bz1;       // Z-magnetic field at half timestep
+        volumeArray alpha1;    // Alpha1 coefficient for magnetic field update
+        volumeArray alpha2;    // Alpha2 coefficient for magnetic field update
+        volumeArray alpha3;    // Alpha3 coefficient for magnetic field update
+        volumeArray visc_heat; // Viscous heating
+        volumeArray pressure;  // Pressure array
+        volumeArray p_e;       // Electron pressure
+        volumeArray p_i;       // Ion pressure
+        volumeArray rho_v;     // Density at half timestep
+        volumeArray cv_v;      // Control volume at half timestep
+        volumeArray fx;        // X-force
+        volumeArray fy;        // Y-force
+        volumeArray fz;        // Z-force
+        volumeArray fx_visc;   // X-viscous force
+        volumeArray fy_visc;   // Y-viscous force
+        volumeArray fz_visc;   // Z-viscous force
+        volumeArray flux_x;    // X-flux
+        volumeArray flux_y;    // Y-flux
+        volumeArray flux_z;    // Z-flux
+        volumeArray curlb;     // Curl of the magnetic field
+    };
+
+       struct simulationData
     {
 
         bool configured = false; // Indicates if the LARE3D data has been configured
@@ -225,13 +260,10 @@ namespace LARE
         MPI_Datatype mpiType = MPI_DATATYPE_NULL; // MPI datatype for T_dataType
     };
 
-
-    class LARE3D
-    {
     private:
         SAMS::harness &harness;
 
-
+         inline void getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host);
 
         /*SAMS::variableDef *rho=nullptr;
         SAMS::variableDef *energy_electron=nullptr;
@@ -248,6 +280,7 @@ namespace LARE
         SAMS::variableDef *dm=nullptr;*/
 
     public:
+
 
         /**
          * Portable array manager for handling memory allocation and deallocation
@@ -483,6 +516,37 @@ namespace LARE
          */
         void boundary_conditions();
 
+        void shock_viscosity(simulationData &data);
+        void resistive_effects(simulationData &data);
+        void rkstep(simulationData &data);
+        void bstep(simulationData &data);
+        void b_field_and_cv1_update(simulationData &data);
+        void shock_heating(simulationData &data);
+
+        void vx_by_flux(simulationData &data, remapData &remap_data);
+        void vx_bz_flux(simulationData &data, remapData &remap_data);
+        void x_mass_flux(simulationData &data, remapData &remap_data);
+        template <auto mPtr>
+        void x_energy_flux(simulationData &data, remapData &remap_data);
+        template <auto mPtr>
+        void x_mom_flux(simulationData &data, remapData &remap_data);
+
+        void vy_bx_flux(simulationData &data, remapData &remap_data);
+        void vy_bz_flux(simulationData &data, remapData &remap_data);
+        void y_mass_flux(simulationData &data, remapData &remap_data);
+        template <auto mPtr>
+        void y_energy_flux(simulationData &data, remapData &remap_data);
+        template <auto mPtr>
+        void y_mom_flux(simulationData &data, remapData &remap_data);
+
+        void vz_bx_flux(simulationData &data, remapData &remap_data);
+        void vz_by_flux(simulationData &data, remapData &remap_data);
+        void z_mass_flux(simulationData &data, remapData &remap_data);
+        template <auto mPtr>
+        void z_energy_flux(simulationData &data, remapData &remap_data);
+        template <auto mPtr>
+        void z_mom_flux(simulationData &data, remapData &remap_data);
+
         /**
          * Lagrangian step for the LARE3D
          * @param data Simulation data struct
@@ -508,4 +572,4 @@ namespace LARE
     };
 }
 
-#endif // SHARED_DATA_H
+#endif // SHARED_DATA_KOKKOS_H

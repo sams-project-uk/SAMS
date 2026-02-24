@@ -20,7 +20,7 @@ namespace LARE
 {
 
     //Lare style boundary conditions are now provided
-    //via the LARE3DInitialConditions class in the
+    //via the LARE3DKokkosInitialConditions class in the
     //InitialConditions/LARE package.
     namespace pw = portableWrapper;
 

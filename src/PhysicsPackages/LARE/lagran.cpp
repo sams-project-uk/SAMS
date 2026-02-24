@@ -17,43 +17,11 @@
 namespace LARE
 {
 
-    /**
-     * Class representing data only needed during the lagrangian step
-     */
-    struct lagranData
-    {
-        volumeArray bx1;       // X-magnetic field at half timestep
-        volumeArray by1;       // Y-magnetic field at half timestep
-        volumeArray bz1;       // Z-magnetic field at half timestep
-        volumeArray alpha1;    // Alpha1 coefficient for magnetic field update
-        volumeArray alpha2;    // Alpha2 coefficient for magnetic field update
-        volumeArray alpha3;    // Alpha3 coefficient for magnetic field update
-        volumeArray visc_heat; // Viscous heating
-        volumeArray pressure;  // Pressure array
-        volumeArray p_e;       // Electron pressure
-        volumeArray p_i;       // Ion pressure
-        volumeArray rho_v;     // Density at half timestep
-        volumeArray cv_v;      // Control volume at half timestep
-        volumeArray fx;        // X-force
-        volumeArray fy;        // Y-force
-        volumeArray fz;        // Z-force
-        volumeArray fx_visc;   // X-viscous force
-        volumeArray fy_visc;   // Y-viscous force
-        volumeArray fz_visc;   // Z-viscous force
-        volumeArray flux_x;    // X-flux
-        volumeArray flux_y;    // Y-flux
-        volumeArray flux_z;    // Z-flux
-        volumeArray curlb;     // Curl of the magnetic field
-    };
+    namespace{
 
-    void shock_viscosity(simulationData &data);
-    void resistive_effects(LARE3D &sim, simulationData &data);
-    void rkstep(simulationData &data);
-    void bstep(LARE3D &sim, simulationData &data);
-    void b_field_and_cv1_update(simulationData &data);
-    void shock_heating(simulationData &data);
+        using T_dataType = SAMS::T_dataType;
 
-    DEVICEPREFIX INLINE T_dataType edge_viscosity(const simulationData &data,
+    DEVICEPREFIX INLINE T_dataType edge_viscosity(const LARE3D::simulationData &data,
                                                   T_dataType dvdots, T_dataType dx, T_dataType dxm, T_dataType dxp, T_dataType cs_edge,
                                                   int i0, int i1, int i2, int i3,
                                                   int j0, int j1, int j2, int j3,
@@ -91,6 +59,7 @@ namespace LARE
                              (data.visc2_norm * dv + std::sqrt(data.visc2_norm * data.visc2_norm * dv2 + (data.visc1 * cs_edge) * (data.visc1 * cs_edge)));
         return q_k_bar * (1.0 - psi) * dvdots;
     }
+}
 
     void LARE3D::lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns)
     {   
@@ -164,7 +133,7 @@ namespace LARE
             for (int i = 0; i < substeps; ++i)
             {
                 this->eta_calc(data);
-                resistive_effects(*this, data);
+                resistive_effects(data);
             }
             data.dt = actual_dt; // Restore the original dt after sub-stepping
         }
@@ -172,7 +141,7 @@ namespace LARE
         this->predictor_step(data);
     }
 
-    void shock_viscosity(simulationData &data)
+    void LARE3D::shock_viscosity(simulationData &data)
     {
         using Range = pw::Range;
         data.visc2_norm = 0.25 * (data.gas_gamma + 1.0) * data.visc2;
@@ -475,7 +444,7 @@ namespace LARE
         pw::fence();
     }
 
-    void resistive_effects(LARE3D &sim, simulationData &data)
+    void LARE3D::resistive_effects(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -484,7 +453,7 @@ namespace LARE
         pw::assign(data.bz1, data.bz);
 
         rkstep(data);
-        bstep(sim, data);
+        bstep(data);
 
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izm = iz - 1;
@@ -498,13 +467,13 @@ namespace LARE
 
         data.energy_electron(ix,iy,iz) += sum_curlb * data.dt/(8.0 * data.rho(ix,iy,iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
-        sim.energy_bcs();
+        energy_bcs();
 
         //Once more to get j_perp and j_par correct
         rkstep(data);
     }
 
-    void rkstep(simulationData &data)
+    void LARE3D::rkstep(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -534,7 +503,7 @@ namespace LARE
         pw::fence();
     }
 
-    void bstep(LARE3D &sim, simulationData &data)
+    void LARE3D::bstep(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -586,7 +555,7 @@ namespace LARE
                 data.flux_x(ixm, iym, iz)
         ) * data.dt / area; }, Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
         pw::fence();
-        sim.bfield_bcs();
+        bfield_bcs();
     }
 
     void LARE3D::predictor_step(simulationData &data)
@@ -803,7 +772,7 @@ namespace LARE
         this->velocity_bcs();
     }
 
-    void b_field_and_cv1_update(simulationData &data)
+    void LARE3D::b_field_and_cv1_update(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -881,7 +850,7 @@ namespace LARE
         pw::fence();
     }
 
-    void shock_heating(simulationData &data)
+    void LARE3D::shock_heating(simulationData &data)
     {
         using Range = pw::Range;
 

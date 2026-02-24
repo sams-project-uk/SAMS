@@ -42,14 +42,14 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void controlVariables(LARE::simulationData &data);
+        void controlVariables(LARE::LARE3D::simulationData &data);
 
         /**
          * Set up the simulation domain
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void setDomain(SAMS::harness &harness, LARE::simulationData &data);
+        void setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data);
 
         /**
          * Set boundary conditions for the simulation
@@ -62,7 +62,7 @@ namespace examples
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void initialConditions(SAMS::harness &harnessRef, LARE::simulationData &data);
+        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data);
 
        /**
          * Check whether to terminate the simulation
@@ -72,7 +72,7 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void queryTerminate(bool &terminate, LARE::simulationData &data, SAMS::timeState &tData);
+        void queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData);
 
         /**
          * Check whether to output data to disk
@@ -82,7 +82,7 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void queryOutput(bool &shouldOutput, LARE::simulationData &data, SAMS::timeState &tData);
+        void queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData);
 
     };
 }

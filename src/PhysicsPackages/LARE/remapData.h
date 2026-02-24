@@ -12,15 +12,15 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#ifndef REMAPDATA_H
-#define REMAPDATA_H
+#ifndef REMAPDATA_KOKKOS_H
+#define REMAPDATA_KOKKOS_H
 
 #include "typedefs.h"
 
 namespace LARE
 {
 
-  struct remapData
+  /*struct remapData
   {
     T_dataType xpass, ypass, zpass;
     volumeArray rho1;
@@ -30,7 +30,7 @@ namespace LARE
     volumeArray rho_v;
     volumeArray rho_v1;
     volumeArray flux;
-  };
+  };*/
 }
 
-#endif // REMAPDATA_H
+#endif // REMAPDATA_KOKKOS_H

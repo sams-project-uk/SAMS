@@ -33,7 +33,7 @@ namespace LARE
     /**
      * Get the part of the data that should be written to disk
      */
-    void getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host)
+    inline void LARE3D::getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host)
     {
         using Range = pw::Range;
         // Copy the data if needed

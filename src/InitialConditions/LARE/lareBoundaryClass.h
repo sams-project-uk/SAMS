@@ -11,12 +11,12 @@ class LAREBoundaryConditions : public SAMS::boundaryConditions
 {
     public:
 
-    void(*fn)(LARE::simulationData &, SAMS::timeState &, int, SAMS::domain::edges) = nullptr;
-    LARE::simulationData &data;
+    void(*fn)(LARE::LARE3D::simulationData &, SAMS::timeState &, int, SAMS::domain::edges) = nullptr;
+    LARE::LARE3D::simulationData &data;
     SAMS::timeState &time;
     
-    LAREBoundaryConditions(void(*function)(LARE::simulationData &, SAMS::timeState &, int , SAMS::domain::edges),
-                           LARE::simulationData &simData, SAMS::timeState &timeStateRef)
+    LAREBoundaryConditions(void(*function)(LARE::LARE3D::simulationData &, SAMS::timeState &, int , SAMS::domain::edges),
+                           LARE::LARE3D::simulationData &simData, SAMS::timeState &timeStateRef)
         : fn(function), data(simData), time(timeStateRef)
     {
     }

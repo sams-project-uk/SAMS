@@ -19,7 +19,7 @@
 
 namespace sams{
 
-    template<typename T, int N>
+    /*template<typename T, int N>
     UNREPEATED void assignArray(portableWrapper::portableArray<T, N> &array, const T &value) {
         size_t elements = array.getElements();
         portableWrapper::portableArray<T,1> tempArray;
@@ -39,7 +39,7 @@ namespace sams{
         portableWrapper::applyKernel(LAMBDA(size_t i) {
             tempD(i) = tempS(i);
         }, portableWrapper::Range(0, dest.getElements() - 1));
-    }
+    }*/
 }
 
 #endif

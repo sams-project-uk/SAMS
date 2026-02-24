@@ -102,7 +102,7 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void EmeryWindTunnel::controlVariables(LARE::simulationData &data, emeryParams &problemParams)
+        void EmeryWindTunnel::controlVariables(LARE::LARE3D::simulationData &data, emeryParams &problemParams)
         {
 
             data.t_end = 3.6; // End time of the simulation
@@ -154,7 +154,7 @@ namespace examples
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void EmeryWindTunnel::setDomain(SAMS::harness &harness, LARE::simulationData &data) 
+        void EmeryWindTunnel::setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data) 
         {
             auto &axisReg = harness.axisRegistry;
             //Just hard code the domain for the Sod Shock Tube
@@ -167,7 +167,7 @@ namespace examples
          * Set boundary conditions for the simulation
          * @param harness SAMS harness
          */
-        void EmeryWindTunnel::setBoundaryConditions(SAMS::harness &harness, LARE::simulationData &data, emeryParams &problemParams)
+        void EmeryWindTunnel::setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D::simulationData &data, emeryParams &problemParams)
         {
             SAMS::T_dataType pressure = problemParams.ambPressure;
             SAMS::T_dataType density = problemParams.density;
@@ -196,7 +196,7 @@ namespace examples
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void EmeryWindTunnel::initialConditions(SAMS::harness &harnessRef, LARE::simulationData &data, emeryParams &problemParams)
+        void EmeryWindTunnel::initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data, emeryParams &problemParams)
         {
             pw::portableArray<SAMS::T_dataType, 3> rho;
             pw::portableArray<SAMS::T_dataType, 3> energy_electron, energy_ion;
@@ -252,7 +252,7 @@ namespace examples
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
         }
 
-        void EmeryWindTunnel::startOfTimestep(LARE::simulationData &data, emeryParams &problemParams){
+        void EmeryWindTunnel::startOfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams){
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -272,7 +272,7 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-        void EmeryWindTunnel::halfTimestep(LARE::simulationData &data, emeryParams &problemParams){
+        void EmeryWindTunnel::halfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams){
              pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -292,7 +292,7 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-        void EmeryWindTunnel::endOfTimestep(LARE::simulationData &data, emeryParams &problemParams){
+        void EmeryWindTunnel::endOfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams){
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -319,7 +319,7 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void EmeryWindTunnel::queryTerminate(bool &terminate, LARE::simulationData &data, SAMS::timeState &tData){
+        void EmeryWindTunnel::queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
             //End at correct time for Sod Shock Tube (ends at t=0.2)
             if (tData.time >= data.t_end){
                 terminate |= true;
@@ -333,7 +333,7 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void EmeryWindTunnel::queryOutput(bool &shouldOutput, LARE::simulationData &data, SAMS::timeState &tData){
+        void EmeryWindTunnel::queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
             static double nextOutputTime = data.dt_snapshots;
             if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
                 shouldOutput |= true;
