@@ -62,7 +62,7 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void KarmanVortex::controlVariables(LARE::simulationData &data, KarmanVortexParams &problemParams)
+        void KarmanVortex::controlVariables(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams)
         {
 
             data.t_end = 20; // End time of the simulation
@@ -118,7 +118,7 @@ namespace examples
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void KarmanVortex::setDomain(SAMS::harness &harness, LARE::simulationData &data) 
+        void KarmanVortex::setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data) 
         {
             auto &axisReg = harness.axisRegistry;
             //Just hard code the domain for the Sod Shock Tube
@@ -131,7 +131,7 @@ namespace examples
          * Set boundary conditions for the simulation
          * @param harness SAMS harness
          */
-        void KarmanVortex::setBoundaryConditions(SAMS::harness &harness, LARE::simulationData &data, KarmanVortexParams &problemParams)
+        void KarmanVortex::setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams)
         {
             SAMS::T_dataType pressure = problemParams.ambPressure;
             SAMS::T_dataType density = problemParams.density;
@@ -160,7 +160,7 @@ namespace examples
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void KarmanVortex::initialConditions(SAMS::harness &harnessRef, LARE::simulationData &data, KarmanVortexParams &problemParams)
+        void KarmanVortex::initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams)
         {
             pw::portableArray<SAMS::T_dataType, 3> rho;
             pw::portableArray<SAMS::T_dataType, 3> energy_electron, energy_ion;
@@ -221,7 +221,7 @@ namespace examples
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
         }
 
-        void KarmanVortex::startOfTimestep(LARE::simulationData &data, KarmanVortexParams &problemParams){
+        void KarmanVortex::startOfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams){
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -236,7 +236,7 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-        void KarmanVortex::halfTimestep(LARE::simulationData &data, KarmanVortexParams &problemParams){
+        void KarmanVortex::halfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams){
              pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -250,7 +250,7 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-        void KarmanVortex::endOfTimestep(LARE::simulationData &data, KarmanVortexParams &problemParams){
+        void KarmanVortex::endOfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams){
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -271,7 +271,7 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void KarmanVortex::queryTerminate(bool &terminate, LARE::simulationData &data, SAMS::timeState &tData){
+        void KarmanVortex::queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
             //End at correct time for Sod Shock Tube (ends at t=0.2)
             if (tData.time >= data.t_end){
                 terminate |= true;
@@ -285,7 +285,7 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void KarmanVortex::queryOutput(bool &shouldOutput, LARE::simulationData &data, SAMS::timeState &tData){
+        void KarmanVortex::queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
             static double nextOutputTime = data.dt_snapshots;
             if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
                 shouldOutput |= true;

@@ -12,15 +12,15 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#ifndef TYPEDDEFS_H
-#define TYPEDDEFS_H
+#ifndef TYPEDDEFS_KOKKOS_H
+#define TYPEDDEFS_KOKKOS_H
 
 #include "pp/parallelWrapper.h"
 
 namespace LARE
 {
 
-  using T_dataType = SAMS::T_dataType;
+  /*using T_dataType = SAMS::T_dataType;
   using T_sizeType = SAMS::T_sizeType;
   using T_indexType = SAMS::T_indexType;
 
@@ -29,6 +29,6 @@ namespace LARE
   using planeArray = portableWrapper::acceleratedArray<T_dataType, 2>;
   using hostPlaneArray = portableWrapper::hostArray<T_dataType, 2>;
   using lineArray = portableWrapper::acceleratedArray<T_dataType, 1>;
-  using hostLineArray = portableWrapper::hostArray<T_dataType, 1>;
+  using hostLineArray = portableWrapper::hostArray<T_dataType, 1>;*/
 }
 #endif

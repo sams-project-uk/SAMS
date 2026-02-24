@@ -5,14 +5,6 @@ namespace LARE
 {
     namespace pw = portableWrapper;
 
-    void vx_by_flux(simulationData &data, remapData &remap_data);
-    void vx_bz_flux(simulationData &data, remapData &remap_data);
-    void x_mass_flux(simulationData &data, remapData &remap_data);
-    template <auto mPtr>
-    void x_energy_flux(simulationData &data, remapData &remap_data);
-    template <auto mPtr>
-    void x_mom_flux(simulationData &data, remapData &remap_data);
-
     void LARE3D::remap_x(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
@@ -266,7 +258,7 @@ namespace LARE
     } // END LARE3D::remap_x
 
     // Flux of by due to vx
-    void vx_by_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::vx_by_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -319,7 +311,7 @@ namespace LARE
     }
 
     // Flux of bz due to vx
-    void vx_bz_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::vx_bz_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -370,7 +362,7 @@ namespace LARE
         pw::fence();
     }
 
-    void x_mass_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::x_mass_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -427,7 +419,7 @@ namespace LARE
      * for the appropriate energy type.
      */
     template <auto mPtr>
-    void x_energy_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::x_energy_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -483,7 +475,7 @@ namespace LARE
     }
 
     template <auto mPtr>
-    void x_mom_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::x_mom_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(

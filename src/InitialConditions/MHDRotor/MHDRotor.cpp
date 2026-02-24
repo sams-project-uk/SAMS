@@ -28,7 +28,7 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void MHDRotor::controlVariables(LARE::simulationData &data)
+        void MHDRotor::controlVariables(LARE::LARE3D::simulationData &data)
         {
 
             data.t_end = 0.15; // End time of the simulation
@@ -75,7 +75,7 @@ namespace examples
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void MHDRotor::setDomain(SAMS::harness &harness, LARE::simulationData &data) 
+        void MHDRotor::setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data) 
         {
             auto &axisReg = harness.axisRegistry;
             //Just hard code the domain for the Sod Shock Tube
@@ -111,7 +111,7 @@ namespace examples
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void MHDRotor::initialConditions(SAMS::harness &harnessRef, LARE::simulationData &data)
+        void MHDRotor::initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data)
         {
             pw::portableArray<SAMS::T_dataType, 3> rho;
             pw::portableArray<SAMS::T_dataType, 3> energy_electron, energy_ion;
@@ -195,7 +195,7 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void MHDRotor::queryTerminate(bool &terminate, LARE::simulationData &data, SAMS::timeState &tData){
+        void MHDRotor::queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
             //End at correct time for Sod Shock Tube (ends at t=0.2)
             if (tData.time >= data.t_end){
                 terminate |= true;
@@ -209,7 +209,7 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void MHDRotor::queryOutput(bool &shouldOutput, LARE::simulationData &data, SAMS::timeState &tData){
+        void MHDRotor::queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
             static double nextOutputTime = data.dt_snapshots;
             if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
                 shouldOutput |= true;

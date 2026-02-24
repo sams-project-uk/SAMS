@@ -3,7 +3,7 @@
 
 namespace LARE{
 
-    void LARE3DInitialConditions::control_variables([[maybe_unused]] SAMS::harness &harnessRef, [[maybe_unused]] simulationData &data){
+    void LARE3DInitialConditions::control_variables([[maybe_unused]] SAMS::harness &harnessRef, [[maybe_unused]] LARE::LARE3D::simulationData &data){
         std::cout << "Setting control variables for LARE3D simulation" << std::endl;
         data.nx = 128; // Number of cells in the x-direction
         data.ny = 128; // Number of cells in the y-direction
@@ -63,7 +63,7 @@ namespace LARE{
         data.dt_snapshots = 10.0;
     }
 
- void LARE3DInitialConditions::initial_conditions([[maybe_unused]] SAMS::harness &harness, [[maybe_unused]] simulationData &data)
+ void LARE3DInitialConditions::initial_conditions([[maybe_unused]] SAMS::harness &harness, [[maybe_unused]] LARE::LARE3D::simulationData &data)
   {
 
     SAMS::cout << "Setting up initial conditions" << std::endl;

@@ -1,9 +1,10 @@
-#include "lareic.h"
-#include "lareBoundaryClass.h"
+//#include "lareic.h"
+//#include "lareBoundaryClass.h"
+#include "shared_data.h"
 
 namespace LARE{
 
-    void LARE3D::defaultValues([[maybe_unused]] simulationData &data){
+    void LARE3D::defaultValues(simulationData &data){
 
         data.dt_multiplier = 0.8; // Default multiplier for time step
 

@@ -28,7 +28,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::bx_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::bx_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Lower X BC
         if (dimension == 0 && edge == SAMS::domain::edges::lower)
@@ -121,7 +121,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::by_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::by_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Lower X BC
         if (dimension == 0 && edge == SAMS::domain::edges::lower)
@@ -209,7 +209,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::bz_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::bz_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Lower X BC
         if (dimension == 0 && edge == SAMS::domain::edges::lower)
@@ -297,7 +297,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::energy_ion_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::energy_ion_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Lower X BC
         if (dimension == 0 && edge == SAMS::domain::edges::lower)
@@ -386,7 +386,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::energy_electron_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::energy_electron_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Lower X BC
         if (dimension == 0 && edge == SAMS::domain::edges::lower)
@@ -474,7 +474,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::density_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::density_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         // Lower X BC
         if (dimension == 0 && edge == SAMS::domain::edges::lower)
@@ -567,7 +567,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::vx_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::vx_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Continuous into each boundary except for X where assign zero velocity
         //Lower X BC
@@ -650,7 +650,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::remap_vx_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::remap_vx_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Continuous into each boundary except for X where assign zero velocity
         //Lower X BC
@@ -734,7 +734,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::vy_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::vy_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Continuous into each boundary except for X where assign zero velocity
         //Lower X BC
@@ -817,7 +817,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::remap_vy_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::remap_vy_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Continuous into each boundary except for X where assign zero velocity
         //Lower X BC
@@ -900,7 +900,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::vz_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::vz_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Continuous into each boundary except for X where assign zero velocity
         //Lower X BC
@@ -983,7 +983,7 @@ namespace LARE
      * @param dimension Dimension to apply BCs in
      * @param edge Edge of the domain to apply BCs on
      */
-     void LARE3DInitialConditions::remap_vz_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::remap_vz_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         //Continuous into each boundary except for X where assign zero velocity
         //Lower X BC
@@ -1060,7 +1060,7 @@ namespace LARE
         }
     }
 
-     void LARE3DInitialConditions::dm_x_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+     void LARE3DInitialConditions::dm_x_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         // Continous flux at x-max boundary
         if (dimension == 0 && edge == SAMS::domain::edges::upper)
@@ -1080,7 +1080,7 @@ namespace LARE
        //Only need X boundaries for dm_x 
     }
 
-    void LARE3DInitialConditions::dm_y_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+    void LARE3DInitialConditions::dm_y_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         // Continous flux at y-max boundary
         if (dimension == 1 && edge == SAMS::domain::edges::upper)
@@ -1099,7 +1099,7 @@ namespace LARE
 
     }
 
-    void LARE3DInitialConditions::dm_z_bcs([[maybe_unused]] simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
+    void LARE3DInitialConditions::dm_z_bcs([[maybe_unused]] LARE::LARE3D::simulationData &data, [[maybe_unused]] SAMS::timeState &time, [[maybe_unused]] int dimension, [[maybe_unused]] SAMS::domain::edges edge)
     {
         // Continous flux at z-max boundary
         if (dimension == 2 && edge == SAMS::domain::edges::upper)

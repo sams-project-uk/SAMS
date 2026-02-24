@@ -5,14 +5,6 @@ namespace LARE
 {
     namespace pw = portableWrapper;
 
-    void vy_bx_flux(simulationData &data, remapData &remap_data);
-    void vy_bz_flux(simulationData &data, remapData &remap_data);
-    void y_mass_flux(simulationData &data, remapData &remap_data);
-    template <auto mPtr>
-    void y_energy_flux(simulationData &data, remapData &remap_data);
-    template <auto mPtr>
-    void y_mom_flux(simulationData &data, remapData &remap_data);
-
     void LARE3D::remap_y(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
@@ -289,7 +281,7 @@ namespace LARE
     } // END LARE3D::remap_y
 
     // Evans & Hawley constrained transport remap of vy*Bx fluxes
-    void vy_bx_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::vy_bx_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -341,7 +333,7 @@ namespace LARE
     }
 
     // Evans & Hawley constrained transport remap of vy*Bz fluxes
-    void vy_bz_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::vy_bz_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -392,7 +384,7 @@ namespace LARE
         pw::fence();
     }
 
-    void y_mass_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::y_mass_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -449,7 +441,7 @@ namespace LARE
      * for the appropriate energy type.
      */
     template <auto mPtr>
-    void y_energy_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::y_energy_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -505,7 +497,7 @@ namespace LARE
     }
 
     template <auto mPtr>
-    void y_mom_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::y_mom_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::assign(remap_data.flux, 0.0);

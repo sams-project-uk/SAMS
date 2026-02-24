@@ -6,14 +6,6 @@ namespace LARE
 
     namespace pw = portableWrapper;
 
-    void vz_bx_flux(simulationData &data, remapData &remap_data);
-    void vz_by_flux(simulationData &data, remapData &remap_data);
-    void z_mass_flux(simulationData &data, remapData &remap_data);
-    template <auto mPtr>
-    void z_energy_flux(simulationData &data, remapData &remap_data);
-    template <auto mPtr>
-    void z_mom_flux(simulationData &data, remapData &remap_data);
-
     void LARE3D::remap_z(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
@@ -247,7 +239,7 @@ namespace LARE
     } // END LARE3D::remap_z
 
     // Evans & Hawley constrained transport remap of vz*Bx fluxes
-    void vz_bx_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::vz_bx_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -299,7 +291,7 @@ namespace LARE
     }
 
     // Evans & Hawley constrained transport remap of vz*Bx fluxes
-    void vz_by_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::vz_by_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -350,7 +342,7 @@ namespace LARE
         pw::fence();
     }
 
-    void z_mass_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::z_mass_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -408,7 +400,7 @@ namespace LARE
      * for the appropriate energy type.
      */
     template <auto mPtr>
-    void z_energy_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::z_energy_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -464,7 +456,7 @@ namespace LARE
     }
 
     template <auto mPtr>
-    void z_mom_flux(simulationData &data, remapData &remap_data)
+    void LARE3D::z_mom_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {

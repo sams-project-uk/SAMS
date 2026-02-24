@@ -22,7 +22,7 @@
 namespace LARE
 {
 
-  // These are the real SI physical constants
+/*  // These are the real SI physical constants
 
   inline constexpr double mu0_si = static_cast<double>(4.0e-7) * M_PI; // N/A^2 (exact)
 
@@ -56,7 +56,7 @@ namespace LARE
   inline constexpr int c_geometry_null = 0;
   inline constexpr int c_geometry_cartesian = 1;
   inline constexpr int c_geometry_cylindrical = 2;
-  inline constexpr int c_geometry_spherical = 3;
+  inline constexpr int c_geometry_spherical = 3;*/
 
 }
 
