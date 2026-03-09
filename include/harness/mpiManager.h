@@ -1117,7 +1117,7 @@ namespace SAMS
             {
                 auto &axisRef = ar.getAxis(dims[axis].axisName);
                 //For non-decomposed axes, set MPI types to NULL
-                if (axisRef.MPIAxisIndex <0){
+                if (axisRef.dim.mpiAxis <0){
                     mpiSend[axis*2] = MPI_DATATYPE_NULL;
                     mpiSend[axis*2+1] = MPI_DATATYPE_NULL;
                     mpiRecv[axis*2] = MPI_DATATYPE_NULL;
@@ -1295,8 +1295,10 @@ namespace SAMS
         void finalize()
         {
             #ifdef USE_MPI
-            if (comm != rootComm)
+            if (comm != rootComm && comm != MPI_COMM_NULL) {
                 checkMPIError(MPI_Comm_free(&comm));
+                comm = MPI_COMM_NULL;
+            }   
             #endif
         }
 

@@ -47,7 +47,7 @@ class HDF5File : public writer<HDF5File> {
       std::filesystem::remove(h5filename);
     }
     #ifdef USE_MPI
-    SAMS::MPIManager<SAMS::MPI_DECOMPOSITION_RANK> &mpi = SAMS::getMPIManager<SAMS::MPI_DECOMPOSITION_RANK>();
+    SAMS::MPIManager<SAMS::MPI_DECOMPOSITION_RANK> &mpi = this->h.MPIManager;
     int rank = mpi.getRank();
     h5filename += "_rank" + std::to_string(rank);
     #endif
@@ -229,6 +229,11 @@ class HDF5File : public writer<HDF5File> {
       throw std::runtime_error("Could not close file");
     }
 	}
+
+  public:
+
+  HDF5File(SAMS::harness &h) : writer<HDF5File>(h) {
+  }
 };
 #endif
 #endif

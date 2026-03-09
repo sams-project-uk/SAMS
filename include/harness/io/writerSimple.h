@@ -159,6 +159,10 @@ class simpleFile : public writer<simpleFile> {
 	//Close file
 	void closeFileImpl() {
 	}
+
+  simpleFile(SAMS::harness &h) : writer<simpleFile>(h) {
+  }
+
 };
 
 #endif
