@@ -232,6 +232,8 @@ namespace LARE
         bool iszUB = false; // Is this processor on the z-max boundary
 
         MPI_Datatype mpiType = MPI_DATATYPE_NULL; // MPI datatype for T_dataType
+        
+        const char* shock_tube_problem;
     };
 
 

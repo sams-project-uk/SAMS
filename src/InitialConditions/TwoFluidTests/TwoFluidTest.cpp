@@ -94,6 +94,8 @@ namespace examples
             data.rke = false;
             // Remap kinetic energy correction
             dataNeutral.rke = data.rke;
+            
+            data.shock_tube_problem="briowu";
         }
 
         /**
@@ -152,47 +154,109 @@ namespace examples
          */
         void TwoFluidTest::initialConditions(SAMS::harness &harnessRef, LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral)
         {
-            pw::portableArray<SAMS::T_dataType, 3> rho;
-            pw::portableArray<SAMS::T_dataType, 3> energy_electron;
-            pw::portableArray<SAMS::T_dataType, 3> rho_n;
-            pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
-            pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
+        
+            //char shock_tube_problem[8]="sod";
+            //char shock_tube_problem[8]="briowu";
+            
+            if (std::strcmp(data.shock_tube_problem,"sod")==0){
+                printf("sod Shock Tube \n");
+                pw::portableArray<SAMS::T_dataType, 3> rho;
+                pw::portableArray<SAMS::T_dataType, 3> energy_electron;
+                pw::portableArray<SAMS::T_dataType, 3> rho_n;
+                pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
+                pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
 
-            auto &axisRegistry = harnessRef.axisRegistry;
-            axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
-            axisRegistry.fillPPLocalAxis("Y", yc, SAMS::staggerType::CENTRED);
-            axisRegistry.fillPPLocalAxis("Z", zc, SAMS::staggerType::CENTRED);
+                auto &axisRegistry = harnessRef.axisRegistry;
+                axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
+                axisRegistry.fillPPLocalAxis("Y", yc, SAMS::staggerType::CENTRED);
+                axisRegistry.fillPPLocalAxis("Z", zc, SAMS::staggerType::CENTRED);
 
-            auto &varRegistry = harnessRef.variableRegistry;
-            varRegistry.fillPPArray("rho", rho);
-            varRegistry.fillPPArray("energy_electron", energy_electron);
-            varRegistry.fillPPArray("rho_n", rho_n);
-            varRegistry.fillPPArray("energy_neutral", energy_neutral);
+                auto &varRegistry = harnessRef.variableRegistry;
+                varRegistry.fillPPArray("rho", rho);
+                varRegistry.fillPPArray("energy_electron", energy_electron);
+                varRegistry.fillPPArray("rho_n", rho_n);
+                varRegistry.fillPPArray("energy_neutral", energy_neutral);
 
-            pw::applyKernel(
-                LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
-                {
-                    SAMS::T_dataType pressure;
-                    SAMS::T_dataType pressure_n;
-                    if (xc(ix) < 0.5)
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
-                        rho(ix, iy, iz) = 1.0;
-                        pressure = 1.0;
-                        rho_n(ix, iy, iz) = 0.125;
-                        pressure_n = 0.1;
-                    }
-                    else
+                        SAMS::T_dataType pressure;
+                        SAMS::T_dataType pressure_n;
+                        if (xc(ix) < 0.5)
+                        {
+                            rho(ix, iy, iz) = 1.0;
+                            pressure = 1.0;
+                            rho_n(ix, iy, iz) = 0.125;
+                            pressure_n = 0.1;
+                        }
+                        else
+                        {
+                            rho(ix, iy, iz) = 0.125;
+                            pressure = 0.1;
+                            rho_n(ix, iy, iz) = 1.0;
+                            pressure_n = 1.0;
+                        }
+                        //Specific internal energy
+                        energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                        energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
+                    },
+                    rho.getRange(0), rho.getRange(1), rho.getRange(2));
+            }
+            if (std::strcmp(data.shock_tube_problem,"briowu")==0){
+                // Brio & Wu Shock tube
+                printf("Brio Wu Shock Tube \n");
+                
+                pw::portableArray<SAMS::T_dataType, 3> rho;
+                pw::portableArray<SAMS::T_dataType, 3> bx;
+                pw::portableArray<SAMS::T_dataType, 3> by;                
+                pw::portableArray<SAMS::T_dataType, 3> energy_electron;
+                pw::portableArray<SAMS::T_dataType, 3> rho_n;
+                pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
+                pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
+
+                auto &axisRegistry = harnessRef.axisRegistry;
+                axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
+                axisRegistry.fillPPLocalAxis("Y", yc, SAMS::staggerType::CENTRED);
+                axisRegistry.fillPPLocalAxis("Z", zc, SAMS::staggerType::CENTRED);
+
+                auto &varRegistry = harnessRef.variableRegistry;
+                varRegistry.fillPPArray("rho", rho);
+                varRegistry.fillPPArray("bx", bx);
+                varRegistry.fillPPArray("by", by);
+                varRegistry.fillPPArray("energy_electron", energy_electron);
+                varRegistry.fillPPArray("energy_ion", energy_electron);
+                varRegistry.fillPPArray("rho_n", rho_n);
+                varRegistry.fillPPArray("energy_neutral", energy_neutral);
+                
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
-                        rho(ix, iy, iz) = 0.125;
-                        pressure = 0.1;
-                        rho_n(ix, iy, iz) = 1.0;
-                        pressure_n = 1.0;
-                    }
-                    //Specific internal energy
-                    energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
-                    energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
-                },
-                rho.getRange(0), rho.getRange(1), rho.getRange(2));
+                        SAMS::T_dataType pressure;
+                        SAMS::T_dataType pressure_n;
+                        if (xc(ix) < 0.5)
+                        {
+                            rho(ix, iy, iz) = 1.0;
+                            pressure = 1.0;
+                            bx(ix, iy, iz)=0.75;
+                            by(ix, iy, iz)=1.0;
+                            rho_n(ix, iy, iz) = 1.0;
+                            pressure_n = 1.0;
+                        }
+                        else
+                        {
+                            rho(ix, iy, iz) = 0.125;
+                            pressure = 0.1;
+                            bx(ix, iy, iz)=0.75;
+                            by(ix, iy, iz)=-1.0;
+                            rho_n(ix, iy, iz) = 1.0;
+                            pressure_n = 1.0;
+                        }
+                        //Specific internal energy
+                        energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                        energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
+                    },
+                    rho.getRange(0), rho.getRange(1), rho.getRange(2));
+            }
         }
 
        /**
