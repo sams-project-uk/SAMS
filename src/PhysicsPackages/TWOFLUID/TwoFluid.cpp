@@ -8,9 +8,12 @@
 #include <cassert>
 #include <string>
 #include "constants.h"
+#include "constants_neutral.h"
 #include "pp/parallelWrapper.h"
 #include "remapData.h"
 #include "typedefs.h"
+#include "remapData_neutral.h"
+#include "typedefs_neutral.h"
 #include "mpiManager.h"
 #include "variableDef.h"
 #include "harness.h"
@@ -20,6 +23,7 @@
 #include "twofluid.h"
 
 #include "shared_data.h"
+#include "shared_data_neutral.h"
 #include "variableRegistry.h"
 #include "axisRegistry.h"
 
@@ -44,11 +48,11 @@ namespace TWOFLUID
         LARE::volumeArray source_electron_energy; // energy source term
         LARE::volumeArray ac; //coupling coeficient
     };
-    void get_ac(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
-    void two_fluid_source(LARE::simulationData &data,LARE::simulationData &dataNeutral);
-    void ion_rec_rates_empirical(LARE::simulationData &data, LARE::simulationData &dataNeutral);
-    void get_collisional_source_terms(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source);
-    void get_ion_rec_source_terms(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source);
+    void get_ac(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
+    //void two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral);
+    void ion_rec_rates_empirical(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral);
+    void get_collisional_source_terms(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source);
+    void get_ion_rec_source_terms(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //static constexpr std::string_view name = "TwoFluid";
@@ -68,7 +72,7 @@ namespace TWOFLUID
     * Magnetic field is an odd one. It needs to be registered for the LARE core code to work but is identically zero always
     * Is there a memory-efficient way of doing this?
     */
-    void PIP::registerVariables(SAMS::harness& harness){
+    /*void PIP::registerVariables(SAMS::harness& harness){
         SAMS::cout << "Registering twofluid variables" << std::endl;
         auto &varRegistry = harness.variableRegistry;   // Take care to remember the reference marker & in this idiom!
         const int ghosts = 2; // 2 Ghost cells at top and bottom of each dimension
@@ -92,14 +96,15 @@ namespace TWOFLUID
         varRegistry.registerVariable<LARE::T_dataType>("by_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
         varRegistry.registerVariable<LARE::T_dataType>("bz_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
         
-        varRegistry.registerVariable<T_dataType>("LARE/dm_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Y", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Z", ghosts, SAMS::staggerType::CENTRED));
+        varRegistry.registerVariable<LARE::T_dataType>("LARE/dm_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Y", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Z", ghosts, SAMS::staggerType::CENTRED));
     }
+    */
             
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /*
     * Default values
     */
-    void PIP::defaultValues(LARE::simulationData &data,LARE::simulationData &dataNeutral){
+    void PIP::defaultValues(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral){
         SAMS::cout << "Setting default values" << std::endl;
         dataNeutral.alpha0=1.0;
         dataNeutral.is_neutral=true;
@@ -296,7 +301,7 @@ namespace TWOFLUID
     }
     */
 ////////////////////////////////////////////////////////////////////////////////////////
-    void PIP::two_fluid_source(LARE::simulationData &data,LARE::simulationData &dataNeutral){
+    void PIP::two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral){
 
         //data.two_fluid_timestep=1.0;
         
@@ -404,7 +409,7 @@ namespace TWOFLUID
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         //Get the collisional coupling coefficient
-        void get_ac(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+        void get_ac(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
 
             using Range = portableWrapper::Range;
             portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
@@ -427,7 +432,7 @@ namespace TWOFLUID
         //Formulation from Snow+2021 paper
         //Empirical estimates for the rates
         //Controlled using the data.ion_rec_empirical in control.cpp
-        void ion_rec_rates_empirical(LARE::simulationData &data, LARE::simulationData &dataNeutral){
+        void ion_rec_rates_empirical(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral){
 
             //Much of this should go elsewhere
             LARE::T_dataType T0=data.T_reference; //Reference temperature
@@ -463,7 +468,7 @@ namespace TWOFLUID
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////
 //Get the source terms for the IR rates
-void get_collisional_source_terms(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source){	
+void get_collisional_source_terms(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source){	
 
     using Range = portableWrapper::Range;
     portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
@@ -604,7 +609,7 @@ void get_collisional_source_terms(LARE::simulationData &data, LARE::simulationDa
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////
 //Get the source terms for the IR rates
-void get_ion_rec_source_terms(LARE::simulationData &data, LARE::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source){	
+void get_ion_rec_source_terms(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source, data_two_fluid_source &neutral_source){	
 
     using Range = portableWrapper::Range;
     portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {

@@ -22,6 +22,11 @@
 #include "variableRegistry.h"
 #include "axisRegistry.h"
 
+#include "constants_neutral.h"
+#include "remapData_neutral.h"
+#include "shared_data_neutral.h"
+#include "typedefs_neutral.h"
+
 namespace TWOFLUID
 {
     namespace pw = portableWrapper;
@@ -36,7 +41,7 @@ namespace TWOFLUID
         
             static constexpr std::string_view name = "PIP";
             
-            using dataPack = SAMS::dataPacks::multiPack<LARE::simulationData, LARE::remapData>;
+            using dataPack = SAMS::dataPacks::multiPack<LARE::simulationData, LARE::remapData, LARE_neutral::simulationData, LARE_neutral::remapData>;
             
             //pw::portableArrayManager& manager;
 
@@ -58,7 +63,7 @@ namespace TWOFLUID
              * Called by the runner after registering axes.
              * @param harnessRef SAMS harness
              */
-            void registerVariables(SAMS::harness &harnessRef);
+            //void registerVariables(SAMS::harness &harnessRef);
             
             //void registerVariables(SAMS::harness &harnessRef){
             //};
@@ -67,7 +72,7 @@ namespace TWOFLUID
             /**
              * Set default values for control parameters
              */
-            void defaultValues(LARE::simulationData &data,LARE::simulationData &dataNeutral);
+            void defaultValues(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral);
 
             /**
              * Set default values for control parameters
@@ -81,7 +86,7 @@ namespace TWOFLUID
              * @param harnessRef SAMS harness
              * @param data LARE3D simulation data
              */
-            void getVariables(SAMS::harness &harnessRef, LARE::simulationData &dataNeutral){
+            void getVariables(SAMS::harness &harnessRef, LARE_neutral::simulationData &dataNeutral){
                 //allocate_neutral(harnessRef, dataNeutral);
                 //LARE::grid(dataNeutral);
             };
@@ -91,8 +96,8 @@ namespace TWOFLUID
              * This is the predictor step of the LARE3D timestep
              * @param data LARE3D simulation data
              */
-            void startOfTimestep(LARE::simulationData &data,LARE::simulationData &dataNeutral, SAMS::controlFunctions &controlFns){
-                two_fluid_source(data,dataNeutral);
+            void startOfTimestep(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, SAMS::controlFunctions &controlFns){
+                //two_fluid_source(data,dataNeutral);
                 //lagrangian_step(data, controlFns);
             };
 
@@ -101,7 +106,7 @@ namespace TWOFLUID
              * This is called at the end of the LARE3D timestep
              * @param data LARE3D simulation data
              */
-            void endOfTimestep(LARE::simulationData &dataNeutral, LARE::remapData &remap_dataNeutral){
+            void endOfTimestep(LARE::simulationData &dataNeutral, LARE_neutral::remapData &remap_dataNeutral){
                 //eulerian_remap(data, remap_data);
                 //if (data.rke){
                 //    energy_correction(data);
@@ -116,7 +121,7 @@ namespace TWOFLUID
              * @param timeData SAMS timeState data
              * @param data LARE3D simulation data
              */
-            void calculateTimestep(SAMS::timeState &timeData, LARE::simulationData &dataNeutral){
+            void calculateTimestep(SAMS::timeState &timeData, LARE_neutral::simulationData &dataNeutral){
                 //set_dt(data);
                 //timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
             };
@@ -126,11 +131,11 @@ namespace TWOFLUID
              * @param timeData SAMS timeState data
              * @param data LARE3D simulation data
              */
-            void getTimestep(SAMS::timeState &timeData, LARE::simulationData &dataNeutral){
+            void getTimestep(SAMS::timeState &timeData, LARE_neutral::simulationData &dataNeutral){
                 //data.dt = timeData.dt;
             };
             
-            void two_fluid_source(LARE::simulationData &data,LARE::simulationData &dataNeutral);
+            void two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral);
 
 
             //void allocate_neutral(SAMS::harness &harness, LARE::simulationData &data);

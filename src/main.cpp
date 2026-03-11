@@ -6,6 +6,7 @@
 #include <fstream>
 #include "harness.h"
 #include "shared_data.h"
+#include "shared_data_neutral.h"
 #include "timer.h"
 #include "axisRegistry.h"
 #include "variableRegistry.h"
@@ -21,6 +22,7 @@
 #include "OrszagTang3D.h"
 #include "EmeryWindTunnel.h"
 #include "KarmanVortex.h"
+#include "TwoFluidTest.h"
 
 #include "builtInBoundaryConditions.h"
 
@@ -38,8 +40,8 @@ int main(int argc, char *argv[]){
     SAMS::printWelcomeMessage();
 
     //Create and initialize the runner
-    SAMS::runner<LARE::LARE3D, LARE::LARE3DInitialConditions, TWOFLUID::PIP, examples::SodShockTube, examples::BrioAndWu, examples::MHDRotor, examples::OrszagTang, examples::OrszagTang3D, examples::EmeryWindTunnel, 
-        examples::KarmanVortex> runner;
+    SAMS::runner<LARE::LARE3D, LARE::LARE3DInitialConditions, LARE_neutral::LARE3D_neutral, TWOFLUID::PIP, examples::SodShockTube, examples::BrioAndWu, examples::MHDRotor, examples::OrszagTang, examples::OrszagTang3D, examples::EmeryWindTunnel, 
+        examples::KarmanVortex,examples::TwoFluidTest> runner;
     runner.initialize(argc, argv);
     //Finish welcome message
     SAMS::finishWelcomeMessage();
