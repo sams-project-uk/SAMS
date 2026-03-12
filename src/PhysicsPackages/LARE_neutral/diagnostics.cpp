@@ -38,18 +38,25 @@ namespace LARE_neutral
         using Range = pw::Range;
         // Copy the data if needed
         auto fullHost = manager.makeHostAvailable(device);
+        
+        T_indexType nx=data.rho.getSize(0);
+        T_indexType ny=data.rho.getSize(1);
+        T_indexType nz=data.rho.getSize(2);
 
         // Now allocate memory for just the part we want to write
-        manager.allocate(host, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+        manager.allocate(host, Range(1, nx), Range(1, ny), Range(1, nz));
         //Have to copy data since the HDF writer expects contiguous data
-        manager.copyDataHost(host, fullHost(Range(1,data.nx), Range(1,data.ny), Range(1,data.nz)));
+        manager.copyDataHost(host, fullHost(Range(1,nx), Range(1,ny), Range(1,nz)));
         manager.deallocate(fullHost);
     }
 
     template<typename T_writer>
     void LARE3D_neutral::registerOutputMeshes(writer<T_writer> &writer, simulationData &data)
     {
-        writer.template registerRectilinearMesh<T_dataType>("MeshCC_n", data.nx, data.ny, data.nz);
+        T_indexType nx=data.rho.getSize(0);
+        T_indexType ny=data.rho.getSize(1);
+        T_indexType nz=data.rho.getSize(2);
+        writer.template registerRectilinearMesh<T_dataType>("MeshCC_n", nx, ny, nz);
 
     }
 

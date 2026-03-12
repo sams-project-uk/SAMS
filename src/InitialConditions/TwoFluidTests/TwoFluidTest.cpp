@@ -37,7 +37,7 @@ namespace examples
             dataNeutral.t_end = data.t_end;
             dataNeutral.dt_snapshots = data.dt_snapshots;
 
-            data.nx = 512;
+            data.nx = 128;
             data.ny = 2;
             data.nz = 2;
             dataNeutral.nx = data.nx;

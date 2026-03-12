@@ -130,7 +130,27 @@ namespace TWOFLUID
         
     }
 ////////////////////////////////////////////////////////////////////////////////////////
-    void PIP::two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+    void PIP::get_two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+
+        two_fluid_properties two_fluid_flags; //Move to source structure
+        
+        //Get the ionisation rates
+        //if (two_fluid_flags.ion_rec_empirical){        
+        //    ion_rec_rates_empirical(data,dataNeutral);
+        //}
+        //if (two_fluid_flags.ion_rec_nlevel){        
+        ////    ion_rec_rates_nlevel(data,dataNeutral);
+        //}
+        
+        //Calculate the source terms for the two-fluid interactions
+        get_collisional_source_terms(data,dataNeutral,plasma_source);
+        
+        //Calculate the source terms for Ionisation/recombination
+        //if (two_fluid_flags.ion_rec_empirical) get_ion_rec_source_terms(data,dataNeutral,plasma_source);
+
+    };
+////////////////////////////////////////////////////////////////////////////////////////
+    void PIP::apply_two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
 
         two_fluid_properties two_fluid_flags; //Move to source structure
         
@@ -168,7 +188,7 @@ namespace TWOFLUID
                 
                 //Energy source terms - the 3/2 here needs fixing
                 data.energy_ion(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy(ix,iy,iz);
-                //data.energy_electron(ix,iy,iz)+=0.5*data.dt*plasma_source.source_electron_energy(ix,iy,iz);
+                //data.energy_electron(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy(ix,iy,iz);
                 dataNeutral.energy_neutral(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy_n(ix,iy,iz);                 
             }, Range(-1,data.nx), Range(-1,data.ny), Range(-1,data.nz));
         }

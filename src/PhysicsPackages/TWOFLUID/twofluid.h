@@ -155,6 +155,7 @@ namespace TWOFLUID
              */
             void calculateTimestep(SAMS::timeState &timeData,LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 get_ac(data,dataNeutral,plasma_source);
+                get_two_fluid_source(data,dataNeutral,plasma_source);
                 set_dt_collisional(data,dataNeutral,plasma_source);
                 //printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
                 //set_dt(data);
@@ -172,23 +173,37 @@ namespace TWOFLUID
             
             void halfSplitSourceStart(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 //printf("applying source \n");
-                two_fluid_source(data,dataNeutral,plasma_source);
+                apply_two_fluid_source(data,dataNeutral,plasma_source);
                 //data.dt = timeData.dt;
             };
             
             void halfSplitSourceEnd(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 //printf("applying source \n");
-                two_fluid_source(data,dataNeutral,plasma_source);
+                apply_two_fluid_source(data,dataNeutral,plasma_source);
                 //data.dt = timeData.dt;
             };
             
-            void two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
+            void get_two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
+            
+            void apply_two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
 
             void get_ac(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
             
             void set_dt_collisional(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
             
             void plasma_source_allocate(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
+            
+            template<typename T_writer>
+            void writeOutputMeshes(writer<T_writer> &writer, LARE::simulationData &data);
+        
+            template<typename T_writer>
+            void registerOutputMeshes(writer<T_writer> &writer, data_two_fluid_source &data);
+            
+            template<typename T>
+            void registerOutputVariables(writer<T> &writer, data_two_fluid_source &plasma_source);
+
+            template<typename T>
+            void writeOutputVariables(writer<T> &writer, data_two_fluid_source &plasma_source);
 
             //void allocate_neutral(SAMS::harness &harness, LARE::simulationData &data);
     };
