@@ -213,7 +213,7 @@ namespace LARE_neutral
                 T_indexType izm = iz - 1;
                 remap_data.rho_v1(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + data.dm(ix, iy, izm) - data.dm(ix, iy, iz)) /remap_data.cv2(ix, iy, iz);
             },
-            Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz+1));
+            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
         pw::fence();
 
         z_mom_flux<&simulationData::vx>(data, remap_data);
