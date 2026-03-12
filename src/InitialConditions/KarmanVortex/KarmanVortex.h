@@ -16,6 +16,7 @@ namespace examples
     /**
      * Initial conditions, boundary conditions and domain setup for the Emery Wind Tunnel problem
      */
+    template<typename T_EOS = LARE::idealGas>
     class KarmanVortex
     {
     public:
@@ -34,11 +35,13 @@ namespace examples
         void setBCS(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue);
         void setBCS(std::string varName, SAMS::harness &harness);
 
+        inline static constexpr auto nameType = SAMS::constexprName("KarmanVortex") + T_EOS::name;        
+
     public:
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */
-        constexpr static std::string_view name = "KarmanVortex";
+        constexpr static std::string_view name = nameType;
 
         /**
          * Initial conditions should not be timed
@@ -53,27 +56,27 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void controlVariables(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams);
+        void controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams);
 
         /**
          * Set up the simulation domain
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data);
+        void setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data);
 
         /**
          * Set boundary conditions for the simulation
          * @param harness SAMS harness
          */
-        void setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams);
+        void setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams);
 
         /**
          * Initialize the Sod Shock Tube initial conditions
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams);
+        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams);
 
        /**
          * Check whether to terminate the simulation
@@ -82,7 +85,7 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData);
+        void queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
 
         /**
          * Check whether to output data to disk
@@ -91,28 +94,33 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData);
+        void queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
 
         /**
          * Execute the first half of the timestep for the Emery Wind Tunnel problem
          * This is needed since emery has to clamp the velocity in the step to zero
          * @param data LARE3D simulation data
          */
-        void startOfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams);
+        void startOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams);
 
         /**
          * Execute the second half of the timestep for the Emery Wind Tunnel problem
          * This is needed since emery has to clamp the velocity in the step to zero
          * @param data LARE3D simulation data
          */
-        void halfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams);
+        void halfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams);
 
         /**
          * Execute the end of the timestep for the Emery Wind Tunnel problem
          * This is needed since emery has to clamp the velocity in the step to zero
          * @param data LARE3D simulation data
          */
-        void endOfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams);
+        void endOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams);
     };
+
+    #define EOS_DEF(value) template class KarmanVortex<value>;
+    EOS_DENSITY_ENERGY
+    #undef EOS_DEF
+
 }
 #endif // KARMANVORTEX_H

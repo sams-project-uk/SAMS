@@ -18,10 +18,9 @@
 #include <cstdint>
 #include <cassert>
 #include <string>
-#include "../LARE/constants.h"
 #include "LARECommon/types.h"
+#include "LARECommon/eos.h"
 #include "pp/parallelWrapper.h"
-#include "remapData.h"
 #include "mpiManager.h"
 #include "variableDef.h"
 #include "harness.h"
@@ -30,9 +29,9 @@
 
 namespace LARE
 {
-
     namespace pw = portableWrapper;
 
+    template<typename T_EOS=idealGas>
     class LARE3D
     {
 
@@ -123,6 +122,9 @@ namespace LARE
         pw::Range ybmaxBCRange;
         pw::Range zbminBCRange;
         pw::Range zbmaxBCRange;
+
+        using eosType = T_EOS;
+        eosType eos; // Equation of state object
 
         T_dataType none_zero = std::numeric_limits<T_dataType>::epsilon();  // Smallest non-zero value for T_dataTyp
         T_dataType largest_number = std::numeric_limits<T_dataType>::max(); // Largest number for T_dataType
@@ -261,23 +263,10 @@ namespace LARE
     };
 
     private:
+
         SAMS::harness &harness;
 
          inline void getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host);
-
-        /*SAMS::variableDef *rho=nullptr;
-        SAMS::variableDef *energy_electron=nullptr;
-        SAMS::variableDef *energy_ion=nullptr;
-        SAMS::variableDef *vx=nullptr;
-        SAMS::variableDef *vy=nullptr;
-        SAMS::variableDef *vz=nullptr;
-        SAMS::variableDef *vx1=nullptr;
-        SAMS::variableDef *vy1=nullptr;
-        SAMS::variableDef *vz1=nullptr;
-        SAMS::variableDef *bx=nullptr;
-        SAMS::variableDef *by=nullptr;
-        SAMS::variableDef *bz=nullptr;
-        SAMS::variableDef *dm=nullptr;*/
 
     public:
 
@@ -360,7 +349,8 @@ namespace LARE
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */
-        constexpr static std::string_view name = "LARE3D";
+        inline static constexpr auto nameType = SAMS::constexprName("LARE3D") + T_EOS::name;
+        constexpr static std::string_view name = nameType;
 
         /**
          * Lare is a core simulation
@@ -571,5 +561,10 @@ namespace LARE
         void energy_correction(simulationData &data);
     };
 }
+
+//Use an X macro to instantiate the LARE3D template for all EOS types that use density and energy as inputs. This allows us to easily add new EOS types in the future by simply adding them to the EOS_DENSITY_ENERGY macro in eos.h without having to modify this file.
+#define EOS_DEF(value) template class LARE::LARE3D<value>;
+EOS_DENSITY_ENERGY
+#undef EOS_DEF
 
 #endif // SHARED_DATA_KOKKOS_H

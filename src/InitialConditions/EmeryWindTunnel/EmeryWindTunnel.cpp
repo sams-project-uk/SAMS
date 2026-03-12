@@ -6,7 +6,8 @@ namespace examples
         /**
          * Attach peridoic boundary conditions in Z
          */
-        void EmeryWindTunnel::setZbcs( SAMS::variableDef &varDef)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setZbcs( SAMS::variableDef &varDef)
         {
             varDef.addBoundaryCondition(2, SAMS::simplePeriodicBC<SAMS::T_dataType, 3>(varDef));
         }
@@ -14,7 +15,8 @@ namespace examples
         /**
          * Set inflow X boundary conditions, zero gradient outflow X boundary conditions
          */
-        void EmeryWindTunnel::setInflowXbcs( SAMS::variableDef &varDef, SAMS::T_dataType clampValue)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setInflowXbcs( SAMS::variableDef &varDef, SAMS::T_dataType clampValue)
         {
             //Lower X boundary is just clamped to the inflow value
             varDef.addBoundaryCondition(0, SAMS::domain::edges::lower, SAMS::simpleClamp<SAMS::T_dataType, 3>(varDef, clampValue));
@@ -26,7 +28,8 @@ namespace examples
         /**
          * Set zero gradient X boundary conditions
          */
-        void EmeryWindTunnel::setZeroGradientXbcs( SAMS::variableDef &varDef)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setZeroGradientXbcs( SAMS::variableDef &varDef)
         {
             //Both X boundaries are zero gradient
             varDef.addBoundaryCondition(0, SAMS::simpleZeroGradientBC<SAMS::T_dataType, 3>(varDef));
@@ -35,7 +38,8 @@ namespace examples
         /**
          * Set Y mirror boundary conditions
          */
-        void EmeryWindTunnel::setMirrorYbcs( SAMS::variableDef &varDef)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setMirrorYbcs( SAMS::variableDef &varDef)
         {
             varDef.addBoundaryCondition(1, SAMS::simpleMirrorBC<SAMS::T_dataType, 3>(varDef));
         }
@@ -43,7 +47,8 @@ namespace examples
         /**
          * Set zero gradient Y boundary conditions
          */
-        void EmeryWindTunnel::setZeroGradientYbcs( SAMS::variableDef &varDef)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setZeroGradientYbcs( SAMS::variableDef &varDef)
         {
             varDef.addBoundaryCondition(1, SAMS::simpleZeroGradientBC<SAMS::T_dataType, 3>(varDef));
         }
@@ -51,7 +56,8 @@ namespace examples
         /**
          * Set scalar boundary conditions
          */
-        void EmeryWindTunnel::setScalarBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setScalarBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue)
         {
             //Simple clamped scalars are y mirror, Z periodic, xMin clamped to inflow value, xMax zero gradient
             auto &varDef = harness.variableRegistry.getVariable(varName);
@@ -63,7 +69,8 @@ namespace examples
         /**
          * Set scalar boundary conditions
          */
-        void EmeryWindTunnel::setScalarBcs(std::string varName, SAMS::harness &harness)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setScalarBcs(std::string varName, SAMS::harness &harness)
         {
             //Simple clamped scalars are y mirror, Z periodic, xMin clamped to inflow value, xMax zero gradient
             auto &varDef = harness.variableRegistry.getVariable(varName);
@@ -76,7 +83,8 @@ namespace examples
         /**
          * Set y parallel vector boundary conditions (zero gradient in y, periodic in z, inflow clamped at xMin, zero gradient at xMax)
          */
-        void EmeryWindTunnel::setYParallelVectorBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setYParallelVectorBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue)
         {
             auto &varDef = harness.variableRegistry.getVariable(varName);
             setInflowXbcs(varDef, clampValue);
@@ -87,7 +95,8 @@ namespace examples
         /**
          * Set y parallel vector boundary conditions (zero gradient in y, periodic in z, inflow clamped at xMin, zero gradient at xMax)
          */
-        void EmeryWindTunnel::setYParallelVectorBcs(std::string varName, SAMS::harness &harness)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setYParallelVectorBcs(std::string varName, SAMS::harness &harness)
         {
             auto &varDef = harness.variableRegistry.getVariable(varName);
             setZeroGradientXbcs(varDef);
@@ -102,7 +111,8 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void EmeryWindTunnel::controlVariables(LARE::LARE3D::simulationData &data, emeryParams &problemParams)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams)
         {
 
             data.t_end = 3.6; // End time of the simulation
@@ -154,7 +164,8 @@ namespace examples
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void EmeryWindTunnel::setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data) 
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data) 
         {
             auto &axisReg = harness.axisRegistry;
             //Just hard code the domain for the Sod Shock Tube
@@ -167,7 +178,8 @@ namespace examples
          * Set boundary conditions for the simulation
          * @param harness SAMS harness
          */
-        void EmeryWindTunnel::setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D::simulationData &data, emeryParams &problemParams)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams)
         {
             SAMS::T_dataType pressure = problemParams.ambPressure;
             SAMS::T_dataType density = problemParams.density;
@@ -196,7 +208,8 @@ namespace examples
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void EmeryWindTunnel::initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data, emeryParams &problemParams)
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::initialConditions(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams)
         {
             pw::portableArray<SAMS::T_dataType, 3> rho;
             pw::portableArray<SAMS::T_dataType, 3> energy_electron, energy_ion;
@@ -252,7 +265,8 @@ namespace examples
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
         }
 
-        void EmeryWindTunnel::startOfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams){
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::startOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams){
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -272,7 +286,8 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-        void EmeryWindTunnel::halfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams){
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::halfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams){
              pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -292,7 +307,8 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-        void EmeryWindTunnel::endOfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams){
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::endOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams){
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -319,7 +335,8 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void EmeryWindTunnel::queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
             //End at correct time for Sod Shock Tube (ends at t=0.2)
             if (tData.time >= data.t_end){
                 terminate |= true;
@@ -333,7 +350,8 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void EmeryWindTunnel::queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
             static double nextOutputTime = data.dt_snapshots;
             if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
                 shouldOutput |= true;

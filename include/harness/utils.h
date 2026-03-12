@@ -7,6 +7,32 @@
 
 namespace SAMS{
 
+    /**
+     * Wrapper around the idea of a constexpr string. We use it for composable names
+     */
+    template <std::size_t N>
+    struct constexprName {
+        std::array<char, N> data;
+        constexpr constexprName(const char (&s)[N]) {
+            for (std::size_t i = 0; i < N; ++i) data[i] = s[i];
+        }
+        // ...added constructor to accept array results from operator+...
+        constexpr constexprName(const std::array<char, N> &a) : data(a) {}
+        constexpr std::size_t size() const noexcept { return N - 1; }
+        // constexpr conversion operator — works on constexpr instances
+        constexpr operator std::string_view() const noexcept { return {data.data(), size()}; }
+    };
+
+    /**
+     * Addition operator for constexprName to allow concatenation of names at compile time.
+     */
+    template <std::size_t N, std::size_t M>
+    constexpr auto operator+(const constexprName<N>& a, const constexprName<M>& b) {
+        std::array<char, N + M - 1> out{};
+        for (std::size_t i = 0; i < N - 1; ++i) out[i] = a.data[i];
+        for (std::size_t j = 0; j < M; ++j)     out[N - 1 + j] = b.data[j]; // copy b including '\0'
+        return constexprName<N + M - 1>(out);
+    }
 
     //Utility class to find if a class has a binary operator defined
     //Operator should be something like std::plus<>, std::minus<>, std::multiplies<>, std::divides<>

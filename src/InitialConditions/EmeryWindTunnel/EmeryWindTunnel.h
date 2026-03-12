@@ -16,6 +16,7 @@ namespace examples
     /**
      * Initial conditions, boundary conditions and domain setup for the Emery Wind Tunnel problem
      */
+    template<typename T_EOS = LARE::idealGas>
     class EmeryWindTunnel
     {
     public:
@@ -39,12 +40,13 @@ namespace examples
         void setYParallelVectorBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue);
         void setYParallelVectorBcs(std::string varName, SAMS::harness &harness);
 
+        inline static constexpr auto nameType = SAMS::constexprName("EmeryWindTunnel") + T_EOS::name;        
 
     public:
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */
-        constexpr static std::string_view name = "EmeryWindTunnel";
+        constexpr static std::string_view name = nameType;
 
         /**
          * Initial conditions should not be timed
@@ -59,27 +61,27 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void controlVariables(LARE::LARE3D::simulationData &data, emeryParams &problemParams);
+        void controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
 
         /**
          * Set up the simulation domain
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data);
+        void setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data);
 
         /**
          * Set boundary conditions for the simulation
          * @param harness SAMS harness
          */
-        void setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D::simulationData &data, emeryParams &problemParams);
+        void setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
 
         /**
          * Initialize the Sod Shock Tube initial conditions
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data, emeryParams &problemParams);
+        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
 
        /**
          * Check whether to terminate the simulation
@@ -88,7 +90,7 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData);
+        void queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
 
         /**
          * Check whether to output data to disk
@@ -97,28 +99,33 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData);
+        void queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
 
         /**
          * Execute the first half of the timestep for the Emery Wind Tunnel problem
          * This is needed since emery has to clamp the velocity in the step to zero
          * @param data LARE3D simulation data
          */
-        void startOfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams);
+        void startOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
 
         /**
          * Execute the second half of the timestep for the Emery Wind Tunnel problem
          * This is needed since emery has to clamp the velocity in the step to zero
          * @param data LARE3D simulation data
          */
-        void halfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams);
+        void halfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
 
         /**
          * Execute the end of the timestep for the Emery Wind Tunnel problem
          * This is needed since emery has to clamp the velocity in the step to zero
          * @param data LARE3D simulation data
          */
-        void endOfTimestep(LARE::LARE3D::simulationData &data, emeryParams &problemParams);
+        void endOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
     };
+
+    #define EOS_DEF(value) template class EmeryWindTunnel<value>;
+    EOS_DENSITY_ENERGY
+    #undef EOS_DEF
+
 }
 #endif // EMERYWINDTUNNEL_H

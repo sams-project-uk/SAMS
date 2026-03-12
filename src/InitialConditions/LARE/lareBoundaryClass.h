@@ -7,16 +7,17 @@
 /**
  * Simple class to implement the old LARE3D style boundary conditions
  */
+template<typename T_EOS>
 class LAREBoundaryConditions : public SAMS::boundaryConditions
 {
     public:
 
-    void(*fn)(LARE::LARE3D::simulationData &, SAMS::timeState &, int, SAMS::domain::edges) = nullptr;
-    LARE::LARE3D::simulationData &data;
+    void(*fn)(typename LARE::LARE3D<T_EOS>::simulationData &, SAMS::timeState &, int, SAMS::domain::edges) = nullptr;
+    typename LARE::LARE3D<T_EOS>::simulationData &data;
     SAMS::timeState &time;
     
-    LAREBoundaryConditions(void(*function)(LARE::LARE3D::simulationData &, SAMS::timeState &, int , SAMS::domain::edges),
-                           LARE::LARE3D::simulationData &simData, SAMS::timeState &timeStateRef)
+    LAREBoundaryConditions(void(*function)(typename LARE::LARE3D<T_EOS>::simulationData &, SAMS::timeState &, int , SAMS::domain::edges),
+                           LARE::LARE3D<T_EOS>::simulationData &simData, SAMS::timeState &timeStateRef)
         : fn(function), data(simData), time(timeStateRef)
     {
     }
