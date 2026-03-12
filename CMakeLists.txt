@@ -76,12 +76,12 @@ endif()
 if(MPI)
   find_package(MPI REQUIRED)
   message(STATUS "Enabling MPI support")
-  #set(CMAKE_CXX_COMPILER "mpicxx" CACHE FILEPATH "MPI C++ compiler" FORCE)
+  ##set(CMAKE_CXX_COMPILER "mpicxx" CACHE FILEPATH "MPI C++ compiler")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_MPI")
 
   # If also requesting CUDA/Kokkos CUDA, make mpicxx the CUDA host compiler so nvcc/nvcc_wrapper and Kokkos use it
   if(KOKKOS_CUDA OR NATIVE_CUDA)
-    #set(CMAKE_CUDA_HOST_COMPILER "mpicxx" CACHE FILEPATH "CUDA host C++ compiler" FORCE)
+##    set(CMAKE_CUDA_HOST_COMPILER "mpicxx" CACHE FILEPATH "CUDA host C++ compiler")
   endif()
 endif()
 
