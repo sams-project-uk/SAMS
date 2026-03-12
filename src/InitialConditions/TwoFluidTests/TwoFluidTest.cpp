@@ -234,6 +234,8 @@ namespace examples
                 varRegistry.fillPPArray("rho_n", rho_n);
                 varRegistry.fillPPArray("energy_neutral", energy_neutral);
                 
+                LARE::T_dataType xi_n=0.9;
+                
                 pw::applyKernel(
                     LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
@@ -241,21 +243,21 @@ namespace examples
                         SAMS::T_dataType pressure_n;
                         if (xc(ix) < 0.5)
                         {
-                            rho(ix, iy, iz) = 1.0;
-                            pressure = 1.0;
+                            rho(ix, iy, iz) = 1.0*(1.0-xi_n);
+                            pressure = 1.0*(1.0-xi_n);
                             bx(ix, iy, iz)=0.75;
                             by(ix, iy, iz)=1.0;
-                            rho_n(ix, iy, iz) = 1.0;
-                            pressure_n = 1.0;
+                            rho_n(ix, iy, iz) = 1.0*xi_n;
+                            pressure_n = 1.0*xi_n;
                         }
                         else
                         {
-                            rho(ix, iy, iz) = 0.125;
-                            pressure = 0.1;
+                            rho(ix, iy, iz) = 0.125*(1.0-xi_n);
+                            pressure = 0.1*(1.0-xi_n);
                             bx(ix, iy, iz)=0.75;
                             by(ix, iy, iz)=-1.0;
-                            rho_n(ix, iy, iz) = 0.125;
-                            pressure_n = 0.1;
+                            rho_n(ix, iy, iz) = 0.125*xi_n;
+                            pressure_n = 0.1*xi_n;
                         }
                         //Specific internal energy
                         energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;

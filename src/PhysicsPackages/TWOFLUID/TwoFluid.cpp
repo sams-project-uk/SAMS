@@ -50,7 +50,8 @@ namespace TWOFLUID
     */
     void PIP::defaultValues(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral){
         SAMS::cout << "Setting default values" << std::endl;
-        dataNeutral.alpha0=1000.0;
+        data.alpha0=10.0;
+        dataNeutral.alpha0=data.alpha0;
         dataNeutral.is_neutral=true;
         SAMS::cout << "dataNeutral=" << dataNeutral.is_neutral << std::endl;
         SAMS::cout << "data=" << data.is_neutral << std::endl;
@@ -237,7 +238,7 @@ namespace TWOFLUID
                 data.energy_ion(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy(ix,iy,iz);
                 //data.energy_electron(ix,iy,iz)+=0.5*data.dt*plasma_source.source_electron_energy(ix,iy,iz);
                 dataNeutral.energy_neutral(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy_n(ix,iy,iz);                 
-            }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+            }, Range(-1,data.nx), Range(-1,data.ny), Range(-1,data.nz));
         }
         
     };
@@ -308,10 +309,6 @@ void get_collisional_source_terms(LARE::simulationData &data, LARE_neutral::simu
     using Range = portableWrapper::Range;
     portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
         //printf("getting source terms \n");    
-        //Get Temperatures
-        LARE::T_dataType temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
-        LARE::T_dataType temperature_electron = data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
-        LARE::T_dataType temperature_neutral = data.gas_gamma*dataNeutral.energy_neutral(ix,iy,iz)*(data.gas_gamma-1.0);
         
         //T_dataType ac;
         //get_ac(data.alpha0,temperature_ion,temperature_neutral);
@@ -357,7 +354,16 @@ void get_collisional_source_terms(LARE::simulationData &data, LARE_neutral::simu
         
         plasma_source.source_v_z(ix,iy,iz)+=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
         plasma_source.source_v_z_n(ix,iy,iz)-=ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
+        }, Range(-1,data.nx), Range(-1,data.ny), Range(-1,data.nz));
         
+        
+        using Range = portableWrapper::Range;
+    portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
+    
+        //Get Temperatures
+        LARE::T_dataType temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
+        LARE::T_dataType temperature_electron = data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
+        LARE::T_dataType temperature_neutral = data.gas_gamma*dataNeutral.energy_neutral(ix,iy,iz)*(data.gas_gamma-1.0);
         //printf("getting vx at centre \n");
         //Get velocity at cell centre
         LARE::T_dataType vx_centre=(data.vx(ix,iy,iz)+
