@@ -37,15 +37,15 @@ namespace examples
             dataNeutral.t_end = data.t_end;
             dataNeutral.dt_snapshots = data.dt_snapshots;
 
-            data.nx = 1024;
+            data.nx = 512;
             data.ny = 2;
             data.nz = 2;
             dataNeutral.nx = data.nx;
             dataNeutral.ny = data.ny;
             dataNeutral.nz = data.nz;
 
-            data.x_min = 0.0;
-            data.x_max = 1.0;
+            data.x_min = -0.5;
+            data.x_max = 1.5;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;
@@ -235,6 +235,9 @@ namespace examples
                 varRegistry.fillPPArray("energy_neutral", energy_neutral);
                 
                 LARE::T_dataType xi_n=0.9;
+                LARE::T_dataType xi_p=1.0-xi_n;
+                LARE::T_dataType f_p_p=2.0*xi_p/(xi_n+2.0*xi_p);
+                LARE::T_dataType f_p_n=xi_n/(xi_n+2.0*xi_p);
                 
                 pw::applyKernel(
                     LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
@@ -244,20 +247,20 @@ namespace examples
                         if (xc(ix) < 0.5)
                         {
                             rho(ix, iy, iz) = 1.0*(1.0-xi_n);
-                            pressure = 1.0*(1.0-xi_n);
+                            pressure = 1.0*f_p_p;
                             bx(ix, iy, iz)=0.75;
                             by(ix, iy, iz)=1.0;
                             rho_n(ix, iy, iz) = 1.0*xi_n;
-                            pressure_n = 1.0*xi_n;
+                            pressure_n = 1.0*f_p_n;
                         }
                         else
                         {
                             rho(ix, iy, iz) = 0.125*(1.0-xi_n);
-                            pressure = 0.1*(1.0-xi_n);
+                            pressure = 0.1*f_p_p;
                             bx(ix, iy, iz)=0.75;
                             by(ix, iy, iz)=-1.0;
                             rho_n(ix, iy, iz) = 0.125*xi_n;
-                            pressure_n = 0.1*xi_n;
+                            pressure_n = 0.1*f_p_n;
                         }
                         //Specific internal energy
                         energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;

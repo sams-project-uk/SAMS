@@ -50,7 +50,7 @@ namespace TWOFLUID
     */
     void PIP::defaultValues(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral){
         SAMS::cout << "Setting default values" << std::endl;
-        data.alpha0=10.0;
+        data.alpha0=1000.0;
         dataNeutral.alpha0=data.alpha0;
         dataNeutral.is_neutral=true;
         SAMS::cout << "dataNeutral=" << dataNeutral.is_neutral << std::endl;
@@ -128,41 +128,11 @@ namespace TWOFLUID
         varRegistry.fillPPArray("source_vz_n", plasma_source.source_v_z_n);
         pw::assign(plasma_source.source_v_z_n, 0.0);
         
-        /*SourceManager.allocate(plasma_source.ac, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_mass, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_v_x, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_v_y, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_v_z, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_energy, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_electron_energy, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_mass_n, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_v_x_n, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_v_y_n, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_v_z_n, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        SourceManager.allocate(plasma_source.source_energy_n, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-        
-        portableWrapper::assign(plasma_source.source_mass,0.0);
-        portableWrapper::assign(plasma_source.source_v_x,0.0);
-        portableWrapper::assign(plasma_source.source_v_y,0.0);
-        portableWrapper::assign(plasma_source.source_v_z,0.0);
-        portableWrapper::assign(plasma_source.source_energy,0.0);
-        portableWrapper::assign(plasma_source.source_electron_energy,0.0);
-        portableWrapper::assign(plasma_source.source_mass_n,0.0);
-        portableWrapper::assign(plasma_source.source_v_x_n,0.0);
-        portableWrapper::assign(plasma_source.source_v_y_n,0.0);
-        portableWrapper::assign(plasma_source.source_v_z_n,0.0);
-        portableWrapper::assign(plasma_source.source_energy_n,0.0);
-        portableWrapper::assign(plasma_source.ac,0.0);
-        */
     }
 ////////////////////////////////////////////////////////////////////////////////////////
     void PIP::two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
 
         two_fluid_properties two_fluid_flags; //Move to source structure
-        
-        //Get collisional coefficient
-        //PIP::get_ac(data,dataNeutral,plasma_source); //Maybe already calcuated?
-        
         
         //Get the ionisation rates
         //if (two_fluid_flags.ion_rec_empirical){        
@@ -173,52 +143,14 @@ namespace TWOFLUID
         //}
         
         //Calculate the source terms for the two-fluid interactions
-        //printf("getting source terms \n");
         get_collisional_source_terms(data,dataNeutral,plasma_source);
         
         //Calculate the source terms for Ionisation/recombination
         //if (two_fluid_flags.ion_rec_empirical) get_ion_rec_source_terms(data,dataNeutral,plasma_source);
         
-        
-        // Make sure the timestep is the same in both species NEEDS MOVING ELSEWHERE
-        //Set dt to be the minimum of the neutral and plasma times
-        /*if (first_step){        
-            //Set the timestep for the collisions
-            set_dt_collisional(data, dataNeutral, plasma_ir_source);
-            
-            //Set the ionisation/recombination timestep
-            if (data.ion_rec_empirical) set_dt_ion_rec(data,dataNeutral);
-            
-            printf("dt (plasma, neutral, two-fluid)=%f %f %f \n",data.dt,dataNeutral.dt,data.two_fluid_timestep);
-            
-            data.dt=std::min({dataNeutral.dt,data.dt,data.two_fluid_timestep});
-            dataNeutral.dt=data.dt;
-        }
-        */
-        //printf("entering loop \n");
         if (two_fluid_flags.collisions){
             using Range = portableWrapper::Range;
             portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
-             //printf("%i,%i,%i \n",ix,iy,iz);
-             //printf("rho %f \n",data.rho(ix,iy,iz));
-             //printf("rho %f \n",dataNeutral.rho(ix,iy,iz));
-             //printf("dt %f \n",data.dt);
-             //printf("mass_source %f \n",plasma_source.source_mass(ix,iy,iz));
-             //printf("mass_source_n %f \n",plasma_source.source_mass_n(ix,iy,iz));
-             //printf("source_vx %f \n",plasma_source.source_v_x(ix,iy,iz));
-             //printf("source_vx_n %f \n",plasma_source.source_v_x_n(ix,iy,iz));
-             //printf("source_vy %f \n",plasma_source.source_v_y(ix,iy,iz));
-             //printf("source_vy_n %f \n",plasma_source.source_v_y_n(ix,iy,iz));
-             //printf("source_vz %f \n",plasma_source.source_v_z(ix,iy,iz));
-             //printf("source_vz_n %f \n",plasma_source.source_v_z_n(ix,iy,iz));
-                //Get Temperatures
-                //T_dataType temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
-                //T_dataType temperature_electron = data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
-                //T_dataType temperature_neutral = data.gas_gamma*dataNeutral.energy_neutral(ix,iy,iz)*(data.gas_gamma-1.0);
-                
-                //T_dataType ac;
-                //get_ac(data.alpha0,temperature_ion,temperature_neutral);
-                
                 //Note that the factor of 0.5 in these is due to Strang splitting
                 //Mass exchange terms
                 data.rho(ix,iy,iz)+=0.5*data.dt*plasma_source.source_mass(ix,iy,iz);
