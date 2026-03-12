@@ -13,14 +13,14 @@
    limitations under the License.
 */
 #include "shared_data.h"
-#include "remapData.h"
 
 namespace LARE
 {
 
     namespace pw = portableWrapper;
 
-    void LARE3D::eulerian_remap(simulationData &data, remapData &remap_data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         int case_test;

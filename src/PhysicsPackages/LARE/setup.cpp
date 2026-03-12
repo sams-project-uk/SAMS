@@ -24,7 +24,8 @@ namespace LARE
     /**
      * Register LARE's axes with the axis registry.
      */
-    void LARE3D::registerAxes(SAMS::harness &harness)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::registerAxes(SAMS::harness &harness)
     {
         auto &axisReg = harness.axisRegistry;
         axisReg.registerAxis("X", SAMS::MPIAxis(0));
@@ -35,7 +36,8 @@ namespace LARE
     /**
      * Register variables with the portable array manager.
      */
-    void LARE3D::registerVariables(SAMS::harness &harness)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::registerVariables(SAMS::harness &harness)
     {
 
         auto &varRegistry = harness.variableRegistry;
@@ -73,7 +75,8 @@ namespace LARE
      * Allocate the data arrays for the LARE3D.
      * This allocates the permanent state arrays that are used throughout the LARE3D.
      */
-    void LARE3D::allocate(SAMS::harness &harness, simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::allocate(SAMS::harness &harness, simulationData &data)
     {
         T_sizeType nx, ny, nz;
 
@@ -252,12 +255,15 @@ namespace LARE
         }
 
         data.mpiType = SAMS::gettypeRegistry().getMPIType<T_dataType>();
+
+        data.eos.setGamma(data.gas_gamma);
     }
 
     /**
      * Setup the basic LARE3D parameters like grid points etc.
      */
-    void LARE3D::grid(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::grid(simulationData &data)
     {
 
         pw::portableArrayManager localManager;

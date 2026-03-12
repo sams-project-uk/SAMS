@@ -6,7 +6,8 @@ namespace examples
         /**
          * Attach peridoic boundary conditions in Z
          */
-        void KarmanVortex::setZbcs( SAMS::variableDef &varDef)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::setZbcs( SAMS::variableDef &varDef)
         {
             varDef.addBoundaryCondition(2, SAMS::simplePeriodicBC<SAMS::T_dataType, 3>(varDef));
         }
@@ -14,7 +15,8 @@ namespace examples
         /**
          * Periodic in y
          */
-        void KarmanVortex::setYbcs( SAMS::variableDef &varDef)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::setYbcs( SAMS::variableDef &varDef)
         {
             varDef.addBoundaryCondition(1, SAMS::simplePeriodicBC<SAMS::T_dataType, 3>(varDef));
         }
@@ -22,7 +24,8 @@ namespace examples
         /**
          * Set inflow X boundary conditions, zero gradient outflow X boundary conditions
          */
-        void KarmanVortex::setInflowXbcs( SAMS::variableDef &varDef, SAMS::T_dataType clampValue)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::setInflowXbcs( SAMS::variableDef &varDef, SAMS::T_dataType clampValue)
         {
             //Lower X boundary is just clamped to the inflow value
             varDef.addBoundaryCondition(0, SAMS::domain::edges::lower, SAMS::simpleClamp<SAMS::T_dataType, 3>(varDef, clampValue));
@@ -34,13 +37,15 @@ namespace examples
         /**
          * Set zero gradient X boundary conditions
          */
-        void KarmanVortex::setZeroGradientXbcs( SAMS::variableDef &varDef)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::setZeroGradientXbcs( SAMS::variableDef &varDef)
         {
             //Both X boundaries are zero gradient
             varDef.addBoundaryCondition(0, SAMS::simpleZeroGradientBC<SAMS::T_dataType, 3>(varDef));
         }
 
-        void KarmanVortex::setBCS(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::setBCS(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue)
         {
             auto &varDef = harness.variableRegistry.getVariable(varName);
             setZbcs(varDef);
@@ -48,7 +53,8 @@ namespace examples
             setInflowXbcs(varDef, clampValue);
         }
 
-        void KarmanVortex::setBCS(std::string varName, SAMS::harness &harness)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::setBCS(std::string varName, SAMS::harness &harness)
         {
             auto &varDef = harness.variableRegistry.getVariable(varName);
             setZbcs(varDef);
@@ -62,7 +68,8 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void KarmanVortex::controlVariables(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams)
         {
 
             data.t_end = 20; // End time of the simulation
@@ -118,7 +125,8 @@ namespace examples
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void KarmanVortex::setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data) 
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data) 
         {
             auto &axisReg = harness.axisRegistry;
             //Just hard code the domain for the Sod Shock Tube
@@ -131,7 +139,8 @@ namespace examples
          * Set boundary conditions for the simulation
          * @param harness SAMS harness
          */
-        void KarmanVortex::setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams)
         {
             SAMS::T_dataType pressure = problemParams.ambPressure;
             SAMS::T_dataType density = problemParams.density;
@@ -160,7 +169,8 @@ namespace examples
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void KarmanVortex::initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams)
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::initialConditions(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams)
         {
             pw::portableArray<SAMS::T_dataType, 3> rho;
             pw::portableArray<SAMS::T_dataType, 3> energy_electron, energy_ion;
@@ -221,7 +231,8 @@ namespace examples
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
         }
 
-        void KarmanVortex::startOfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams){
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::startOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams){
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -236,7 +247,8 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-        void KarmanVortex::halfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams){
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::halfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams){
              pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -250,7 +262,8 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-        void KarmanVortex::endOfTimestep(LARE::LARE3D::simulationData &data, KarmanVortexParams &problemParams){
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::endOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams){
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -271,7 +284,8 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void KarmanVortex::queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
             //End at correct time for Sod Shock Tube (ends at t=0.2)
             if (tData.time >= data.t_end){
                 terminate |= true;
@@ -285,7 +299,8 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void KarmanVortex::queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
+        template<typename T_EOS>
+        void KarmanVortex<T_EOS>::queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
             static double nextOutputTime = data.dt_snapshots;
             if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
                 shouldOutput |= true;

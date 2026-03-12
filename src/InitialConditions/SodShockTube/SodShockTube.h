@@ -14,6 +14,7 @@ namespace examples
     /**
      * Initial conditions, boundary conditions and domain setup for the Sod Shock Tube problem
      */
+    template<typename T_EOS = LARE::idealGas>
     class SodShockTube
     {
     private:
@@ -25,11 +26,13 @@ namespace examples
          */
         void attachBoundaryConditions(const std::string& varName, SAMS::harness &harness);
 
+        inline static constexpr auto nameType = SAMS::constexprName("SodShockTube") + T_EOS::name;
+
     public:
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */
-        constexpr static std::string_view name = "SodShockTube";
+        constexpr static std::string_view name = nameType;
 
         /**
          * Initial conditions should not be timed
@@ -42,14 +45,14 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void controlVariables(LARE::LARE3D::simulationData &data);
+        void controlVariables(LARE::LARE3D<T_EOS>::simulationData &data);
 
         /**
          * Set up the simulation domain
          * @param harness SAMS harness
          * @param data LARE3D simulation data
          */
-        void setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data);
+        void setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data);
 
         /**
          * Set boundary conditions for the simulation
@@ -62,7 +65,7 @@ namespace examples
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data);
+        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data);
 
        /**
          * Check whether to terminate the simulation
@@ -72,7 +75,7 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData);
+        void queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
 
         /**
          * Check whether to output data to disk
@@ -82,8 +85,13 @@ namespace examples
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData);
+        void queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
 
     };
+
+    #define EOS_DEF(value) template class SodShockTube<value>;
+    EOS_DENSITY_ENERGY
+    #undef EOS_DEF
+
 }
 #endif // SODSHOCKTUBE_H

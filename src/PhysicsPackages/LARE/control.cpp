@@ -4,7 +4,8 @@
 
 namespace LARE{
 
-    void LARE3D::defaultValues(simulationData &data){
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::defaultValues(simulationData &data){
 
         data.dt_multiplier = 0.8; // Default multiplier for time step
 
@@ -30,7 +31,8 @@ namespace LARE{
         data.time = 0.0;
     }
 
- void LARE3D::defaultVariables([[maybe_unused]] simulationData &data)
+template<typename T_EOS>
+ void LARE3D<T_EOS>::defaultVariables([[maybe_unused]] simulationData &data)
   {
 
     // Set default variable values

@@ -9,7 +9,8 @@ namespace examples
      * @param varName Name of the variable to attach boundary conditions to
      * @param harness SAMS harness
      */
-    void OrszagTang3D::attachBoundaryConditions(const std::string &varName, SAMS::harness &harness)
+    template<typename T_EOS>
+    void OrszagTang3D<T_EOS>::attachBoundaryConditions(const std::string &varName, SAMS::harness &harness)
     {
         SAMS::variableDef &varDef = harness.variableRegistry.getVariable(varName);
         // Periodic boundaries in all directions
@@ -25,7 +26,8 @@ namespace examples
      * when we have multiple core solvers.
      * @param data LARE3D simulation data
      */
-    void OrszagTang3D::controlVariables(LARE::LARE3D::simulationData &data)
+    template<typename T_EOS>
+    void OrszagTang3D<T_EOS>::controlVariables(typename LARE::LARE3D<T_EOS>::simulationData &data)
     {
 
         data.t_end = 3.0; // End time of the simulation
@@ -73,7 +75,8 @@ namespace examples
      * @param harness SAMS harness
      * @param data LARE3D simulation data
      */
-    void OrszagTang3D::setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data)
+    template<typename T_EOS>
+    void OrszagTang3D<T_EOS>::setDomain(SAMS::harness &harness, typename LARE::LARE3D<T_EOS>::simulationData &data)
     {
         auto &axisReg = harness.axisRegistry;
         // Just hard code the domain for the Sod Shock Tube
@@ -86,7 +89,8 @@ namespace examples
      * Set boundary conditions for the simulation
      * @param harness SAMS harness
      */
-    void OrszagTang3D::setBoundaryConditions(SAMS::harness &harness)
+    template<typename T_EOS>
+    void OrszagTang3D<T_EOS>::setBoundaryConditions(SAMS::harness &harness)
     {
         // Grab variables and set boundary condition functions
         attachBoundaryConditions("bx", harness);
@@ -109,7 +113,8 @@ namespace examples
      * @param harnessRef SAMS harness
      * @param data LARE3D simulation data
      */
-    void OrszagTang3D::initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data)
+    template<typename T_EOS>
+    void OrszagTang3D<T_EOS>::initialConditions(SAMS::harness &harnessRef, typename LARE::LARE3D<T_EOS>::simulationData &data)
     {
         pw::portableArray<SAMS::T_dataType, 3> rho;
         pw::portableArray<SAMS::T_dataType, 3> energy_electron, energy_ion;
@@ -164,7 +169,8 @@ namespace examples
      * This function checks whether the simulation should terminate based on LARE3D data.
      * It sets the terminate flag to true if the simulation should end.
      */
-    void OrszagTang3D::queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData)
+    template<typename T_EOS>
+    void OrszagTang3D<T_EOS>::queryTerminate(bool &terminate, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData)
     {
         // End at correct time for Sod Shock Tube (ends at t=0.2)
         if (tData.time >= data.t_end)
@@ -180,7 +186,8 @@ namespace examples
      * This function checks whether data should be output to disk based on LARE3D data.
      * It returns true if data should be output.
      */
-    void OrszagTang3D::queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData)
+    template<typename T_EOS>
+    void OrszagTang3D<T_EOS>::queryOutput(bool &shouldOutput, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData)
     {
             static double nextOutputTime = data.dt_snapshots;
             if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){

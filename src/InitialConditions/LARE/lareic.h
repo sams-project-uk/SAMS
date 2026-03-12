@@ -8,32 +8,36 @@
 
 namespace LARE{
 
+    template<typename T_EOS = LARE::idealGas>
     class LARE3DInitialConditions{
 
-        using bcFuncPtr = void(*)(LARE::LARE3D::simulationData &, SAMS::timeState &time, int, SAMS::domain::edges);
+        using bcFuncPtr = void(*)(typename LARE::LARE3D<T_EOS>::simulationData &, SAMS::timeState &time, int, SAMS::domain::edges);
 
         //Definitions for boundary condition functions
-        static void bx_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void by_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void bz_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void energy_ion_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void energy_electron_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void density_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void vx_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void vy_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void vz_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void remap_vx_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void remap_vy_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void remap_vz_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void dm_x_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void dm_y_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
-        static void dm_z_bcs(LARE::LARE3D::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void bx_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void by_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void bz_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void energy_ion_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void energy_electron_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void density_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void vx_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void vy_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void vz_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void remap_vx_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void remap_vy_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void remap_vz_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void dm_x_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void dm_y_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+        static void dm_z_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
+
+        inline static constexpr auto nameType = SAMS::constexprName("LARE3DInitialConditions") + T_EOS::name;
+
         public:
 
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */
-        constexpr static std::string_view name = "LARE3DInitialConditions";
+        constexpr static std::string_view name = nameType;
 
         /**
          * Initial conditions should not be timed
@@ -45,14 +49,14 @@ namespace LARE{
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void control_variables(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data);
+        void control_variables(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data);
 
         /**
          * Set the initial conditions for LARE3D
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void initial_conditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data);
+        void initial_conditions(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data);
 
         /**
          * Shim to match the SAMS runner control function style
@@ -60,7 +64,7 @@ namespace LARE{
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void controlVariables(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data){
+        void controlVariables(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data){
             control_variables(harnessRef, data);
         }
 
@@ -68,7 +72,7 @@ namespace LARE{
          * Set the initial conditions for LARE3D
          * @param data LARE3D simulation data
          */
-        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data){
+        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data){
             initial_conditions(harnessRef, data);
         }
 
@@ -79,9 +83,9 @@ namespace LARE{
          * @param harnessRef Reference to the SAMS harness
          * @param data LARE3D simulation data
          */
-        void setBoundary(const std::string& varName, bcFuncPtr bcFunc, SAMS::harness &harnessRef, LARE::LARE3D::simulationData &data, SAMS::timeState &timeStateRef){
+        void setBoundary(const std::string& varName, bcFuncPtr bcFunc, SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &timeStateRef){
             auto &varRegistry = harnessRef.variableRegistry;
-            std::shared_ptr<SAMS::boundaryConditions> bcPtr = std::make_shared<LAREBoundaryConditions>(LAREBoundaryConditions(bcFunc, data, timeStateRef));
+            std::shared_ptr<SAMS::boundaryConditions> bcPtr = std::make_shared<LAREBoundaryConditions<T_EOS>>(LAREBoundaryConditions<T_EOS>(bcFunc, data, timeStateRef));
 
             if (data.xbc_min != BCType::BC_EXTERNAL){
                 varRegistry.addBoundaryCondition(varName, 0, SAMS::domain::edges::lower, bcPtr);
@@ -110,7 +114,7 @@ namespace LARE{
          * @param harness Reference to the SAMS harness
          * @param data LARE3D simulation data
          */
-        void setDomain(SAMS::harness &harness, LARE::LARE3D::simulationData &data)
+        void setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data)
         {
             auto &axisReg = harness.axisRegistry;
             axisReg.setDomain("X", data.nx, data.x_min, data.x_max);
@@ -126,7 +130,7 @@ namespace LARE{
          * @param data LARE3D simulation data
          * @param timeStateRef Reference to the SAMS time state (used for time-dependent BCs)
          */
-        void setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D::simulationData &data, SAMS::timeState &timeStateRef)
+        void setBoundaryConditions(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &timeStateRef)
         {
             //Grab variables and set boundary condition functions
             setBoundary("bx", bx_bcs, harness, data, timeStateRef);
@@ -152,7 +156,7 @@ namespace LARE{
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void queryTerminate(bool &terminate, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
+        void queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
             if ((tData.step >= data.nsteps && data.nsteps >= 0) || (tData.time >= data.t_end)){
                 terminate |= true;
             }
@@ -165,7 +169,7 @@ namespace LARE{
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
-        void queryOutput(bool &shouldOutput, LARE::LARE3D::simulationData &data, SAMS::timeState &tData){
+        void queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
             return;
             if (data.dt_snapshots > 0){
                 if (tData.time >= (data.lastOutputTime + data.dt_snapshots)){
@@ -175,6 +179,10 @@ namespace LARE{
         }
 
     };
+
+    #define EOS_DEF(value) template class LARE3DInitialConditions<value>;
+    EOS_DENSITY_ENERGY
+    #undef EOS_DEF
 
 }//namespace LARE
 
