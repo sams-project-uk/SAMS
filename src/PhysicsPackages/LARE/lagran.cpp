@@ -153,7 +153,7 @@ namespace LARE
                         xbp, ybp, zbp);
 
         shock_viscosity(data);
-        controlFns.calculateTimestep();
+        //controlFns.calculateTimestep();
         if (data.resistiveMHD)
         {
             T_dataType dt_sub = data.dtr;
@@ -408,7 +408,7 @@ namespace LARE
         T_dataType length  = pw::min(dhx, dhy, dhz);
 
         T_dataType dt1  = length / (std::sqrt(c_visc2) + std::sqrt(cs2 + w1 + c_visc2));
-
+        //printf("%i %i %i %f \n", ix,iy,iz,dt1);
 
         T_dataType ax = 0.25 * data.dxab(ix,iy,iz);
         T_dataType ay = 0.25 * data.dyab(ix,iy,iz);

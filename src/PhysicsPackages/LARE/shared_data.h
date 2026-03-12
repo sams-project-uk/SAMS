@@ -438,6 +438,7 @@ namespace LARE
          */
         void calculateTimestep(SAMS::timeState &timeData, simulationData &data){
             set_dt(data);
+            //printf("Plasma timestep = %f \n",data.dt);
             timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
         }
 

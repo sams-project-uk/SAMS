@@ -32,6 +32,7 @@ namespace examples
         {
 
             data.t_end = 0.2;
+            //data.t_end = 0.0000001;
             data.dt_snapshots = data.t_end / 10;
             dataNeutral.t_end = data.t_end;
             dataNeutral.dt_snapshots = data.dt_snapshots;
@@ -78,6 +79,10 @@ namespace examples
             data.mf = 1.2;
             // Average mass of an ion in proton masses
             dataNeutral.mf = data.mf;
+            
+            //Run with normalised mu0
+            data.mu0 = 1.0;
+            dataNeutral.mu0=data.mu0;
 
             // Resistive MHD options
             data.resistiveMHD = false;
@@ -207,9 +212,9 @@ namespace examples
                 printf("Brio Wu Shock Tube \n");
                 
                 pw::portableArray<SAMS::T_dataType, 3> rho;
-                pw::portableArray<SAMS::T_dataType, 3> bx;
-                pw::portableArray<SAMS::T_dataType, 3> by;                
+                pw::portableArray<SAMS::T_dataType, 3> bx,by,bz;
                 pw::portableArray<SAMS::T_dataType, 3> energy_electron;
+                pw::portableArray<SAMS::T_dataType, 3> energy_ion;
                 pw::portableArray<SAMS::T_dataType, 3> rho_n;
                 pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
                 pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
@@ -223,8 +228,9 @@ namespace examples
                 varRegistry.fillPPArray("rho", rho);
                 varRegistry.fillPPArray("bx", bx);
                 varRegistry.fillPPArray("by", by);
+                varRegistry.fillPPArray("bz", bz);
                 varRegistry.fillPPArray("energy_electron", energy_electron);
-                varRegistry.fillPPArray("energy_ion", energy_electron);
+                varRegistry.fillPPArray("energy_ion", energy_ion);
                 varRegistry.fillPPArray("rho_n", rho_n);
                 varRegistry.fillPPArray("energy_neutral", energy_neutral);
                 
@@ -248,11 +254,12 @@ namespace examples
                             pressure = 0.1;
                             bx(ix, iy, iz)=0.75;
                             by(ix, iy, iz)=-1.0;
-                            rho_n(ix, iy, iz) = 1.0;
-                            pressure_n = 1.0;
+                            rho_n(ix, iy, iz) = 0.125;
+                            pressure_n = 0.1;
                         }
                         //Specific internal energy
                         energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                        energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
                         energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
                     },
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));

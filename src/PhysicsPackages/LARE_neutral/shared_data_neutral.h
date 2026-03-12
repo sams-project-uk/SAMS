@@ -437,6 +437,7 @@ namespace LARE_neutral
          */
         void calculateTimestep(SAMS::timeState &timeData, simulationData &data){
             set_dt(data);
+            //printf("Neutral timestep = %f \n",data.dt);
             timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
         }
 

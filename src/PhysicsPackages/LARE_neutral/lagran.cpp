@@ -113,9 +113,9 @@ namespace LARE_neutral
             T_indexType izm = iz - 1;
             T_indexType iym = iy - 1;
             T_indexType ixm = ix - 1;
-            data.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
-            data.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
-            data.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
+            data.bx1(ix, iy, iz) = 0.0;//0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
+            data.by1(ix, iy, iz) = 0.0;//0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
+            data.bz1(ix, iy, iz) = 0.0;//0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
 
             data.pressure(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_neutral(ix, iy, iz);
         },
@@ -150,7 +150,7 @@ namespace LARE_neutral
                         xbp, ybp, zbp);
 
         shock_viscosity(data);
-        controlFns.calculateTimestep();
+        //controlFns.calculateTimestep();
 
         this->predictor_step(data);
     }

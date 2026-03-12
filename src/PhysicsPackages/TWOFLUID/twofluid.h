@@ -31,6 +31,25 @@ namespace TWOFLUID
 {
     namespace pw = portableWrapper;
 
+    struct data_two_fluid_source
+    {
+        LARE::volumeArray source_mass; // mass source term
+        LARE::volumeArray source_v_x; // velocity source term
+        LARE::volumeArray source_v_y; // velocity source term
+        LARE::volumeArray source_v_z; // velocity source term
+        LARE::volumeArray source_energy; // energy source term
+        LARE::volumeArray source_electron_energy; // energy source term
+        
+        LARE::volumeArray source_mass_n; // mass source term
+        LARE::volumeArray source_v_x_n; // velocity source term
+        LARE::volumeArray source_v_y_n; // velocity source term
+        LARE::volumeArray source_v_z_n; // velocity source term
+        LARE::volumeArray source_energy_n; // energy source term
+        
+        LARE::volumeArray ac; //coupling coeficient
+        LARE::T_dataType two_fluid_timestep; //timestep 
+    };
+    
     class PIP
     {
         private:
@@ -41,16 +60,27 @@ namespace TWOFLUID
         
             static constexpr std::string_view name = "PIP";
             
-            using dataPack = SAMS::dataPacks::multiPack<LARE::simulationData, LARE::remapData, LARE_neutral::simulationData, LARE_neutral::remapData>;
+            using dataPack = SAMS::dataPacks::multiPack<LARE::simulationData, LARE::remapData, LARE_neutral::simulationData, LARE_neutral::remapData,data_two_fluid_source>;
             
             //pw::portableArrayManager& manager;
 
             /**
              * Initialize the simulation. Called by the runner at the start of the simulation.
              */
-            void initialize();
+            void initialize(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                //plasma_source_allocate(data,dataNeutral,plasma_source);
+            };
             //}
 
+
+            void allocate(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source,SAMS::harness &harness);
+            void registerVariables(SAMS::harness &harness);
+            
+            void defaultVariables(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source,SAMS::harness &harness){
+                allocate(data,dataNeutral,plasma_source,harness);
+            }
+            
+            
             /**
              * Register axes with the harness's axis registry.
              * Called by the runner before registering variables.
@@ -96,7 +126,9 @@ namespace TWOFLUID
              * This is the predictor step of the LARE3D timestep
              * @param data LARE3D simulation data
              */
-            void startOfTimestep(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, SAMS::controlFunctions &controlFns){
+            void startOfTimestep(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::controlFunctions &controlFns){
+                //get_ac(data,dataNeutral,plasma_source);
+                //set_dt_collisional(data,dataNeutral,plasma_source);
                 //two_fluid_source(data,dataNeutral);
                 //lagrangian_step(data, controlFns);
             };
@@ -121,7 +153,10 @@ namespace TWOFLUID
              * @param timeData SAMS timeState data
              * @param data LARE3D simulation data
              */
-            void calculateTimestep(SAMS::timeState &timeData, LARE_neutral::simulationData &dataNeutral){
+            void calculateTimestep(SAMS::timeState &timeData,LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                get_ac(data,dataNeutral,plasma_source);
+                set_dt_collisional(data,dataNeutral,plasma_source);
+                //printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
                 //set_dt(data);
                 //timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
             };
@@ -135,8 +170,25 @@ namespace TWOFLUID
                 //data.dt = timeData.dt;
             };
             
-            void two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral);
+            void halfSplitSourceStart(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                //printf("applying source \n");
+                two_fluid_source(data,dataNeutral,plasma_source);
+                //data.dt = timeData.dt;
+            };
+            
+            void halfSplitSourceEnd(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                //printf("applying source \n");
+                two_fluid_source(data,dataNeutral,plasma_source);
+                //data.dt = timeData.dt;
+            };
+            
+            void two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
 
+            void get_ac(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
+            
+            void set_dt_collisional(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
+            
+            void plasma_source_allocate(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
 
             //void allocate_neutral(SAMS::harness &harness, LARE::simulationData &data);
     };
