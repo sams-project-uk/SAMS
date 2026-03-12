@@ -164,7 +164,7 @@ namespace SAMS
             callCore_calculateTimestep();
             #ifdef USE_MPI
             SAMS::harness& h = std::get<harness&>(runnerData);
-            MPI_Allreduce(MPI_IN_PLACE, &tData.dt, 1, MPI_DOUBLE, MPI_MIN, h.MPIManager.getGlobalComm());
+            MPI_Allreduce(MPI_IN_PLACE, &tData.dt, 1, MPI_DOUBLE, MPI_MIN, h.MPIManager.getComm());
             #endif
             //Allow the simulations to gather the updated timestep
             callCore_getTimestep();
@@ -177,7 +177,7 @@ namespace SAMS
 #if defined(USE_MPI) && defined(ALLOW_RANK_INCONSISTENCY)
             SAMS::harness& h = std::get<harness&>(runnerData);
             int localTerm = terminate ? 1 : 0;
-            MPI_Allreduce(MPI_IN_PLACE, &localTerm, 1, MPI_INT, MPI_LOR, h.MPIManager.getGlobalComm());
+            MPI_Allreduce(MPI_IN_PLACE, &localTerm, 1, MPI_INT, MPI_LOR, h.MPIManager.getComm());
             terminate = (localTerm == 1);
 #endif
             return terminate;
@@ -508,9 +508,9 @@ namespace SAMS
             static SAMS::T_sizeType outputCount = 0;
             //Create writer
     #if defined(USE_HDF5)
-            HDF5File writer;
+            HDF5File writer(getHarness());
     #else
-            simpleFile writer;
+            simpleFile writer(getHarness());
     #endif
             //Convert step number to a 5-digit padded string
             std::stringstream ss;

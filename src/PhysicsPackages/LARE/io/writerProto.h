@@ -26,6 +26,8 @@
 #include <variant>
 #include <vector>
 
+#include "harness.h"
+
 enum class meshDataOrder{
 	dataFirst,
 	meshFirst,
@@ -188,6 +190,9 @@ class writer {
 	HASMEMBER(closeFileImpl);
 
 	friend T_core;
+
+	SAMS::harness &h;
+
 	private:
 
 	/**
@@ -463,7 +468,10 @@ class writer {
 	}	
 
 	protected:
-	writer(){}
+	writer(SAMS::harness &h) : h(h) {
+		registerStandardMeshTypes();
+		registerStandardDataTypes();
+	}
 
 	public:
 	~writer(){
