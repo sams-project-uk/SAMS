@@ -129,12 +129,12 @@ namespace LARE
         data.rho(ix,iy,iz) = (remap_data.rho1(ix,iy,iz) * data.cv1(ix,iy,iz) + data.dm(ix,iy,izm) - data.dm(ix,iy,iz)) / remap_data.cv2(ix,iy,iz); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
 
-        z_energy_flux<&simulationData::energy_electron>(data, remap_data);
+        /*z_energy_flux<&simulationData::energy_electron>(data, remap_data);
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izm = iz - 1;
         data.energy_electron(ix, iy, iz) = (data.energy_electron(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
-
+        */
         z_energy_flux<&simulationData::energy_ion>(data, remap_data);
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izm = iz - 1;

@@ -30,7 +30,7 @@ namespace LARE
         volumeArray alpha3;    // Alpha3 coefficient for magnetic field update
         volumeArray visc_heat; // Viscous heating
         volumeArray pressure;  // Pressure array
-        volumeArray p_e;       // Electron pressure
+        //volumeArray p_e;       // Electron pressure
         volumeArray p_i;       // Ion pressure
         volumeArray rho_v;     // Density at half timestep
         volumeArray cv_v;      // Control volume at half timestep
@@ -107,7 +107,7 @@ namespace LARE
         volumeArray byl = data.by;
         volumeArray bzl = data.bz;
         volumeArray cvl = data.cv;
-        volumeArray energy_el = data.energy_electron;
+        //volumeArray energy_el = data.energy_electron;
         volumeArray energy_il = data.energy_ion;
 
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -118,9 +118,10 @@ namespace LARE
             data.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
             data.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
 
-            data.p_e(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_el(ix, iy, iz);
+            //data.p_e(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_el(ix, iy, iz);
             data.p_i(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_il(ix, iy, iz);
-            data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
+            //data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
+            data.pressure(ix, iy, iz) = data.p_i(ix, iy, iz);
         },
                         data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
 
@@ -496,7 +497,7 @@ namespace LARE
             data.curlb(ix, iy, izm) + data.curlb(ixm, iy, izm) +
             data.curlb(ix, iym, izm) + data.curlb(ixm, iym, izm);
 
-        data.energy_electron(ix,iy,iz) += sum_curlb * data.dt/(8.0 * data.rho(ix,iy,iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+        data.energy_ion(ix,iy,iz) += sum_curlb * data.dt/(8.0 * data.rho(ix,iy,iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
         sim.energy_bcs();
 
@@ -603,13 +604,14 @@ namespace LARE
         // Predictor step for energy and pressure
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
             T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
-            T_dataType e1_e = data.energy_electron(ix, iy, iz) - data.p_e(ix, iy, iz) * dv / data.rho(ix, iy, iz);
+            //T_dataType e1_e = data.energy_electron(ix, iy, iz) - data.p_e(ix, iy, iz) * dv / data.rho(ix, iy, iz);
             T_dataType e1_i = data.energy_ion(ix, iy, iz) - data.p_i(ix, iy, iz) * dv / data.rho(ix, iy, iz);
             e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
 
-            data.p_e(ix, iy, iz) = e1_e * (data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.cv(ix, iy, iz) / data.cv1(ix, iy, iz);
+            //data.p_e(ix, iy, iz) = e1_e * (data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.cv(ix, iy, iz) / data.cv1(ix, iy, iz);
             data.p_i(ix, iy, iz) = e1_i * (data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.cv(ix, iy, iz) / data.cv1(ix, iy, iz);
-            data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
+            //data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
+            data.pressure(ix, iy, iz) = data.p_i(ix, iy, iz);
         },
                         Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
 
@@ -787,7 +789,7 @@ namespace LARE
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
             // Energy at end of Lagrangian step
-            data.energy_electron(ix, iy, iz) -= dv * data.p_e(ix, iy, iz) / data.rho(ix, iy, iz);
+            //data.energy_electron(ix, iy, iz) -= dv * data.p_e(ix, iy, iz) / data.rho(ix, iy, iz);
             data.energy_ion(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.p_i(ix, iy, iz)) / data.rho(ix, iy, iz);
 
             // Update density based on volume change

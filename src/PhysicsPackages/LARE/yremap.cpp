@@ -143,7 +143,7 @@ namespace LARE
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
 
-        y_energy_flux<&simulationData::energy_electron>(data, remap_data);
+        /*y_energy_flux<&simulationData::energy_electron>(data, remap_data);
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType iym = iy - 1;
@@ -155,7 +155,7 @@ namespace LARE
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 
         pw::fence();
-
+        */
         y_energy_flux<&simulationData::energy_ion>(data, remap_data);
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {

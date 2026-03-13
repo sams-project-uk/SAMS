@@ -263,8 +263,8 @@ namespace examples
                             pressure_n = 0.1*f_p_n;
                         }
                         //Specific internal energy
-                        energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
-                        energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                        //energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                        energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
                         energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
                     },
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));

@@ -33,7 +33,7 @@ namespace TWOFLUID
     
     struct two_fluid_properties
     {
-        bool collisions=true;
+        bool collisions=false;
         bool ion_rec_empirical=false;
         bool ion_rec_nlevel=false;
     };
