@@ -100,7 +100,7 @@ namespace examples
             // Remap kinetic energy correction
             dataNeutral.rke = data.rke;
             
-            data.shock_tube_problem="briowu";
+            data.shock_tube_problem="sod";
         }
 
         /**
@@ -170,6 +170,7 @@ namespace examples
                 pw::portableArray<SAMS::T_dataType, 3> rho_n;
                 pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
                 pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
+                pw::portableArray<SAMS::T_dataType, 3> bx,by,bz;
 
                 auto &axisRegistry = harnessRef.axisRegistry;
                 axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
@@ -179,8 +180,12 @@ namespace examples
                 auto &varRegistry = harnessRef.variableRegistry;
                 varRegistry.fillPPArray("rho", rho);
                 varRegistry.fillPPArray("energy_ion", energy_electron);
+                varRegistry.fillPPArray("energy_electron", energy_electron);
                 varRegistry.fillPPArray("rho_n", rho_n);
                 varRegistry.fillPPArray("energy_neutral", energy_neutral);
+                varRegistry.fillPPArray("bx", bx);
+                varRegistry.fillPPArray("by", by);
+                varRegistry.fillPPArray("bz", bz);
 
                 pw::applyKernel(
                     LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
@@ -204,6 +209,9 @@ namespace examples
                         //Specific internal energy
                         energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
                         energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
+                        bx(ix,iy,iz)=0.0;
+                        by(ix,iy,iz)=0.0;
+                        bz(ix,iy,iz)=0.0;
                     },
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));
             }

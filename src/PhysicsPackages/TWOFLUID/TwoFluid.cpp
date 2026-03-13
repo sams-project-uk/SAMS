@@ -576,7 +576,7 @@ void PIP::set_dt_collisional(LARE::simulationData &data,LARE_neutral::simulation
     int i0 = data.geometry == LARE::geometryType::Cartesian ? 0:1;
 
     //Now need to do a map and reduction
-    plasma_source.two_fluid_timestep = 0.001*data.dt_multiplier * 
+    plasma_source.two_fluid_timestep = 0.1*data.dt_multiplier * 
     portableWrapper::applyReduction(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
         //Get Temperatures
         //T_dataType temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);

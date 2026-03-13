@@ -397,9 +397,12 @@ namespace LARE
         T_dataType dhx = dx;
         T_dataType dhy = dy * data.hyc(ix);
         T_dataType dhz = dz * data.hzc(ix, iy);
+        
+        T_dataType pressure=(data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.energy_ion(ix, iy, iz);
 
         T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
-        T_dataType cs2 = data.gas_gamma * data.pressure(ix, iy, iz) / rho0;
+        //T_dataType cs2 = data.gas_gamma * data.pressure(ix, iy, iz) / rho0;
+        T_dataType cs2 = data.gas_gamma * pressure / rho0;
 
         T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
                          data.by(ix, iy, iz) * data.by(ix, iy, iz) +
@@ -435,6 +438,8 @@ namespace LARE
         T_dataType dt2 = volume / pw::max(avxm, avxp, dvx, 1.0e-10 * volume);
         T_dataType dt3 = volume / pw::max(avym, avyp, dvy, 1.0e-10 * volume);
         T_dataType dt4 = volume / pw::max(avzm, avzp, dvz, 1.0e-10 * volume);
+        
+        //printf("%f %f %f %f \n",cs2,data.gas_gamma,data.pressure(ix, iy, iz),pressure);
 
         return pw::min(dt1, dt2, dt3, dt4);
         }, LAMBDA(T_dataType & a, const T_dataType &b) { a = pw::min(a, b); }, data.largest_number, Range(i0, data.nx), Range(0, data.ny), Range(0, data.nz));
