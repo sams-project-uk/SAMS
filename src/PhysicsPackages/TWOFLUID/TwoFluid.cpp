@@ -298,14 +298,14 @@ void get_collisional_source_terms(LARE::simulationData &data, LARE_neutral::simu
         
                 
         //Apply the velocity exchange terms
-        plasma_source.source_v_x(ix,iy,iz)+=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)-data.vx(ix,iy,iz));
-        plasma_source.source_v_x_n(ix,iy,iz)-=ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)-data.vx(ix,iy,iz));
+        plasma_source.source_v_x(ix,iy,iz)=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)-data.vx(ix,iy,iz));
+        plasma_source.source_v_x_n(ix,iy,iz)=-ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)-data.vx(ix,iy,iz));
         
-        plasma_source.source_v_y(ix,iy,iz)+=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vy(ix,iy,iz)-data.vy(ix,iy,iz));
-        plasma_source.source_v_y_n(ix,iy,iz)-=ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vy(ix,iy,iz)-data.vy(ix,iy,iz));
+        plasma_source.source_v_y(ix,iy,iz)=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vy(ix,iy,iz)-data.vy(ix,iy,iz));
+        plasma_source.source_v_y_n(ix,iy,iz)=-ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vy(ix,iy,iz)-data.vy(ix,iy,iz));
         
-        plasma_source.source_v_z(ix,iy,iz)+=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
-        plasma_source.source_v_z_n(ix,iy,iz)-=ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
+        plasma_source.source_v_z(ix,iy,iz)=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
+        plasma_source.source_v_z_n(ix,iy,iz)=-ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
         }, Range(-1,data.nx), Range(-1,data.ny), Range(-1,data.nz));
         
         
@@ -576,7 +576,7 @@ void PIP::set_dt_collisional(LARE::simulationData &data,LARE_neutral::simulation
     int i0 = data.geometry == LARE::geometryType::Cartesian ? 0:1;
 
     //Now need to do a map and reduction
-    plasma_source.two_fluid_timestep = data.dt_multiplier * 
+    plasma_source.two_fluid_timestep = 0.001*data.dt_multiplier * 
     portableWrapper::applyReduction(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
         //Get Temperatures
         //T_dataType temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
@@ -586,10 +586,22 @@ void PIP::set_dt_collisional(LARE::simulationData &data,LARE_neutral::simulation
         //This needs temeprature dependence
         //T_dataType ac=data.alpha0*std::sqrt(0.5*(temperature_neutral+temperature_ion));
         
-        LARE::T_dataType collisional_timestep_plasma=0.3/(plasma_source.ac(ix,iy,iz)*data.rho(ix,iy,iz));
-        LARE::T_dataType collisional_timestep_neutral=0.3/(plasma_source.ac(ix,iy,iz)*dataNeutral.rho(ix,iy,iz));
+        //LARE::T_dataType collisional_timestep_plasma=0.3/(plasma_source.ac(ix,iy,iz)*data.rho(ix,iy,iz));
+        //LARE::T_dataType collisional_timestep_neutral=0.3/(plasma_source.ac(ix,iy,iz)*dataNeutral.rho(ix,iy,iz));
         
-        LARE::T_dataType t1 = std::min(collisional_timestep_plasma,collisional_timestep_neutral);
+        //LARE::T_dataType t1 = std::min(collisional_timestep_plasma,collisional_timestep_neutral);
+        
+        LARE::T_dataType t1 = std::min({1.0/plasma_source.source_mass(ix,iy,iz),
+                                       1.0/plasma_source.source_mass_n(ix,iy,iz),
+                                       1.0/plasma_source.source_v_x(ix,iy,iz),
+                                       1.0/plasma_source.source_v_x_n(ix,iy,iz),
+                                       1.0/plasma_source.source_v_y(ix,iy,iz),
+                                       1.0/plasma_source.source_v_y_n(ix,iy,iz),
+                                       1.0/plasma_source.source_v_z(ix,iy,iz),
+                                       1.0/plasma_source.source_v_z_n(ix,iy,iz),
+                                       1.0/plasma_source.source_energy(ix,iy,iz),
+                                       1.0/plasma_source.source_energy_n(ix,iy,iz)
+                                       });
         
         //printf("ix,iy,iz, t1 :  %li %li %li %f %f \n",ix,iy,iz,collisional_timestep_plasma,plasma_ir_source.ac(ix,iy,iz));
         //if (collisional_timestep_plasma < collisional_timestep_neutral){

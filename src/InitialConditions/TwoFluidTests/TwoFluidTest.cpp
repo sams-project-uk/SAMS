@@ -37,7 +37,7 @@ namespace examples
             dataNeutral.t_end = data.t_end;
             dataNeutral.dt_snapshots = data.dt_snapshots;
 
-            data.nx = 128;
+            data.nx = 512;
             data.ny = 2;
             data.nz = 2;
             dataNeutral.nx = data.nx;
@@ -178,7 +178,7 @@ namespace examples
 
                 auto &varRegistry = harnessRef.variableRegistry;
                 varRegistry.fillPPArray("rho", rho);
-                varRegistry.fillPPArray("energy_electron", energy_electron);
+                varRegistry.fillPPArray("energy_ion", energy_electron);
                 varRegistry.fillPPArray("rho_n", rho_n);
                 varRegistry.fillPPArray("energy_neutral", energy_neutral);
 
