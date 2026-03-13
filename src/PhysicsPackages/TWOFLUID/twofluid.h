@@ -46,6 +46,9 @@ namespace TWOFLUID
         LARE::volumeArray source_v_z_n; // velocity source term
         LARE::volumeArray source_energy_n; // energy source term
         
+        LARE::volumeArray gm_ion; //ionisation rate
+        LARE::volumeArray gm_rec; //recombination rate
+        
         LARE::volumeArray ac; //coupling coeficient
         LARE::T_dataType two_fluid_timestep; //timestep 
     };

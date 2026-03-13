@@ -40,7 +40,7 @@ namespace TWOFLUID
     
     //void get_ac(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
     //void two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral);
-    void ion_rec_rates_empirical(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral);
+    void ion_rec_rates_empirical(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
     void get_collisional_source_terms(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
     void get_ion_rec_source_terms(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
             
@@ -91,6 +91,10 @@ namespace TWOFLUID
         varRegistry.registerVariable<LARE::T_dataType>("source_vz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
         
         varRegistry.registerVariable<LARE::T_dataType>("source_vz_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        
+        varRegistry.registerVariable<LARE::T_dataType>("gm_ion", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        
+        varRegistry.registerVariable<LARE::T_dataType>("gm_rec", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
     }
 /////////////////////////////////////////////////////////////////////////////////
     void PIP::allocate(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source,SAMS::harness &harness){
@@ -128,6 +132,11 @@ namespace TWOFLUID
         varRegistry.fillPPArray("source_vz_n", plasma_source.source_v_z_n);
         pw::assign(plasma_source.source_v_z_n, 0.0);
         
+        varRegistry.fillPPArray("gm_ion", plasma_source.gm_ion);
+        pw::assign(plasma_source.gm_ion, 0.0);
+        varRegistry.fillPPArray("gm_rec", plasma_source.gm_rec);
+        pw::assign(plasma_source.gm_rec, 0.0);
+        
     }
 ////////////////////////////////////////////////////////////////////////////////////////
     void PIP::get_two_fluid_source(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
@@ -135,9 +144,9 @@ namespace TWOFLUID
         two_fluid_properties two_fluid_flags; //Move to source structure
         
         //Get the ionisation rates
-        //if (two_fluid_flags.ion_rec_empirical){        
-        //    ion_rec_rates_empirical(data,dataNeutral);
-        //}
+        if (two_fluid_flags.ion_rec_empirical){        
+            ion_rec_rates_empirical(data,dataNeutral, plasma_source);
+        }
         //if (two_fluid_flags.ion_rec_nlevel){        
         ////    ion_rec_rates_nlevel(data,dataNeutral);
         //}
@@ -146,7 +155,7 @@ namespace TWOFLUID
         get_collisional_source_terms(data,dataNeutral,plasma_source);
         
         //Calculate the source terms for Ionisation/recombination
-        //if (two_fluid_flags.ion_rec_empirical) get_ion_rec_source_terms(data,dataNeutral,plasma_source);
+        if (two_fluid_flags.ion_rec_empirical) get_ion_rec_source_terms(data,dataNeutral,plasma_source);
 
     };
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -163,7 +172,7 @@ namespace TWOFLUID
         //}
         
         //Calculate the source terms for the two-fluid interactions
-        get_collisional_source_terms(data,dataNeutral,plasma_source);
+        //get_collisional_source_terms(data,dataNeutral,plasma_source);
         
         //Calculate the source terms for Ionisation/recombination
         //if (two_fluid_flags.ion_rec_empirical) get_ion_rec_source_terms(data,dataNeutral,plasma_source);
@@ -220,7 +229,7 @@ namespace TWOFLUID
         //Formulation from Snow+2021 paper
         //Empirical estimates for the rates
         //Controlled using the data.ion_rec_empirical in control.cpp
-        void ion_rec_rates_empirical(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral){
+        void ion_rec_rates_empirical(LARE::simulationData &data, LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
 
             //Much of this should go elsewhere
             LARE::T_dataType T0=data.T_reference; //Reference temperature
@@ -242,15 +251,16 @@ namespace TWOFLUID
             using Range = portableWrapper::Range;
             portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
                 //Get Temperatures
-                LARE::T_dataType temperature_electron = 2.0*data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
+                //LARE::T_dataType temperature_electron = 2.0*data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
+                LARE::T_dataType temperature_electron = 0.5*data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
                 LARE::T_dataType numberDensity_electron=data.rho(ix,iy,iz); 
 
                 //Get ionisation and recomination rates
-            	data.Gm_rec(ix,iy,iz)=numberDensity_electron/std::sqrt(temperature_electron)*t_ir/f_p*std::sqrt(tfac);
-            	data.Gm_ion(ix,iy,iz)=2.91e-14*(n0*1.0e6)*numberDensity_electron*std::exp(-13.6/Te_0/temperature_electron*tfac)*std::pow(13.6/Te_0/temperature_electron*tfac,0.39);
-            	data.Gm_ion(ix,iy,iz)=data.Gm_ion(ix,iy,iz)/(0.232+13.6/Te_0/temperature_electron*tfac)/rec_fac/f_p *t_ir;    
+            	plasma_source.gm_rec(ix,iy,iz)=numberDensity_electron/std::sqrt(temperature_electron)*t_ir/f_p*std::sqrt(tfac);
+            	plasma_source.gm_ion(ix,iy,iz)=2.91e-14*(n0*1.0e6)*numberDensity_electron*std::exp(-13.6/Te_0/temperature_electron*tfac)*std::pow(13.6/Te_0/temperature_electron*tfac,0.39);
+            	plasma_source.gm_ion(ix,iy,iz)=plasma_source.gm_ion(ix,iy,iz)/(0.232+13.6/Te_0/temperature_electron*tfac)/rec_fac/f_p *t_ir;    
             	
-            	printf("%f %f %f %f %f \n",f_p,data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0)*data.rho(ix,iy,iz), temperature_electron,data.Gm_rec(ix,iy,iz),data.Gm_ion(ix,iy,iz));    
+            	//printf("%f %f %f %f %f \n",f_p,data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0)*data.rho(ix,iy,iz), temperature_electron,plasma_source.gm_rec(ix,iy,iz),plasma_source.gm_ion(ix,iy,iz));    
             }, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
         };
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -424,8 +434,8 @@ void get_ion_rec_source_terms(LARE::simulationData &data, LARE_neutral::simulati
     portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
     
         //Mass source terms
-        plasma_source.source_mass(ix,iy,iz)  += data.Gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)-data.Gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);
-        plasma_source.source_mass_n(ix,iy,iz) +=-data.Gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)+data.Gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);
+        plasma_source.source_mass(ix,iy,iz)  += plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)-plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);
+        plasma_source.source_mass_n(ix,iy,iz) +=-plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)+plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);
         
         LARE::T_dataType rho_plasma_vertex=  (data.rho(ix  , iy  , iz  ) + 
                                         data.rho(ix+1, iy  , iz  ) + 
@@ -436,23 +446,23 @@ void get_ion_rec_source_terms(LARE::simulationData &data, LARE_neutral::simulati
                                         data.rho(ix  , iy+1, iz+1) + 
                                         data.rho(ix+1, iy+1, iz+1))* 
                                         0.125;
-        LARE::T_dataType Gm_ion_vertex=      (data.Gm_ion(ix  , iy  , iz  ) + 
-                                        data.Gm_ion(ix+1, iy  , iz  ) + 
-                                        data.Gm_ion(ix  , iy+1, iz  ) + 
-                                        data.Gm_ion(ix+1, iy+1, iz  ) + 
-                                        data.Gm_ion(ix  , iy  , iz+1) + 
-                                        data.Gm_ion(ix+1, iy  , iz+1) + 
-                                        data.Gm_ion(ix  , iy+1, iz+1) + 
-                                        data.Gm_ion(ix+1, iy+1, iz+1))* 
+        LARE::T_dataType Gm_ion_vertex=      (plasma_source.gm_ion(ix  , iy  , iz  ) + 
+                                        plasma_source.gm_ion(ix+1, iy  , iz  ) + 
+                                        plasma_source.gm_ion(ix  , iy+1, iz  ) + 
+                                        plasma_source.gm_ion(ix+1, iy+1, iz  ) + 
+                                        plasma_source.gm_ion(ix  , iy  , iz+1) + 
+                                        plasma_source.gm_ion(ix+1, iy  , iz+1) + 
+                                        plasma_source.gm_ion(ix  , iy+1, iz+1) + 
+                                        plasma_source.gm_ion(ix+1, iy+1, iz+1))* 
                                         0.125;
-        LARE::T_dataType Gm_rec_vertex=      (data.Gm_rec(ix  , iy  , iz  ) + 
-                                        data.Gm_rec(ix+1, iy  , iz  ) + 
-                                        data.Gm_rec(ix  , iy+1, iz  ) + 
-                                        data.Gm_rec(ix+1, iy+1, iz  ) + 
-                                        data.Gm_rec(ix  , iy  , iz+1) + 
-                                        data.Gm_rec(ix+1, iy  , iz+1) + 
-                                        data.Gm_rec(ix  , iy+1, iz+1) + 
-                                        data.Gm_rec(ix+1, iy+1, iz+1))* 
+        LARE::T_dataType Gm_rec_vertex=      (plasma_source.gm_rec(ix  , iy  , iz  ) + 
+                                        plasma_source.gm_rec(ix+1, iy  , iz  ) + 
+                                        plasma_source.gm_rec(ix  , iy+1, iz  ) + 
+                                        plasma_source.gm_rec(ix+1, iy+1, iz  ) + 
+                                        plasma_source.gm_rec(ix  , iy  , iz+1) + 
+                                        plasma_source.gm_rec(ix+1, iy  , iz+1) + 
+                                        plasma_source.gm_rec(ix  , iy+1, iz+1) + 
+                                        plasma_source.gm_rec(ix+1, iy+1, iz+1))* 
                                         0.125;
         LARE::T_dataType rho_neutral_vertex=  (dataNeutral.rho(ix  , iy  , iz  ) + 
                                          dataNeutral.rho(ix+1, iy  , iz  ) + 
@@ -533,30 +543,30 @@ void get_ion_rec_source_terms(LARE::simulationData &data, LARE_neutral::simulati
                                         0.125;
         
         //Energy source terms
-        plasma_source.source_energy(ix,iy,iz) += -0.5*(data.Gm_rec(ix,iy,iz)*(pow(v_x_plasma_centre,2)+
+        plasma_source.source_energy(ix,iy,iz) += -0.5*(plasma_source.gm_rec(ix,iy,iz)*(pow(v_x_plasma_centre,2)+
                                                                                  pow(v_y_plasma_centre,2)+
                                                                                  pow(v_z_plasma_centre,2))
-                                                        -data.Gm_ion(ix,iy,iz)*(pow(v_x_neutral_centre,2)+
+                                                        -plasma_source.gm_ion(ix,iy,iz)*(pow(v_x_neutral_centre,2)+
                                                                                 pow(v_y_neutral_centre,2)+
                                                                                 pow(v_z_neutral_centre,2))
                                                                               *dataNeutral.rho(ix,iy,iz)/data.rho(ix,iy,iz)                                                                                
                                                         )
-                                                   -(data.Gm_rec(ix,iy,iz)*data.energy_ion(ix,iy,iz)-data.Gm_ion(ix,iy,iz)*dataNeutral.energy_neutral(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/data.rho(ix,iy,iz))/(data.gas_gamma-1.0); //Is this electron or ion energy (or mean energy)? is the half needed?
+                                                   -(plasma_source.gm_rec(ix,iy,iz)*data.energy_ion(ix,iy,iz)-plasma_source.gm_ion(ix,iy,iz)*dataNeutral.energy_neutral(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/data.rho(ix,iy,iz))/(data.gas_gamma-1.0); //Is this electron or ion energy (or mean energy)? is the half needed?
         
-        plasma_source.source_energy_n(ix,iy,iz) += 0.5*(data.Gm_rec(ix,iy,iz)*(data.vx(ix,iy,iz)*data.vx(ix,iy,iz)+
+        plasma_source.source_energy_n(ix,iy,iz) += 0.5*(plasma_source.gm_rec(ix,iy,iz)*(data.vx(ix,iy,iz)*data.vx(ix,iy,iz)+
                                                                                 data.vy(ix,iy,iz)*data.vy(ix,iy,iz)+
                                                                                 data.vz(ix,iy,iz)*data.vz(ix,iy,iz))
                                                                                 *data.rho(ix,iy,iz)/dataNeutral.rho(ix,iy,iz)
-                                                        -data.Gm_ion(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)*data.vx(ix,iy,iz)+
+                                                        -plasma_source.gm_ion(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)*data.vx(ix,iy,iz)+
                                                                                 dataNeutral.vy(ix,iy,iz)*data.vy(ix,iy,iz)+
                                                                                 dataNeutral.vz(ix,iy,iz)*data.vz(ix,iy,iz))
                                                         )
-                                                   +(data.Gm_rec(ix,iy,iz)*data.energy_ion(ix,iy,iz)*data.rho(ix,iy,iz)/dataNeutral.rho(ix,iy,iz)-data.Gm_ion(ix,iy,iz)*dataNeutral.energy_neutral(ix,iy,iz))/(data.gas_gamma-1.0); //Is this electron or ion energy (or mean energy)? is the half needed?
+                                                   +(plasma_source.gm_rec(ix,iy,iz)*data.energy_ion(ix,iy,iz)*data.rho(ix,iy,iz)/dataNeutral.rho(ix,iy,iz)-plasma_source.gm_ion(ix,iy,iz)*dataNeutral.energy_neutral(ix,iy,iz))/(data.gas_gamma-1.0); //Is this electron or ion energy (or mean energy)? is the half needed?
         
         //Work out how much energy is spent/gained by IR processes
         //if(data.ion_rec_empirical){ 
-        //    LARE::T_dataType ionisation_energy=(data.Gm_rec(ix,iy,iz)-
-        //                          data.Gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/(data.gas_gamma-1.0)/data.rho(ix,iy,iz))*
+        //    LARE::T_dataType ionisation_energy=(plasma_source.gm_rec(ix,iy,iz)-
+        //                          plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/(data.gas_gamma-1.0)/data.rho(ix,iy,iz))*
         //                          13.6/kb_si/data.T_reference;     
         //    //plasma_ir_source.source_electron_energy(ix,iy,iz)+=ionisation_energy; 
         //}
