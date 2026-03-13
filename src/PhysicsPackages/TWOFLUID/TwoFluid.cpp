@@ -33,7 +33,7 @@ namespace TWOFLUID
     
     struct two_fluid_properties
     {
-        bool collisions=false;
+        bool collisions=true;
         bool ion_rec_empirical=false;
         bool ion_rec_nlevel=false;
     };
@@ -313,8 +313,8 @@ void get_collisional_source_terms(LARE::simulationData &data, LARE_neutral::simu
     portableWrapper::applyKernel(LAMBDA(LARE::T_indexType ix, LARE::T_indexType iy, LARE::T_indexType iz) {
     
         //Get Temperatures
-        LARE::T_dataType temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
-        LARE::T_dataType temperature_electron = data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
+        LARE::T_dataType temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)/2.0;
+        //LARE::T_dataType temperature_electron = data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
         LARE::T_dataType temperature_neutral = data.gas_gamma*dataNeutral.energy_neutral(ix,iy,iz)*(data.gas_gamma-1.0);
         //printf("getting vx at centre \n");
         //Get velocity at cell centre
