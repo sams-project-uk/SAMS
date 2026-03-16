@@ -97,7 +97,12 @@ namespace examples
         attachBoundaryConditions("by", harness);
         attachBoundaryConditions("bz", harness);
         attachBoundaryConditions("energy_ion", harness);
-        attachBoundaryConditions("energy_electron", harness);
+        try {
+            attachBoundaryConditions("energy_electron", harness);
+        }
+        catch (const std::exception &e) {
+            //Not in two temperature mode
+        }   
         attachBoundaryConditions("rho", harness);
         attachBoundaryConditions("vx", harness);
         attachBoundaryConditions("vy", harness);
@@ -123,6 +128,8 @@ namespace examples
         pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
         pw::portableArray<SAMS::T_dataType, 1> xb, yb, zb;
 
+        bool singleTemperature = false;
+
         auto &axisRegistry = harnessRef.axisRegistry;
         axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
         axisRegistry.fillPPLocalAxis("Y", yc, SAMS::staggerType::CENTRED);
@@ -133,7 +140,12 @@ namespace examples
 
         auto &varRegistry = harnessRef.variableRegistry;
         varRegistry.fillPPArray("rho", rho);
-        varRegistry.fillPPArray("energy_electron", energy_electron);
+        try {
+            varRegistry.fillPPArray("energy_electron", energy_electron);
+        }
+        catch (const std::exception &e) {
+            singleTemperature = true;
+        }   
         varRegistry.fillPPArray("energy_ion", energy_ion);
         varRegistry.fillPPArray("vx", vx);
         varRegistry.fillPPArray("vy", vy);
@@ -156,8 +168,13 @@ namespace examples
                 bz(ix, iy, iz) = 0.0;
 
                 // Specific internal energy
-                energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz)) / 2.0;
-                energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz)) / 2.0;
+                if (singleTemperature)
+                {
+                    energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                } else {
+                    energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz)) / 2.0;
+                    energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz)) / 2.0;
+                }
             },
             rho.getRange(0), rho.getRange(1), rho.getRange(2));
     }

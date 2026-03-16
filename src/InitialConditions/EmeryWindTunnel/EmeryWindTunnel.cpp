@@ -186,7 +186,12 @@ namespace examples
             SAMS::T_dataType flowVx= problemParams.flowVx;
             //Set driven boundary conditions at lower X boundary, and zero gradient outflow boundary conditions at upper X boundary. Periodic boundaries in Y and Z
             setScalarBcs("energy_ion", harness, 0.5*pressure/(density*(data.gas_gamma - 1.0)));
-            setScalarBcs("energy_electron", harness, 0.5*pressure/(density*(data.gas_gamma - 1.0)));
+            try {
+                setScalarBcs("energy_electron", harness, 0.5*pressure/(density*(data.gas_gamma - 1.0)));
+            }
+            catch (const std::exception &e) {
+                //Not in two temperature mode
+            }
             setScalarBcs("rho", harness, density);
             setYParallelVectorBcs("vx", harness, flowVx);
             setYParallelVectorBcs("LARE/vx1", harness, flowVx);
@@ -217,7 +222,7 @@ namespace examples
             pw::portableArray<SAMS::T_dataType, 3> bx, by, bz;
             pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
             pw::portableArray<SAMS::T_dataType, 1> xb, yb, zb;
-
+            
             auto &axisRegistry = harnessRef.axisRegistry;
             axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
             axisRegistry.fillPPLocalAxis("Y", yc, SAMS::staggerType::CENTRED);
@@ -228,7 +233,12 @@ namespace examples
 
             auto &varRegistry = harnessRef.variableRegistry;
             varRegistry.fillPPArray("rho", rho);
-            varRegistry.fillPPArray("energy_electron", energy_electron);
+            try {
+                varRegistry.fillPPArray("energy_electron", energy_electron);
+            }
+            catch (const std::exception &e) {
+                this->singleTemperature = true;
+            }
             varRegistry.fillPPArray("energy_ion", energy_ion);
             varRegistry.fillPPArray("vx", vx);
             varRegistry.fillPPArray("vy", vy);
@@ -240,6 +250,8 @@ namespace examples
             SAMS::T_dataType ambPressure = problemParams.ambPressure;
             SAMS::T_dataType density = problemParams.density;
             SAMS::T_dataType flowVx=problemParams.flowVx;
+
+            bool singleTemperature = this->singleTemperature;
 
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
@@ -258,74 +270,139 @@ namespace examples
                     }
 
                     //Specific internal energy
-                    energy_electron(ix, iy, iz) = ambPressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
-                    energy_ion(ix, iy, iz) = ambPressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                    if (singleTemperature)
+                    {
+                        energy_ion(ix, iy, iz) = ambPressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                    }
+                    else
+                    {
+                        energy_electron(ix, iy, iz) = ambPressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                        energy_ion(ix, iy, iz) = ambPressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                    }
 
                 },
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
         }
 
+
         template<typename T_EOS>
         void EmeryWindTunnel<T_EOS>::startOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams){
-            pw::applyKernel(
-                LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
-                {
-                    if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+            if (singleTemperature){
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
-                        data.vx1(ix,iy,iz) = 0.0;
-                        data.vy1(ix,iy,iz) = 0.0;
-                        data.vz1(ix,iy,iz) = 0.0;
-                    }
-                    if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+                        {
+                            data.vx1(ix,iy,iz) = 0.0;
+                            data.vy1(ix,iy,iz) = 0.0;
+                            data.vz1(ix,iy,iz) = 0.0;
+                        }
+                        if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        {
+                            data.rho(ix,iy,iz) = problemParams.density;
+                            data.energy_ion(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                        }
+                    },
+                    pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+            } else {
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
-                        data.rho(ix,iy,iz) = problemParams.density;
-                        data.energy_electron(ix,iy,iz) = problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0;
-                        data.energy_ion(ix,iy,iz) = problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0;
-                    }
-                },
-                pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+                        if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+                        {
+                            data.vx1(ix,iy,iz) = 0.0;
+                            data.vy1(ix,iy,iz) = 0.0;
+                            data.vz1(ix,iy,iz) = 0.0;
+                        }
+                        if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        {
+                            data.rho(ix,iy,iz) = problemParams.density;
+                            data.energy_electron(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                            data.energy_ion(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                        }
+                    },
+                    pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+            }
         }
 
         template<typename T_EOS>
         void EmeryWindTunnel<T_EOS>::halfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams){
-             pw::applyKernel(
-                LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
-                {
-                    if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+            if (singleTemperature){
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
-                        data.vx(ix,iy,iz) = 0.0;
-                        data.vy(ix,iy,iz) = 0.0;
-                        data.vz(ix,iy,iz) = 0.0;
-                    }
-                    if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+                        {
+                            data.vx1(ix,iy,iz) = 0.0;
+                            data.vy1(ix,iy,iz) = 0.0;
+                            data.vz1(ix,iy,iz) = 0.0;
+                        }
+                        if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        {
+                            data.rho(ix,iy,iz) = problemParams.density;
+                            data.energy_ion(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                        }
+                    },
+                    pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+            } else {
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
-                        data.rho(ix,iy,iz) = problemParams.density;
-                        data.energy_electron(ix,iy,iz) = problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0;
-                        data.energy_ion(ix,iy,iz) = problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0;
-                    }
-                },
-                pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+                        if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+                        {
+                            data.vx(ix,iy,iz) = 0.0;
+                            data.vy(ix,iy,iz) = 0.0;
+                            data.vz(ix,iy,iz) = 0.0;
+                        }
+                        if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        {
+                            data.rho(ix,iy,iz) = problemParams.density;
+                            data.energy_electron(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                            data.energy_ion(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                        }
+                    },
+                    pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+            }
         }
 
         template<typename T_EOS>
         void EmeryWindTunnel<T_EOS>::endOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams){
-            pw::applyKernel(
-                LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
-                {
-                    if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+            if (singleTemperature){
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
-                        data.vx(ix,iy,iz) = 0.0;
-                        data.vy(ix,iy,iz) = 0.0;
-                        data.vz(ix,iy,iz) = 0.0;
-                    }
-                    if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+                        {
+                            data.vx(ix,iy,iz) = 0.0;
+                            data.vy(ix,iy,iz) = 0.0;
+                            data.vz(ix,iy,iz) = 0.0;
+                        }
+                        if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        {
+                            data.rho(ix,iy,iz) = problemParams.density;
+                            data.energy_ion(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                        }
+                    },
+                    pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+            } else {
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                     {
-                        data.rho(ix,iy,iz) = problemParams.density;
-                        data.energy_electron(ix,iy,iz) = problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0;
-                        data.energy_ion(ix,iy,iz) = problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0;
-                    }
-                },
-                pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+                        if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
+                        {
+                            data.vx(ix,iy,iz) = 0.0;
+                            data.vy(ix,iy,iz) = 0.0;
+                            data.vz(ix,iy,iz) = 0.0;
+                        }
+                        if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
+                        {
+                            data.rho(ix,iy,iz) = problemParams.density;
+                            data.energy_electron(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                            data.energy_ion(ix,iy,iz) = std::max(problemParams.ambPressure / ((data.gas_gamma - 1.0) * data.rho(ix,iy,iz))/2.0, 1.e-10);
+                        }
+                    },
+                    pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
+            }
         }
 
        /**
