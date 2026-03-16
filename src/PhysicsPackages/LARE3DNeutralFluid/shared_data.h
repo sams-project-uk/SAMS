@@ -137,13 +137,8 @@ namespace LARE
         T_dataType t_end; // End time of the LARE3D
 
         // Domain parameters
-        T_indexType nx, ny, nz; // Could be unsigned but when comparing signed and unsigned, unsigned wins
+        T_indexType nx, ny, nz;
         T_indexType nx_global, ny_global, nz_global;
-        T_dataType x_min, x_max, length_x, dx;
-        T_dataType y_min, y_max, length_y, dy;
-        T_dataType z_min, z_max, length_z, dz;
-        bool x_stretch, y_stretch, z_stretch;
-        geometryType geometry;
 
         // Boundary conditions
         BCType xbc_min, xbc_max;
@@ -160,20 +155,14 @@ namespace LARE
 
         // Physical constants
         T_dataType gas_gamma;      // Ratio of specific heats
-        T_dataType j_max;          // Maximum current
-        T_dataType eta0;           // Limited resisivity (applied J>j_max)
-        T_dataType eta_background; // Background resisivity
-        T_dataType mf;             // Average mass of an ion in proton masses
-        T_dataType mu0;             // Vacuum permeability
 
         // IO control
-        T_dataType dt_snapshots; // Time between snapshots
-        T_dataType lastOutputTime=0.0; // Time of last output
+ //       T_dataType dt_snapshots; // Time between snapshots
+  //      T_dataType lastOutputTime=0.0; // Time of last output
 
         // Physical arrays
         volumeArray energy_ion;      // Ion specific only
 
- 
         volumeArray p_visc;          // Viscous pressure
         volumeArray rho;             // Density
         volumeArray vx;              // X-velocity
@@ -182,42 +171,10 @@ namespace LARE
         volumeArray vx1;             // Half timestep X-velocity
         volumeArray vy1;             // Half timestep Y-velocity
         volumeArray vz1;             // Half timestep Z-velocity
-        volumeArray dxab;
-        volumeArray dyab;
-        volumeArray dzab;
-        volumeArray dxac;
-        volumeArray dyac;
-        volumeArray dzac;
         volumeArray cv;  // Control volume
         volumeArray cv1; // Half timestep control volume
         volumeArray cvc;
-        lineArray xc;          // Cell center X-coordinates
-        lineArray yc;          // Cell center Y-coordinates
-        lineArray zc;          // Cell center Z-coordinates
-        lineArray xb;          // Cell boundary X-coordinates
-        lineArray yb;          // Cell boundary Y-coordinates
-        lineArray zb;          // Cell boundary Z-coordinates
-        hostLineArray xc_host; // Host copy of cell center X-coordinates
-        hostLineArray yc_host; // Host copy of cell center Y-coordinates
-        hostLineArray zc_host; // Host copy of cell center Z-coordinates
-        hostLineArray xb_host; // Host copy of cell boundary X-coordinates
-        hostLineArray yb_host; // Host copy of cell boundary Y-coordinates
-        hostLineArray zb_host; // Host copy of cell boundary Z-coordinates
-        lineArray xb_global;   // Global cell boundary X-coordinates
-        lineArray yb_global;   // Global cell boundary Y-coordinates
-        lineArray zb_global;   // Global cell boundary Z-coordinates
-        lineArray dxc;         // Cell center X-dx
-        lineArray dyc;         // Cell center Y-dy
-        lineArray dzc;         // Cell center Z-dz
-        lineArray dxb;         // Cell boundary X-dx
-        lineArray dyb;         // Cell boundary Y-dy
-        lineArray dzb;         // Cell boundary Z-dz
-        lineArray hy;
-        planeArray hz;
-        lineArray hyc;
-        planeArray hzc;
-        planeArray hz1;
-        planeArray hz2;
+
         lineArray grav_r;
         lineArray grav_z;
         volumeArray delta_ke; // Remap kinetic energy correction
@@ -265,16 +222,16 @@ namespace LARE
          */
         pw::portableArrayManager& manager;
 
-        void set_dt(simulationData &data);
+        void set_dt(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data);
 
         /**
          * Lagrangian predictor step
          */
-        void predictor_step(simulationData &data);
+        void predictor_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data);
         /**
          * Lagrangian corrector step
          */
-        void corrector_step(simulationData &data);
+        void corrector_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data);
 
         /**
          * Boundary conditions for specific internal energy
@@ -312,17 +269,17 @@ namespace LARE
         /**
          * Function to perform the X sweep remap
          */
-        void remap_x(simulationData &data, remapData &remapData);
+        void remap_x(simulationData &data, remapData &remapData, const LARE3DST<T_EOS>::simulationData & core_data);
 
         /**
          * Function to perform the Y sweep remap
          */
-        void remap_y(simulationData &data, remapData &remapData);
+        void remap_y(simulationData &data, remapData &remapData, const LARE3DST<T_EOS>::simulationData & core_data);
 
         /**
          * Function to perform the Z sweep remap
          */
-        void remap_z(simulationData &data, remapData &remapData);
+        void remap_z(simulationData &data, remapData &remapData, const LARE3DST<T_EOS>::simulationData & core_data);
 
     public:
 
@@ -391,9 +348,9 @@ namespace LARE
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void getVariables(SAMS::harness &harnessRef, simulationData &data){
+        void getVariables(SAMS::harness &harnessRef, simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data){
             allocate(harnessRef, data);
-            grid(data);
+            grid(data, core_data);
         }
 
         /**
@@ -401,24 +358,24 @@ namespace LARE
          * This is the predictor step of the LARE3D timestep
          * @param data LARE3D simulation data
          */
-        void startOfTimestep(simulationData &data, SAMS::controlFunctions &controlFns){
-            lagrangian_step(data, controlFns);
+        void startOfTimestep(simulationData &data, LARE3DST<T_EOS>::simulationData & core_data, SAMS::controlFunctions &controlFns){
+            lagrangian_step(data, core_data, controlFns);
         }
 
         /**
          * This is the corrector step of the LARE3D timestep
          * @param data LARE3D simulation data
          */
-        void halfTimestep(simulationData &data){
-            corrector_step(data);
+        void halfTimestep(simulationData &data, LARE3DST<T_EOS>::simulationData & core_data){
+            corrector_step(data, core_data);
         }
 
         /**
          * This is called at the end of the LARE3D timestep
          * @param data LARE3D simulation data
          */
-        void endOfTimestep(simulationData &data, remapData &remap_data, [[maybe_unused]] LARE3DST<T_EOS>::simulationData & core_data){
-            eulerian_remap(data, remap_data);
+        void endOfTimestep(simulationData &data, remapData &remap_data, LARE3DST<T_EOS>::simulationData & core_data){
+            eulerian_remap(data, remap_data, core_data);
             if (data.rke){
                 energy_correction(data);
             }
@@ -433,8 +390,8 @@ namespace LARE
          * @param timeData SAMS timeState data
          * @param data LARE3D simulation data
          */
-        void calculateTimestep(SAMS::timeState &timeData, simulationData &data){
-            set_dt(data);
+        void calculateTimestep(SAMS::timeState &timeData, simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data){
+            set_dt(data, core_data);
             timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
         }
 
@@ -481,7 +438,7 @@ namespace LARE
          * @param data Simulation data struct
          * This function sets up the grid for the LARE3D, including the cell sizes and coordinates. Automatically creates for the specified geometry.
          */
-        void grid(simulationData &data);
+        void grid(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data);
 
         /**
          * Call all the boundary condition functions
@@ -491,40 +448,39 @@ namespace LARE
          */
         void boundary_conditions();
 
-        void shock_viscosity(simulationData &data);
-        void resistive_effects(simulationData &data);
+        void shock_viscosity(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data );
         void rkstep(simulationData &data);
-        void shock_heating(simulationData &data);
+        void shock_heating(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data);
 
-        void x_mass_flux(simulationData &data, remapData &remap_data);
+        void x_mass_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
         template <auto mPtr>
-        void x_energy_flux(simulationData &data, remapData &remap_data);
+        void x_energy_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
         template <auto mPtr>
-        void x_mom_flux(simulationData &data, remapData &remap_data);
+        void x_mom_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
 
-        void y_mass_flux(simulationData &data, remapData &remap_data);
+        void y_mass_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
         template <auto mPtr>
-        void y_energy_flux(simulationData &data, remapData &remap_data);
+        void y_energy_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
         template <auto mPtr>
-        void y_mom_flux(simulationData &data, remapData &remap_data);
+        void y_mom_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
 
-        void z_mass_flux(simulationData &data, remapData &remap_data);
+        void z_mass_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
         template <auto mPtr>
-        void z_energy_flux(simulationData &data, remapData &remap_data);
+        void z_energy_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
         template <auto mPtr>
-        void z_mom_flux(simulationData &data, remapData &remap_data);
+        void z_mom_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
 
         /**
          * Lagrangian step for the LARE3D
          * @param data Simulation data struct
          * This function performs a Lagrangian step for the LARE3D
          */
-        void lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns);
+        void lagrangian_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data, SAMS::controlFunctions &controlFns);
 
         /**
          * Core remap control function
          */
-        void eulerian_remap(simulationData &data, remapData &remap_data);
+        void eulerian_remap(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data);
 
         /**
          * Function to add back the kinetic energy correction

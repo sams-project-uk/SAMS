@@ -20,7 +20,7 @@ namespace LARE
     namespace pw = portableWrapper;
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data)
+    void LARE3DNF<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
         int case_test;
@@ -50,42 +50,42 @@ namespace LARE
         switch (case_test)
         {
         case 0:
-            remap_x(data, remap_data);
-            remap_y(data, remap_data);
-            remap_z(data, remap_data);
+            remap_x(data, remap_data, core_data);
+            remap_y(data, remap_data, core_data);
+            remap_z(data, remap_data, core_data);
             break;
         case 1:
-            remap_y(data, remap_data);
-            remap_z(data, remap_data);
-            remap_x(data, remap_data);
+            remap_y(data, remap_data, core_data);
+            remap_z(data, remap_data, core_data);
+            remap_x(data, remap_data, core_data);
             break;
         case 2:
-            remap_z(data, remap_data);
-            remap_x(data, remap_data);
-            remap_y(data, remap_data);
+            remap_z(data, remap_data, core_data);
+            remap_x(data, remap_data, core_data);
+            remap_y(data, remap_data, core_data);
             break;
         case 3:
-            remap_x(data, remap_data);
-            remap_z(data, remap_data);
-            remap_y(data, remap_data);
+            remap_x(data, remap_data, core_data);
+            remap_z(data, remap_data, core_data);
+            remap_y(data, remap_data, core_data);
             break;
         case 4:
-            remap_z(data, remap_data);
-            remap_y(data, remap_data);
-            remap_x(data, remap_data);
+            remap_z(data, remap_data, core_data);
+            remap_y(data, remap_data, core_data);
+            remap_x(data, remap_data, core_data);
             break;
         case 5:
-            remap_y(data, remap_data);
-            remap_x(data, remap_data);
-            remap_z(data, remap_data);
+            remap_y(data, remap_data, core_data);
+            remap_x(data, remap_data, core_data);
+            remap_z(data, remap_data, core_data);
             break;
         }
 
         // Set the grid positions back to their default value
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        data.x(ix, iy, iz) = data.xb(ix);
-        data.y(ix, iy, iz) = data.yb(iy);
-        data.z(ix, iy, iz) = data.zb(iz); }, Range(-2, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        data.x(ix, iy, iz) = core_data.xb(ix);
+        data.y(ix, iy, iz) = core_data.yb(iy);
+        data.z(ix, iy, iz) = core_data.zb(iz); }, Range(-2, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
         remapManager.deallocate(remap_data.rho1);
         remapManager.deallocate(remap_data.cv2);

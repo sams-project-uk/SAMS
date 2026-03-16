@@ -63,7 +63,7 @@ namespace LARE
 }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns)
+    void LARE3DNF<T_EOS>::lagrangian_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data, SAMS::controlFunctions &controlFns)
     {   
         using Range = pw::Range;
 
@@ -120,14 +120,14 @@ namespace LARE
         },
                         xbp, ybp, zbp);
 
-        shock_viscosity(data);
+        shock_viscosity(data, core_data);
         controlFns.calculateTimestep();
 
-        this->predictor_step(data);
+        this->predictor_step(data, core_data);
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::shock_viscosity(simulationData &data)
+    void LARE3DNF<T_EOS>::shock_viscosity(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
         data.visc2_norm = 0.25 * (data.gas_gamma + 1.0) * data.visc2;
@@ -179,9 +179,9 @@ namespace LARE
             T_indexType i0 = i1 - 1, j0 = j1, k0 = k1;
             T_indexType i3 = i2 + 1, j3 = j2, k3 = k2;
 
-            T_dataType dx = data.dxb(ix);
-            T_dataType dxp = data.dxb(ixp);
-            T_dataType dxm = data.dxb(ixm);
+            T_dataType dx = core_data.dxb(ix);
+            T_dataType dxp = core_data.dxb(ixp);
+            T_dataType dxm = core_data.dxb(ixm);
             T_dataType dvdots = -(data.vx(i1, j1, k1) - data.vx(i2, j2, k2));
             T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
             // Edge viscosities from Caramana
@@ -200,9 +200,9 @@ namespace LARE
         T_indexType i0 = i1, j0 = j1 - 1, k0 = k1;
         T_indexType i3 = i2, j3 = j2 + 1, k3 = k2;
 
-        T_dataType dx = data.dyb(iy) * data.hy(ix);
-        T_dataType dxp = data.dyb(iyp) * data.hy(ix);
-        T_dataType dxm = data.dyb(iym) * data.hy(ix);
+        T_dataType dx = core_data.dyb(iy) * core_data.hy(ix);
+        T_dataType dxp = core_data.dyb(iyp) * core_data.hy(ix);
+        T_dataType dxm = core_data.dyb(iym) * core_data.hy(ix);
         T_dataType dvdots = -(data.vy(i1, j1, k1) - data.vy(i2, j2, k2));
         T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
         data.alpha2(ix, iy, iz) = edge_viscosity<T_EOS>(data,
@@ -219,9 +219,9 @@ namespace LARE
         T_indexType i0 = i1, j0 = j1, k0 = k1 - 1;
         T_indexType i3 = i2, j3 = j2, k3 = k2 + 1;
 
-        T_dataType dx = data.dzb(iz) * data.hz(ix, iy);
-        T_dataType dxp = data.dzb(izp) * data.hz(ix, iy);
-        T_dataType dxm = data.dzb(izm) * data.hz(ix, iy);
+        T_dataType dx = core_data.dzb(iz) * core_data.hz(ix, iy);
+        T_dataType dxp = core_data.dzb(izp) * core_data.hz(ix, iy);
+        T_dataType dxm = core_data.dzb(izm) * core_data.hz(ix, iy);
         T_dataType dvdots = -(data.vz(i1, j1, k1) - data.vz(i2, j2, k2));
         T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
         data.alpha3(ix, iy, iz) = edge_viscosity<T_EOS>(data,
@@ -256,9 +256,9 @@ namespace LARE
             data.p_visc(ix, iy, iz) = pw::max(data.p_visc(ix, iy, iz), -data.alpha2(ix, iy, iz) * std::sqrt(a2));
             data.p_visc(ix, iy, iz) = pw::max(data.p_visc(ix, iy, iz), -data.alpha3(ix, iy, iz) * std::sqrt(a9));
 
-            T_dataType dx = data.dxb(ix);
-            T_dataType dy = data.dyb(iy) * data.hyc(ix);
-            T_dataType dz = data.dzb(iz) * data.hz2(ix, iy);
+            T_dataType dx = core_data.dxb(ix);
+            T_dataType dy = core_data.dyb(iy) * core_data.hyc(ix);
+            T_dataType dz = core_data.dzb(iz) * core_data.hz2(ix, iy);
 
             data.visc_heat(ix, iy, iz) =
                 -0.25 * dy * dz * data.alpha1(ix,  iy,  iz) * a1 
@@ -287,9 +287,9 @@ namespace LARE
             T_indexType iym = iy - 1, iyp = iy + 1;
             T_indexType ixm = ix - 1, ixp = ix + 1;
 
-            T_dataType dx = data.dxb(ix);
-            T_dataType dy = data.dyb(iy) * data.hyc(ix);
-            T_dataType dz = data.dzb(iz) * data.hz2(ix, iy);
+            T_dataType dx = core_data.dxb(ix);
+            T_dataType dy = core_data.dyb(iy) * core_data.hyc(ix);
+            T_dataType dz = core_data.dzb(iz) * core_data.hz2(ix, iy);
 
             T_dataType a1 = data.alpha1(ix, iyp, izp) * dy * dz;
             T_dataType a2 = data.alpha1(ixp, iyp, izp) * dy * dz;
@@ -330,11 +330,11 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::set_dt(simulationData &data)
+    void LARE3DNF<T_EOS>::set_dt(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
 
-        int i0 = data.geometry == geometryType::Cartesian ? 0 : 1;
+        int i0 = core_data.geometry == geometryType::Cartesian ? 0 : 1;
 
         // Now need to do a map and reduction
         T_dataType dt1 = data.dt_multiplier *
@@ -342,13 +342,13 @@ namespace LARE
         T_indexType izm = iz - 1;
         T_indexType iym = iy - 1;
         T_indexType ixm = ix - 1;
-        T_dataType dx = data.dxb(ix);
-        T_dataType dy = data.dyb(iy);
-        T_dataType dz = data.dzb(iz);
+        T_dataType dx = core_data.dxb(ix);
+        T_dataType dy = core_data.dyb(iy);
+        T_dataType dz = core_data.dzb(iz);
 
         T_dataType dhx = dx;
-        T_dataType dhy = dy * data.hyc(ix);
-        T_dataType dhz = dz * data.hzc(ix, iy);
+        T_dataType dhy = dy * core_data.hyc(ix);
+        T_dataType dhz = dz * core_data.hzc(ix, iy);
 
         T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
 
@@ -371,9 +371,9 @@ namespace LARE
         T_dataType dt1  = length / (std::sqrt(c_visc2) + std::sqrt(cs2 + c_visc2));
 
 
-        T_dataType ax = 0.25 * data.dxab(ix,iy,iz);
-        T_dataType ay = 0.25 * data.dyab(ix,iy,iz);
-        T_dataType az = 0.25 * data.dzab(ix,iy,iz);
+        T_dataType ax = 0.25 * core_data.dxab(ix,iy,iz);
+        T_dataType ay = 0.25 * core_data.dyab(ix,iy,iz);
+        T_dataType az = 0.25 * core_data.dzab(ix,iy,iz);
 
         T_dataType vxbm = (data.vx(ixm,iy ,iz ) + data.vx(ixm,iym,iz ) + data.vx(ixm,iy ,izm) + data.vx(ixm,iym,izm)) * ax;
         T_dataType vxbp = (data.vx(ix ,iy ,iz ) + data.vx(ix ,iym,iz ) + data.vx(ix ,iy ,izm) + data.vx(ix ,iym,izm)) * ax;
@@ -404,7 +404,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::predictor_step(simulationData &data)
+    void LARE3DNF<T_EOS>::predictor_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
 
@@ -431,11 +431,11 @@ namespace LARE
             T_indexType izp = iz + 1;
             T_indexType iyp = iy + 1;
             T_indexType ixp = ix + 1;
-            T_dataType dx = data.dxc(ix);
-            T_dataType dy = data.dyc(iy);
-            T_dataType dz = data.dzc(iz);
+            T_dataType dx = core_data.dxc(ix);
+            T_dataType dy = core_data.dyc(iy);
+            T_dataType dz = core_data.dzc(iz);
 
-            T_dataType h2c = data.hyc(ix), h3c = data.hzc(ix, iy);
+            T_dataType h2c = core_data.hyc(ix), h3c = core_data.hzc(ix, iy);
             T_dataType dhy = h2c * dy, dhz = h3c * dz;
 
             T_dataType pp = data.pressure(ix, iy, iz);
@@ -465,16 +465,16 @@ namespace LARE
             // data.fz(ix, iy, iz) -= data.rho_v(ix, iy, iz) * data.grav_z(iz);
 
             // Geometry corrections
-            if (data.geometry == geometryType::Spherical)
+            if (core_data.geometry == geometryType::Spherical)
             {
-              T_dataType cotantheta = 1.0 / tan(data.yb(iy));
-              data.fx(ix, iy, iz) += data.rho_v(ix, iy, iz) * (data.vy(ix, iy, iz) * data.vy(ix, iy, iz) + data.vz(ix, iy, iz) * data.vz(ix, iy, iz)) / data.xb(ix);
-              data.fy(ix, iy, iz) -= data.rho_v(ix, iy, iz) * (data.vy(ix, iy, iz) * data.vx(ix, iy, iz) - cotantheta * data.vz(ix, iy, iz) * data.vz(ix, iy, iz)) / data.xb(ix);
-              data.fz(ix, iy, iz) -= data.rho_v(ix, iy, iz) * (data.vz(ix, iy, iz) * data.vx(ix, iy, iz) + cotantheta * data.vz(ix, iy, iz) * data.vy(ix, iy, iz)) / data.xb(ix);
-            } else if (data.geometry == geometryType::Cylindrical)
+              T_dataType cotantheta = 1.0 / tan(core_data.yb(iy));
+              data.fx(ix, iy, iz) += data.rho_v(ix, iy, iz) * (data.vy(ix, iy, iz) * data.vy(ix, iy, iz) + data.vz(ix, iy, iz) * data.vz(ix, iy, iz)) / core_data.xb(ix);
+              data.fy(ix, iy, iz) -= data.rho_v(ix, iy, iz) * (data.vy(ix, iy, iz) * data.vx(ix, iy, iz) - cotantheta * data.vz(ix, iy, iz) * data.vz(ix, iy, iz)) / core_data.xb(ix);
+              data.fz(ix, iy, iz) -= data.rho_v(ix, iy, iz) * (data.vz(ix, iy, iz) * data.vx(ix, iy, iz) + cotantheta * data.vz(ix, iy, iz) * data.vy(ix, iy, iz)) / core_data.xb(ix);
+            } else if (core_data.geometry == geometryType::Cylindrical)
             {
-                data.fx(ix, iy, iz) += data.rho_v(ix, iy, iz) * data.vy(ix, iy, iz) * data.vy(ix, iy, iz) / data.xb(ix);
-                data.fy(ix, iy, iz) -= data.rho_v(ix, iy, iz) * data.vy(ix, iy, iz) * data.vx(ix, iy, iz) / data.xb(ix);
+                data.fx(ix, iy, iz) += data.rho_v(ix, iy, iz) * data.vy(ix, iy, iz) * data.vy(ix, iy, iz) / core_data.xb(ix);
+                data.fy(ix, iy, iz) -= data.rho_v(ix, iy, iz) * data.vy(ix, iy, iz) * data.vx(ix, iy, iz) / core_data.xb(ix);
             }
 
             // Update positions
@@ -494,12 +494,12 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::corrector_step(simulationData &data)
+    void LARE3DNF<T_EOS>::corrector_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
 
         using Range = pw::Range;
 
-        shock_heating(data);
+        shock_heating(data, core_data);
 
         // Correct velocities to final values
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -529,9 +529,9 @@ namespace LARE
             T_dataType vzbm = 0.25 * (data.vz1(ix, iy, izm) + data.vz1(ixm, iy, izm) + data.vz1(ix, iym, izm) + data.vz1(ixm, iym, izm));
 
             T_dataType vol = data.cv(ix, iy, iz);
-            T_dataType dvxdx = (vxb * data.dxab(ix, iy, iz) - vxbm * data.dxab(ixm, iy, iz)) / vol;
-            T_dataType dvydy = (vyb * data.dyab(ix, iy, iz) - vybm * data.dyab(ix, iym, iz)) / vol;
-            T_dataType dvzdz = (vzb * data.dzab(ix, iy, iz) - vzbm * data.dzab(ix, iy, izm)) / vol;
+            T_dataType dvxdx = (vxb * core_data.dxab(ix, iy, iz) - vxbm * core_data.dxab(ixm, iy, iz)) / vol;
+            T_dataType dvydy = (vyb * core_data.dyab(ix, iy, iz) - vybm * core_data.dyab(ix, iym, iz)) / vol;
+            T_dataType dvzdz = (vzb * core_data.dzab(ix, iy, iz) - vzbm * core_data.dzab(ix, iy, izm)) / vol;
 
             T_dataType dv = (dvxdx + dvydy + dvzdz) * data.dt;
 
@@ -554,7 +554,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::shock_heating(simulationData &data)
+    void LARE3DNF<T_EOS>::shock_heating(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
 
@@ -650,9 +650,9 @@ namespace LARE
                               (data.vz(ix, iym, izm) - data.vz(ix, iym, iz)) *
                                   (data.vz1(ix, iym, izm) - data.vz1(ix, iym, iz)));
 
-            T_dataType dx = data.dxb(ix);
-            T_dataType dy = data.dyb(iy) * data.hyc(ix);
-            T_dataType dz = data.dzb(iz) * data.hz2(ix, iy);
+            T_dataType dx = core_data.dxb(ix);
+            T_dataType dy = core_data.dyb(iy) * core_data.hyc(ix);
+            T_dataType dz = core_data.dzb(iz) * core_data.hz2(ix, iy);
 
             data.visc_heat(ix, iy, iz) =
                 (-0.25 * dy * dz * data.alpha1(ix, iy, iz) * a1 - 0.25 * dx * dz * data.alpha2(ix, iy, iz) * a2 - 0.25 * dy * dz * data.alpha1(ix, iyp, iz) * a3 -

@@ -155,12 +155,6 @@ namespace LARE
                         << std::endl;
 
         manager.allocate(data.p_visc, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
-        manager.allocate(data.dxab, data.xbLocalRange, data.ycLocalRange, data.zcLocalRange);
-        manager.allocate(data.dyab, data.xcLocalRange, data.ybLocalRange, data.zcLocalRange);
-        manager.allocate(data.dzab, data.xcLocalRange, data.ycLocalRange, data.zbLocalRange);
-        manager.allocate(data.dxac, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
-        manager.allocate(data.dyac, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
-        manager.allocate(data.dzac, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
         manager.allocate(data.cv, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
         manager.allocate(data.cv1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
         manager.allocate(data.cvc, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
@@ -191,35 +185,6 @@ namespace LARE
         manager.allocate(data.flux_y, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
         manager.allocate(data.flux_z, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
 
-        axRegistry.fillPPLocalAxis("X", data.xc, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPLocalAxis("Y", data.yc, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPLocalAxis("Z", data.zc, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPLocalAxis("X", data.xb, SAMS::staggerType::HALF_CELL);
-        axRegistry.fillPPLocalAxis("Y", data.yb, SAMS::staggerType::HALF_CELL);
-        axRegistry.fillPPLocalAxis("Z", data.zb, SAMS::staggerType::HALF_CELL);
-        axRegistry.fillPPLocalAxis("X", data.xb_host, SAMS::staggerType::HALF_CELL);
-        axRegistry.fillPPLocalAxis("Y", data.yb_host, SAMS::staggerType::HALF_CELL);
-        axRegistry.fillPPLocalAxis("Z", data.zb_host, SAMS::staggerType::HALF_CELL);
-        axRegistry.fillPPLocalAxis("X", data.xc_host, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPLocalAxis("Y", data.yc_host, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPLocalAxis("Z", data.zc_host, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPAxis("X", data.xb_global, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPAxis("Y", data.yb_global, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPAxis("Z", data.zb_global, SAMS::staggerType::CENTRED);
-
-        axRegistry.fillPPLocalDelta("X", data.dxc, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPLocalDelta("Y", data.dyc, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPLocalDelta("Z", data.dzc, SAMS::staggerType::CENTRED);
-        axRegistry.fillPPLocalDelta("X", data.dxb, SAMS::staggerType::HALF_CELL);
-        axRegistry.fillPPLocalDelta("Y", data.dyb, SAMS::staggerType::HALF_CELL);
-        axRegistry.fillPPLocalDelta("Z", data.dzb, SAMS::staggerType::HALF_CELL);
-
-        manager.allocate(data.hy, Range(-2, nx + 2));
-        manager.allocate(data.hz, Range(-2, nx + 2), Range(-2, ny + 2));
-        manager.allocate(data.hyc, Range(-1, nx + 2));
-        manager.allocate(data.hzc, Range(-1, nx + 2), Range(-1, ny + 2));
-        manager.allocate(data.hz1, Range(-2, nx + 2), Range(-1, ny + 2));
-        manager.allocate(data.hz2, Range(-1, nx + 2), Range(-2, ny + 2));
         manager.allocate(data.x, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
         manager.allocate(data.y, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
         manager.allocate(data.z, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
@@ -240,9 +205,11 @@ namespace LARE
      * Setup the basic LARE3D parameters like grid points etc.
      */
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::grid(simulationData &data)
+    void LARE3DNF<T_EOS>::grid(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
-
+    };
+}
+/*
         pw::portableArrayManager localManager;
 
         auto hyv = localManager.create<double>(pw::Range(-2, data.nx + 2));
@@ -353,22 +320,6 @@ namespace LARE
             };
             pw::applyKernel(l, pw::Range(-1, data.nx + 2), pw::Range(-1, data.ny + 2));
             pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy) { data.dzab(ix, iy, -2) = data.dxb(ix) * data.dyb(iy) * data.hyc(ix); }, pw::Range(-1, data.nx + 2), pw::Range(-1, data.ny + 2));
-            pw::fence();
-        }
-        {
-            // Node centred areas and volumes
-            auto l = LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz)
-            {
-                T_dataType dx = data.dxb(ix);
-                T_dataType dy = data.dyb(iy);
-                T_dataType dz = data.dzc(iz);
-                T_dataType dydz = dy * dz;
-                data.dxac(ix, iy, iz) = dydz * data.hyc(ix) * data.hz2(ix, iy);
-                data.dyac(ix, iy, iz) = dx * dz * data.hz1(ix, iy);
-                data.dzac(ix, iy, iz) = dx * dy * data.hy(ix);
-                data.cvc(ix, iy, iz) = dx * dydz * hyv(ix) * data.hz(ix, iy);
-            };
-            pw::applyKernel(l, pw::Range(-1, data.nx + 2), pw::Range(-1, data.ny + 2), pw::Range(-1, data.nz + 2));
             pw::fence();
         }
         // Set up the cartesian coordinates array

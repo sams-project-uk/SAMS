@@ -5,7 +5,7 @@ namespace LARE
     namespace pw = portableWrapper;
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::remap_x(simulationData &data, remapData &remap_data)
+    void LARE3DNF<T_EOS>::remap_x(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
         pw::portableArrayManager xRemapManager;
@@ -42,9 +42,9 @@ namespace LARE
                 T_dataType vzbm = (data.vz1(ix, iy, izm) + data.vz1(ixm, iy, izm) + data.vz1(ix, iym, izm) + data.vz1(ixm, iym, izm)) * 0.25;
 
                 T_dataType vol = data.cv(ix, iy, iz);
-                T_dataType dvxdx = (vxb * data.dxab(ix, iy, iz) - vxbm * data.dxab(ixm, iy, iz)) / vol;
-                T_dataType dvydy = remap_data.ypass * (vyb * data.dyab(ix, iy, iz) - vybm * data.dyab(ix, iym, iz)) / vol;
-                T_dataType dvzdz = remap_data.zpass * (vzb * data.dzab(ix, iy, iz) - vzbm * data.dzab(ix, iy, izm)) / vol;
+                T_dataType dvxdx = (vxb * core_data.dxab(ix, iy, iz) - vxbm * core_data.dxab(ixm, iy, iz)) / vol;
+                T_dataType dvydy = remap_data.ypass * (vyb * core_data.dyab(ix, iy, iz) - vybm * core_data.dyab(ix, iym, iz)) / vol;
+                T_dataType dvzdz = remap_data.zpass * (vzb * core_data.dzab(ix, iy, iz) - vzbm * core_data.dzab(ix, iy, izm)) / vol;
 
                 T_dataType dv = (dvydy + dvzdz) * data.dt;
 
@@ -57,7 +57,7 @@ namespace LARE
                 data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
                 // dxb before remap
-                remap_data.db1(ix, iy, iz) = data.dxb(ix) + (vxb - vxbm) * data.dt;
+                remap_data.db1(ix, iy, iz) = core_data.dxb(ix) + (vxb - vxbm) * data.dt;
             },
             Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
         pw::fence();
@@ -74,7 +74,7 @@ namespace LARE
 
         pw::fence();
 
-        x_mass_flux(data, remap_data); // Mass flux in x-direction
+        x_mass_flux(data, remap_data, core_data); // Mass flux in x-direction
         dm_x_bcs();    // Apply boundary conditions to mass flux
 
         pw::applyKernel(
@@ -84,7 +84,7 @@ namespace LARE
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 
-        x_energy_flux<&simulationData::energy_ion>(data, remap_data);
+        x_energy_flux<&simulationData::energy_ion>(data, remap_data, core_data);
 
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -177,7 +177,7 @@ namespace LARE
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
         pw::fence();
 
-        x_mom_flux<&simulationData::vx>(data, remap_data); // Momentum flux in x-direction
+        x_mom_flux<&simulationData::vx>(data, remap_data, core_data); // Momentum flux in x-direction
 
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -188,7 +188,7 @@ namespace LARE
 
         pw::fence();
 
-        x_mom_flux<&simulationData::vy>(data, remap_data); // Momentum flux in y-direction
+        x_mom_flux<&simulationData::vy>(data, remap_data, core_data); // Momentum flux in y-direction
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
@@ -197,7 +197,7 @@ namespace LARE
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
         pw::fence();
 
-        x_mom_flux<&simulationData::vz>(data, remap_data); // Momentum flux in z-direction
+        x_mom_flux<&simulationData::vz>(data, remap_data, core_data); // Momentum flux in z-direction
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
@@ -211,7 +211,7 @@ namespace LARE
     } // END LARE3D::remap_x
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::x_mass_flux(simulationData &data, remapData &remap_data)
+    void LARE3DNF<T_EOS>::x_mass_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -221,7 +221,7 @@ namespace LARE
                 T_indexType ixp2 = ix + 2;
                 T_indexType iym = iy - 1;
                 T_indexType izm = iz - 1;
-                T_dataType area = data.dxab(ix, iy, iz);
+                T_dataType area = core_data.dxab(ix, iy, iz);
 
                 T_dataType v_advect = (data.vx1(ix, iy, iz) + data.vx1(ix, iym, iz) +
                                        data.vx1(ix, iy, izm) + data.vx1(ix, iym, izm)) *
@@ -269,7 +269,7 @@ namespace LARE
      */
     template<typename T_EOS>
     template <auto mPtr>
-    void LARE3DNF<T_EOS>::x_energy_flux(simulationData &data, remapData &remap_data)
+    void LARE3DNF<T_EOS>::x_energy_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -280,7 +280,7 @@ namespace LARE
                 T_indexType iym = iy - 1;
                 T_indexType izm = iz - 1;
 
-                T_dataType area = data.dxab(ix, iy, iz);
+                T_dataType area = core_data.dxab(ix, iy, iz);
 
                 T_dataType v_advect = (data.vx1(ix, iy, iz) + data.vx1(ix, iym, iz) +
                                        data.vx1(ix, iy, izm) + data.vx1(ix, iym, izm)) *
@@ -326,7 +326,7 @@ namespace LARE
 
     template<typename T_EOS>
     template <auto mPtr>
-    void LARE3DNF<T_EOS>::x_mom_flux(simulationData &data, remapData &remap_data)
+    void LARE3DNF<T_EOS>::x_mom_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -334,7 +334,7 @@ namespace LARE
                 T_indexType ixm = ix - 1;
                 T_indexType ixp = ix + 1;
                 T_indexType ixp2 = ix + 2;
-                T_dataType area = data.dxac(ix, iy, iz);
+                T_dataType area = core_data.dxac(ix, iy, iz);
 
                 T_dataType v_advect = data.vx1(ix, iy, iz);
                 T_dataType o_v = v_advect * data.dt * area;
