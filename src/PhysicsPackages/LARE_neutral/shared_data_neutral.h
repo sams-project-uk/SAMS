@@ -425,7 +425,7 @@ namespace LARE_neutral
             if (data.rke){
                 energy_correction(data);
             }
-            eta_calc(data);
+            //eta_calc(data);
         }
 
         /**
@@ -505,7 +505,7 @@ namespace LARE_neutral
          * Calculate the resistivity eta based on current density
          * @param data Simulation data struct
          */
-        void eta_calc(simulationData &data);
+        //void eta_calc(simulationData &data);
 
         /**
          * Core remap control function

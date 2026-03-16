@@ -305,10 +305,16 @@ namespace examples
                 varRegistry.fillPPArray("rho_n", rho_n);
                 varRegistry.fillPPArray("energy_neutral", energy_neutral);
                 
-                LARE::T_dataType xi_n=0.9;
+                //if empirical should go here
+                
+                TWOFLUID::PIP::get_equilibrium_ion_fraction(data.T_reference,LARE::T_dataType xi_n);
+                
+                //LARE::T_dataType xi_n=0.9;
                 LARE::T_dataType xi_p=1.0-xi_n;
                 LARE::T_dataType f_p_p=2.0*xi_p/(xi_n+2.0*xi_p);
                 LARE::T_dataType f_p_n=xi_n/(xi_n+2.0*xi_p);
+                
+                printf("neutral fraction=%f \n",xi_n);
                 
                 pw::applyKernel(
                     LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)

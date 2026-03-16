@@ -22,9 +22,6 @@ namespace LARE_neutral
      */
     struct lagranData
     {
-        volumeArray bx1;       // X-magnetic field at half timestep
-        volumeArray by1;       // Y-magnetic field at half timestep
-        volumeArray bz1;       // Z-magnetic field at half timestep
         volumeArray alpha1;    // Alpha1 coefficient for magnetic field update
         volumeArray alpha2;    // Alpha2 coefficient for magnetic field update
         volumeArray alpha3;    // Alpha3 coefficient for magnetic field update
@@ -43,7 +40,6 @@ namespace LARE_neutral
         volumeArray flux_x;    // X-flux
         volumeArray flux_y;    // Y-flux
         volumeArray flux_z;    // Z-flux
-        volumeArray curlb;     // Curl of the magnetic field
     };
 
     void shock_viscosity(simulationData &data);
@@ -103,9 +99,6 @@ namespace LARE_neutral
         // All of the arrays are deallocated when lagranManager goes out of scope
         //  Initialize bx1, by1, bz1, p_e, p_i, pressure
         T_dataType gas_gamma = data.gas_gamma;
-        volumeArray bxl = data.bx;
-        volumeArray byl = data.by;
-        volumeArray bzl = data.bz;
         volumeArray cvl = data.cv;
         volumeArray energy_neutral = data.energy_neutral;
 
@@ -113,9 +106,6 @@ namespace LARE_neutral
             T_indexType izm = iz - 1;
             T_indexType iym = iy - 1;
             T_indexType ixm = ix - 1;
-            data.bx1(ix, iy, iz) = 0.0;//0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
-            data.by1(ix, iy, iz) = 0.0;//0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
-            data.bz1(ix, iy, iz) = 0.0;//0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
 
             data.pressure(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_neutral(ix, iy, iz);
         },
@@ -174,11 +164,8 @@ namespace LARE_neutral
         // Compute cs
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_dataType rmin = pw::max(data.rho(ix, iy, iz), data.none_zero);
-        T_dataType b2 = data.bx1(ix, iy, iz) * data.bx1(ix, iy, iz) +
-                        data.by1(ix, iy, iz) * data.by1(ix, iy, iz) +
-                        data.bz1(ix, iy, iz) * data.bz1(ix, iy, iz);
         T_dataType p = data.pressure(ix, iy, iz);
-        cs(ix, iy, iz) = std::sqrt((data.gas_gamma * p + b2) / rmin); }, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
+        cs(ix, iy, iz) = std::sqrt((data.gas_gamma * p) / rmin); }, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
         pw::fence();
         // Compute cs_v
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -383,14 +370,11 @@ namespace LARE_neutral
         T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
         T_dataType cs2 = data.gas_gamma * data.pressure(ix, iy, iz) / rho0;
 
-        T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
-                         data.by(ix, iy, iz) * data.by(ix, iy, iz) +
-                         data.bz(ix, iy, iz) * data.bz(ix, iy, iz)) / data.mu0 / rho0;
         T_dataType c_visc2 = data.p_visc(ix, iy, iz) / rho0;
 
         T_dataType length  = pw::min(dhx, dhy, dhz);
 
-        T_dataType dt1  = length / (std::sqrt(c_visc2) + std::sqrt(cs2 + w1 + c_visc2));
+        T_dataType dt1  = length / (std::sqrt(c_visc2) + std::sqrt(cs2 + c_visc2));
 
 
         T_dataType ax = 0.25 * data.dxab(ix,iy,iz);
@@ -425,134 +409,12 @@ namespace LARE_neutral
         data.dtr = data.dt;
     }
 
-    void LARE3D_neutral::eta_calc(simulationData &data)
-    {
-        using Range = pw::Range;
-
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-            T_indexType izp = iz + 1;
-            T_indexType iyp = iy + 1;
-            T_indexType ixp = ix + 1;
-
-            T_dataType jx = (data.bz(ix, iyp, iz) - data.bz(ix, iy, iz)) / data.dyc(iy) - (data.by(ix, iy, izp) - data.by(ix, iy, iz)) / data.dzc(iz);
-
-            T_dataType jxp = (data.bz(ixp, iyp, iz) - data.bz(ixp, iy, iz)) / data.dyc(iy) - (data.by(ixp, iy, izp) - data.by(ixp, iy, iz)) / data.dzc(iz);
-
-            T_dataType jy = (data.bx(ix, iy, izp) - data.bx(ix, iy, iz)) / data.dzc(iz) - (data.bz(ixp, iy, iz) - data.bz(ix, iy, iz)) / data.dxc(ix);
-
-            T_dataType jyp = (data.bx(ix, iyp, izp) - data.bx(ix, iyp, iz)) / data.dzc(iz) - (data.bz(ixp, iyp, iz) - data.bz(ix, iyp, iz)) / data.dxc(ix);
-
-            T_dataType jz = (data.by(ixp, iy, iz) - data.by(ix, iy, iz)) / data.dxc(ix) - (data.bx(ix, iyp, iz) - data.bx(ix, iy, iz)) / data.dyc(iy);
-
-            T_dataType jzp = (data.by(ixp, iy, izp) - data.by(ix, iy, izp)) / data.dxc(ix) - (data.bx(ix, iyp, izp) - data.bx(ix, iy, izp)) / data.dyc(iy);
-
-            jx = (jx + jxp) * 0.5;
-            jy = (jy + jyp) * 0.5;
-            jz = (jz + jzp) * 0.5;
-
-            T_dataType j_local = sqrt(pow(jx, 2.0) + pow(jy, 2.0) + pow(jz, 2.0));
-
-            data.eta(ix, iy, iz) = j_local > data.j_max ? data.eta_background + data.eta0 : data.eta_background;
-        },
-                        Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz + 1));
-        pw::fence();
-    }
-
-    void rkstep(simulationData &data)
-    {
-        using Range = pw::Range;
-
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-            T_indexType izp = iz + 1;
-            T_indexType iyp = iy + 1;
-            T_indexType ixp = ix + 1;
-
-            T_dataType jx1 = (data.bz(ix, iyp, iz) - data.bz(ix, iy, iz)) / data.dyc(iy) - (data.by(ix, iy, izp) - data.by(ix, iy, iz)) / data.dzc(iz);
-            T_dataType jx2 = (data.bz(ixp, iyp, iz) - data.bz(ixp, iy, iz)) / data.dyc(iy) - (data.by(ixp, iy, izp) - data.by(ixp, iy, iz)) / data.dzc(iz);
-            T_dataType jy1 = (data.bx(ix, iy, izp) - data.bx(ix, iy, iz)) / data.dzc(iz) - (data.bz(ixp, iy, iz) - data.bz(ix, iy, iz)) / data.dxc(ix);
-            T_dataType jy2 = (data.bx(ix, iyp, izp) - data.bx(ix, iyp, iz)) / data.dzc(iz) - (data.bz(ixp, iyp, iz) - data.bz(ix, iyp, iz)) / data.dxc(ix);
-            T_dataType jz1 = (data.by(ixp, iy, iz) - data.by(ix, iy, iz)) / data.dxc(ix) - (data.bx(ix, iyp, iz) - data.bx(ix, iy, iz)) / data.dyc(iy);
-            T_dataType jz2 = (data.by(ixp, iy, izp) - data.by(ix, iy, izp)) / data.dxc(ix) - (data.bx(ix, iyp, izp) - data.bx(ix, iy, izp)) / data.dyc(iy);
-
-            T_dataType jx = 0.5 * (jx1 + jx2);
-            T_dataType jy = 0.5 * (jy1 + jy2);
-            T_dataType jz = 0.5 * (jz1 + jz2);
-
-            data.flux_x(ix, iy, iz) = -jx * data.eta(ix, iy, iz) * data.dxc(ix) * 0.5;
-            data.flux_y(ix, iy, iz) = -jy * data.eta(ix, iy, iz) * data.dyc(iy) * 0.5;
-            data.flux_z(ix, iy, iz) = -jz * data.eta(ix, iy, iz) * data.dzc(iz) * 0.5;
-            // This isn't really curlb. It's actually heat flux
-            data.curlb(ix, iy, iz) = data.eta(ix, iy, iz) * (jx * jx + jy * jy + jz * jz);
-        },
-                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-    }
-
-    void bstep(LARE3D_neutral &sim, simulationData &data)
-    {
-        using Range = pw::Range;
-
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        T_indexType izm = iz - 1;
-        T_indexType iym = iy - 1;
-        T_dataType area = data.dyb(iy) * data.dzb(iz);
-        data.bx(ix, iy, iz) = data.bx1(ix, iy, iz) + 
-        (
-            data.flux_z(ix, iy, iz) - 
-            data.flux_z(ix, iym, iz) + 
-            data.flux_z(ix, iy, izm) - 
-            data.flux_z(ix, iym, izm) - 
-            data.flux_y(ix, iy, iz) + 
-            data.flux_y(ix, iy, izm) - 
-            data.flux_y(ix, iym, iz) + 
-            data.flux_y(ix, iym, izm)
-        ) * data.dt / area; }, Range(0, data.nx), Range(1, data.ny), Range(1, data.nz));
-
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        T_indexType izm = iz - 1;
-        T_indexType ixm = ix - 1;
-        T_dataType area = data.dxb(ix) * data.dzb(iz);
-        data.by(ix, iy, iz) = data.by1(ix, iy, iz) + 
-        (
-                data.flux_x(ix, iy, iz) - 
-                data.flux_x(ix, iy, izm) + 
-                data.flux_x(ixm, iy, iz) - 
-                data.flux_x(ixm, iy, izm) - 
-                data.flux_z(ix, iy, iz) + 
-                data.flux_z(ixm, iy, iz) - 
-                data.flux_z(ix, iy, izm) + 
-                data.flux_z(ixm, iy, izm)
-        ) * data.dt / area; }, Range(1, data.nx), Range(0, data.ny), Range(1, data.nz));
-
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        T_indexType iym = iy - 1;
-        T_indexType ixm = ix - 1;
-        T_dataType area = data.dxb(ix) * data.dyb(iy);
-        data.bz(ix, iy, iz) = data.bz1(ix, iy, iz) + 
-        (
-                data.flux_y(ix, iy, iz) - 
-                data.flux_y(ixm, iy, iz) + 
-                data.flux_y(ix, iym, iz) - 
-                data.flux_y(ixm, iym, iz) - 
-                data.flux_x(ix, iy, iz) + 
-                data.flux_x(ix, iym, iz) - 
-                data.flux_x(ixm, iy, iz) + 
-                data.flux_x(ixm, iym, iz)
-        ) * data.dt / area; }, Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
-        pw::fence();
-        sim.bfield_bcs();
-    }
 
     void LARE3D_neutral::predictor_step(simulationData &data)
     {
         using Range = pw::Range;
         // Update magnetic field and cell volume at half time step
         b_field_and_cv1_update(data);
-
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        data.bx1(ix,iy,iz)*=data.cv1(ix,iy,iz);
-        data.by1(ix,iy,iz)*=data.cv1(ix,iy,iz);
-        data.bz1(ix,iy,iz)*=data.cv1(ix,iy,iz); }, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
         // Predictor step for energy and pressure
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -610,49 +472,6 @@ namespace LARE_neutral
             T_dataType cvz = data.cv1(ix, iy, iz) + data.cv1(ixp, iy, iz) + data.cv1(ix, iyp, iz) + data.cv1(ixp, iyp, iz);
             T_dataType cvzp = data.cv1(ix, iy, izp) + data.cv1(ixp, iy, izp) + data.cv1(ix, iyp, izp) + data.cv1(ixp, iyp, izp);
 
-            // Current components
-            // Update jx
-            // dbz/dy
-            w1 = (data.bz1(ix, iy, iz) + data.bz1(ixp, iy, iz) + data.bz1(ix, iy, izp) + data.bz1(ixp, iy, izp)) * h3 / cvy;
-            w2 = (data.bz1(ix, iyp, iz) + data.bz1(ixp, iyp, iz) + data.bz1(ix, iyp, izp) + data.bz1(ixp, iyp, izp)) * h3y / cvyp;
-            T_dataType jx = (w2 - w1) / dhy / h3c;
-
-            // dby/dz
-            w1 = (data.by1(ix, iy, iz) + data.by1(ixp, iy, iz) + data.by1(ix, iyp, iz) + data.by1(ixp, iyp, iz)) / cvz;
-            w2 = (data.by1(ix, iy, izp) + data.by1(ixp, iy, izp) + data.by1(ix, iyp, izp) + data.by1(ixp, iyp, izp)) / cvzp;
-            jx -= (w2 - w1) / dhz;
-
-            // Update jy
-            // dbz/dx
-            w1 = (data.bz1(ix, iy, iz) + data.bz1(ix, iyp, iz) + data.bz1(ix, iy, izp) + data.bz1(ix, iyp, izp)) * h3 / cvx;
-            w2 = (data.bz1(ixp, iy, iz) + data.bz1(ixp, iyp, iz) + data.bz1(ixp, iy, izp) + data.bz1(ixp, iyp, izp)) * h3x / cvxp;
-            T_dataType jy = -(w2 - w1) / dx / h3c;
-
-            // dbx/dz
-            w1 = (data.bx1(ix, iy, iz) + data.bx1(ixp, iy, iz) + data.bx1(ix, iyp, iz) + data.bx1(ixp, iyp, iz)) / cvz;
-            w2 = (data.bx1(ix, iy, izp) + data.bx1(ixp, iy, izp) + data.bx1(ix, iyp, izp) + data.bx1(ixp, iyp, izp)) / cvzp;
-            jy += (w2 - w1) / dhz;
-
-            // Update jz
-            // dby/dx
-            w1 = (data.by1(ix, iy, iz) + data.by1(ix, iyp, iz) + data.by1(ix, iy, izp) + data.by1(ix, iyp, izp)) * h2 / cvx;
-            w2 = (data.by1(ixp, iy, iz) + data.by1(ixp, iyp, iz) + data.by1(ixp, iy, izp) + data.by1(ixp, iyp, izp)) * h2x / cvxp;
-            T_dataType jz = (w2 - w1) / dx / h2c;
-
-            // dbx/dy
-            w1 = (data.bx1(ix, iy, iz) + data.bx1(ixp, iy, iz) + data.bx1(ix, iy, izp) + data.bx1(ixp, iy, izp)) / cvy;
-            w2 = (data.bx1(ix, iyp, iz) + data.bx1(ixp, iyp, iz) + data.bx1(ix, iyp, izp) + data.bx1(ixp, iyp, izp)) / cvyp;
-            jz -= (w2 - w1) / dhy;
-
-            // Average B field at cell center
-            T_dataType bxv = (data.bx1(ix, iy, iz) + data.bx1(ixp, iy, iz) + data.bx1(ix, iyp, iz) + data.bx1(ixp, iyp, iz) + data.bx1(ix, iy, izp) + data.bx1(ixp, iy, izp) + data.bx1(ix, iyp, izp) + data.bx1(ixp, iyp, izp)) / (cvx + cvxp);
-            T_dataType byv = (data.by1(ix, iy, iz) + data.by1(ixp, iy, iz) + data.by1(ix, iyp, iz) + data.by1(ixp, iyp, iz) + data.by1(ix, iy, izp) + data.by1(ixp, iy, izp) + data.by1(ix, iyp, izp) + data.by1(ixp, iyp, izp)) / (cvx + cvxp);
-            T_dataType bzv = (data.bz1(ix, iy, iz) + data.bz1(ixp, iy, iz) + data.bz1(ix, iyp, iz) + data.bz1(ixp, iyp, iz) + data.bz1(ix, iy, izp) + data.bz1(ixp, iy, izp) + data.bz1(ix, iyp, izp) + data.bz1(ixp, iyp, izp)) / (cvx + cvxp);
-
-            // Add JxB force
-            data.fx(ix, iy, iz) += (jy * bzv - jz * byv) / data.mu0;
-            data.fy(ix, iy, iz) += (jz * bxv - jx * bzv) / data.mu0;
-            data.fz(ix, iy, iz) += (jx * byv - jy * bxv) / data.mu0;
 
             // Add gravity force
             // data.fx(ix, iy, iz) -= data.rho_v(ix, iy, iz) * data.grav_r(ix);
@@ -692,12 +511,6 @@ namespace LARE_neutral
 
         using Range = pw::Range;
         //End of predictor step?
-
-        // Divide bx1, by1, bz1 by cv1
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        data.bx1(ix,iy,iz)/=data.cv1(ix,iy,iz);
-        data.by1(ix,iy,iz)/=data.cv1(ix,iy,iz);
-        data.bz1(ix,iy,iz)/=data.cv1(ix,iy,iz); }, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
         shock_heating(data);
 
@@ -782,50 +595,6 @@ namespace LARE_neutral
 
             T_dataType dv = (dvxdx + dvydy + dvzdz) * data.dt / 2.0;
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
-
-            // vx at By(i,j,k)
-            vxb = 0.25 * (data.vx(ix, iy, iz) + data.vx(ixm, iy, iz) + data.vx(ix, iy, izm) + data.vx(ixm, iy, izm));
-            // vx at By(i,j-1,k)
-            vxbm = 0.25 * (data.vx(ix, iym, iz) + data.vx(ixm, iym, iz) + data.vx(ix, iym, izm) + data.vx(ixm, iym, izm));
-            // vy at Bx(i,j,k)
-            vyb = 0.25 * (data.vy(ix, iy, iz) + data.vy(ix, iym, iz) + data.vy(ix, iy, izm) + data.vy(ix, iym, izm));
-            // vy at Bx(i-1,j,k)
-            vybm = 0.25 * (data.vy(ixm, iy, iz) + data.vy(ixm, iym, iz) + data.vy(ixm, iy, izm) + data.vy(ixm, iym, izm));
-
-            T_dataType dvxdy = (vxb * data.dyab(ix, iy, iz) - vxbm * data.dyab(ix, iym, iz)) / vol;
-            T_dataType dvydx = (vyb * data.dxab(ix, iy, iz) - vybm * data.dxab(ixm, iy, iz)) / vol;
-
-            // vx at Bz(i,j,k)
-            vxb = 0.25 * (data.vx(ix, iy, iz) + data.vx(ixm, iy, iz) + data.vx(ix, iym, iz) + data.vx(ixm, iym, iz));
-            // vx at Bz(i,j,k-1)
-            vxbm = 0.25 * (data.vx(ix, iy, izm) + data.vx(ixm, iy, izm) + data.vx(ix, iym, izm) + data.vx(ixm, iym, izm));
-            // vz at Bx(i,j,k)
-            vzb = 0.25 * (data.vz(ix, iy, iz) + data.vz(ix, iym, iz) + data.vz(ix, iy, izm) + data.vz(ix, iym, izm));
-            // vz at Bx(i-1,j,k)
-            vzbm = 0.25 * (data.vz(ixm, iy, iz) + data.vz(ixm, iym, iz) + data.vz(ixm, iy, izm) + data.vz(ixm, iym, izm));
-
-            T_dataType dvxdz = (vxb * data.dzab(ix, iy, iz) - vxbm * data.dzab(ix, iy, izm)) / vol;
-            T_dataType dvzdx = (vzb * data.dxab(ix, iy, iz) - vzbm * data.dxab(ixm, iy, iz)) / vol;
-
-            // vy at Bz(i,j,k)
-            vyb = 0.25 * (data.vy(ix, iy, iz) + data.vy(ixm, iy, iz) + data.vy(ix, iym, iz) + data.vy(ixm, iym, iz));
-            // vy at Bz(i,j,k-1)
-            vybm = 0.25 * (data.vy(ix, iy, izm) + data.vy(ixm, iy, izm) + data.vy(ix, iym, izm) + data.vy(ixm, iym, izm));
-            // vz at By(i,j,k)
-            vzb = 0.25 * (data.vz(ix, iy, iz) + data.vz(ixm, iy, iz) + data.vz(ix, iy, izm) + data.vz(ixm, iy, izm));
-            // vz at By(i,j-1,k)
-            vzbm = 0.25 * (data.vz(ix, iym, iz) + data.vz(ixm, iym, iz) + data.vz(ix, iym, izm) + data.vz(ixm, iym, izm));
-
-            T_dataType dvydz = (vyb * data.dzab(ix, iy, iz) - vybm * data.dzab(ix, iy, izm)) / vol;
-            T_dataType dvzdy = (vzb * data.dyab(ix, iy, iz) - vzbm * data.dyab(ix, iym, iz)) / vol;
-
-            T_dataType w3 = data.bx1(ix, iy, iz) * dvxdx + data.by1(ix, iy, iz) * dvxdy + data.bz1(ix, iy, iz) * dvxdz;
-            T_dataType w4 = data.bx1(ix, iy, iz) * dvydx + data.by1(ix, iy, iz) * dvydy + data.bz1(ix, iy, iz) * dvydz;
-            T_dataType w5 = data.bx1(ix, iy, iz) * dvzdx + data.by1(ix, iy, iz) * dvzdy + data.bz1(ix, iy, iz) * dvzdz;
-
-            data.bx1(ix, iy, iz) = (data.bx1(ix, iy, iz) + w3 * data.dt / 2.0) / (1.0 + dv);
-            data.by1(ix, iy, iz) = (data.by1(ix, iy, iz) + w4 * data.dt / 2.0) / (1.0 + dv);
-            data.bz1(ix, iy, iz) = (data.bz1(ix, iy, iz) + w5 * data.dt / 2.0) / (1.0 + dv);
         },
                         Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
         pw::fence();

@@ -6,6 +6,7 @@
 #include "shared_data.h"
 #include "shared_data_neutral.h"
 #include "builtInBoundaryConditions.h"
+#include "twofluid.h"
 
 namespace examples
 {

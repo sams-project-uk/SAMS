@@ -196,6 +196,8 @@ namespace TWOFLUID
             
             void plasma_source_allocate(LARE::simulationData &data,LARE_neutral::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
             
+            void get_equilibrium_ion_fraction(LARE::T_dataType T0,LARE::T_dataType &xi_n);
+            
             template<typename T_writer>
             void writeOutputMeshes(writer<T_writer> &writer, LARE::simulationData &data);
         
