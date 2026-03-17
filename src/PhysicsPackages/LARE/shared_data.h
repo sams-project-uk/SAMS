@@ -395,8 +395,8 @@ namespace LARE
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void getVariables(SAMS::harness &harnessRef, simulationData &data){
-            allocate(harnessRef, data);
+        void getVariables(SAMS::harness &harnessRef, simulationData &data, remapData &remap_data){
+            allocate(harnessRef, data, remap_data);
             grid(data);
         }
 
@@ -470,7 +470,7 @@ namespace LARE
          * This function allocates the arrays in the simulationData struct.
          * It uses the portableArrayManager to handle the memory allocation and deallocation.
          */
-        void allocate(SAMS::harness &harness, simulationData &data);
+        void allocate(SAMS::harness &harness, simulationData &data, remapData &remap_data);
 
         /**
          * Setup the LARE3D data

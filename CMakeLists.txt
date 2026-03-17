@@ -40,7 +40,7 @@ find_package(HDF5 REQUIRED COMPONENTS CXX)
 
 # --- NetCDF SETUP ---
 # Pull in NetCDF C library for TWOFLUID utilities
-find_package(NetCDF REQUIRED COMPONENTS C)
+#find_package(NetCDF REQUIRED COMPONENTS C)
 
 # Prefer imported NetCDF targets when available
 if(TARGET NetCDF::NetCDF_C)

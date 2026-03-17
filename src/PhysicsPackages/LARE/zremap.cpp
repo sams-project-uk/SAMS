@@ -1,5 +1,6 @@
 #include "shared_data.h"
 #include "remapData.h"
+#include "general_remap.hpp"
 
 namespace LARE
 {
@@ -16,6 +17,9 @@ namespace LARE
 
     void LARE3D::remap_z(simulationData &data, remapData &remap_data)
     {
+        if (USE_GENERAL_REMAP) {
+            return remap<AxisName::Z>(*this, data, remap_data);
+        }
         using Range = pw::Range;
         pw::portableArrayManager zRemapManager;
         remap_data.flux.nullify();
@@ -249,6 +253,9 @@ namespace LARE
     // Evans & Hawley constrained transport remap of vz*Bx fluxes
     void vz_bx_flux(simulationData &data, remapData &remap_data)
     {
+        if constexpr (USE_GENERAL_REMAP) {
+            return v_b_flux<AxisName::Z, AxisName::X>(data, remap_data);
+        }
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType ixp = ix + 1;
@@ -301,6 +308,9 @@ namespace LARE
     // Evans & Hawley constrained transport remap of vz*Bx fluxes
     void vz_by_flux(simulationData &data, remapData &remap_data)
     {
+        if constexpr (USE_GENERAL_REMAP) {
+            return v_b_flux<AxisName::Z, AxisName::Y>(data, remap_data);
+        }
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType ixm = ix - 1;
@@ -352,6 +362,9 @@ namespace LARE
 
     void z_mass_flux(simulationData &data, remapData &remap_data)
     {
+        if constexpr (USE_GENERAL_REMAP) {
+            return mass_flux<AxisName::Z>(data, remap_data);
+        }
         using Range = pw::Range;
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -410,6 +423,9 @@ namespace LARE
     template <auto mPtr>
     void z_energy_flux(simulationData &data, remapData &remap_data)
     {
+        if constexpr (USE_GENERAL_REMAP) {
+            return energy_flux<AxisName::Z, mPtr>(data, remap_data);
+        }
         using Range = pw::Range;
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -466,6 +482,9 @@ namespace LARE
     template <auto mPtr>
     void z_mom_flux(simulationData &data, remapData &remap_data)
     {
+        if constexpr (USE_GENERAL_REMAP) {
+            return mom_flux<AxisName::Z, mPtr>(data, remap_data);
+        }
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
     // Main flux calculation loop
