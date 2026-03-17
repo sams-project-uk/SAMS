@@ -366,9 +366,11 @@ namespace LARE_neutral
         T_dataType dhx = dx;
         T_dataType dhy = dy * data.hyc(ix);
         T_dataType dhz = dz * data.hzc(ix, iy);
+        
+        T_dataType pressure=(data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.energy_neutral(ix, iy, iz);
 
         T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
-        T_dataType cs2 = data.gas_gamma * data.pressure(ix, iy, iz) / rho0;
+        T_dataType cs2 = data.gas_gamma * pressure / rho0;
 
         T_dataType c_visc2 = data.p_visc(ix, iy, iz) / rho0;
 
