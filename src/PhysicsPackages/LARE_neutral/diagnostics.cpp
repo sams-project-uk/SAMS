@@ -23,10 +23,10 @@
 #else
 #include "io/writerSimple.h"
 #endif
-#include "shared_data.h"
+#include "shared_data_neutral.h"
 #include "mpiManager.h"
 
-namespace LARE
+namespace LARE_neutral
 {
 
     namespace pw = portableWrapper;
@@ -38,11 +38,11 @@ namespace LARE
         using Range = pw::Range;
         // Copy the data if needed
         auto fullHost = manager.makeHostAvailable(device);
-
+        
         T_indexType nx=data.rho.getSize(0);
         T_indexType ny=data.rho.getSize(1);
         T_indexType nz=data.rho.getSize(2);
-        
+
         // Now allocate memory for just the part we want to write
         manager.allocate(host, Range(1, nx), Range(1, ny), Range(1, nz));
         //Have to copy data since the HDF writer expects contiguous data
@@ -51,92 +51,87 @@ namespace LARE
     }
 
     template<typename T_writer>
-    void LARE3D::registerOutputMeshes(writer<T_writer> &writer, simulationData &data)
+    void LARE3D_neutral::registerOutputMeshes(writer<T_writer> &writer, simulationData &data)
     {
         T_indexType nx=data.rho.getSize(0);
         T_indexType ny=data.rho.getSize(1);
         T_indexType nz=data.rho.getSize(2);
-        writer.template registerRectilinearMesh<T_dataType>("MeshCC", nx, ny, nz);
+        writer.template registerRectilinearMesh<T_dataType>("MeshCC_n", nx, ny, nz);
 
     }
 
     template<typename T_writer>
-    void LARE3D::registerOutputVariables(writer<T_writer> &writer, simulationData &)
+    void LARE3D_neutral::registerOutputVariables(writer<T_writer> &writer, simulationData &)
     {
-        writer.template registerData<T_dataType>("rho", "MeshCC");
-        writer.template registerData<T_dataType>("energy_electron", "MeshCC");
-        writer.template registerData<T_dataType>("energy_ion", "MeshCC");
-        writer.template registerData<T_dataType>("vx", "MeshCC");
-        writer.template registerData<T_dataType>("vy", "MeshCC");
-        writer.template registerData<T_dataType>("vz", "MeshCC");
-        writer.template registerData<T_dataType>("bx", "MeshCC");
-        writer.template registerData<T_dataType>("by", "MeshCC");
-        writer.template registerData<T_dataType>("bz", "MeshCC");
+        writer.template registerData<T_dataType>("rho_n", "MeshCC_n");
+        writer.template registerData<T_dataType>("energy_neutral", "MeshCC_n");
+        writer.template registerData<T_dataType>("vx_n", "MeshCC_n");
+        writer.template registerData<T_dataType>("vy_n", "MeshCC_n");
+        writer.template registerData<T_dataType>("vz_n", "MeshCC_n");
+        writer.template registerData<T_dataType>("bx_n", "MeshCC_n");
+        writer.template registerData<T_dataType>("by_n", "MeshCC_n");
+        writer.template registerData<T_dataType>("bz_n", "MeshCC_n");
     }
 
     template<typename T_writer>
-    void LARE3D::writeOutputMeshes(writer<T_writer> &writer, simulationData &data){
-        writer.writeRectilinearMesh("MeshCC", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
+    void LARE3D_neutral::writeOutputMeshes(writer<T_writer> &writer, simulationData &data){
+        writer.writeRectilinearMesh("MeshCC_n", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
     }
 
     template <typename T_writer>
-    void LARE3D::writeOutputVariables(writer<T_writer> &writer, simulationData &data)
+    void LARE3D_neutral::writeOutputVariables(writer<T_writer> &writer, simulationData &data)
     {
         pw::portableArrayManager manager;
         hostVolumeArray host;
 
         getHostVersion(data, manager, data.rho, host);
-        writer.writeData("rho", host.data());
+        writer.writeData("rho_n", host.data());
 
-        getHostVersion(data, manager, data.energy_electron, host);
-        writer.writeData("energy_electron", host.data());
-
-        getHostVersion(data, manager, data.energy_ion, host);
-        writer.writeData("energy_ion", host.data());
+        getHostVersion(data, manager, data.energy_neutral, host);
+        writer.writeData("energy_neutral", host.data());
 
         getHostVersion(data, manager, data.vx, host);
-        writer.writeData("vx", host.data());
+        writer.writeData("vx_n", host.data());
 
         getHostVersion(data, manager, data.vy, host);
-        writer.writeData("vy", host.data());
+        writer.writeData("vy_n", host.data());
 
         getHostVersion(data, manager, data.vz, host);
-        writer.writeData("vz", host.data());
+        writer.writeData("vz_n", host.data());
 
         getHostVersion(data, manager, data.bx, host);
-        writer.writeData("bx", host.data());
+        writer.writeData("bx_n", host.data());
 
         getHostVersion(data, manager, data.by, host);
-        writer.writeData("by", host.data());
+        writer.writeData("by_n", host.data());
 
         getHostVersion(data, manager, data.bz, host);
-        writer.writeData("bz", host.data());
+        writer.writeData("bz_n", host.data());
     }
 
 //Need a better solution than this against future additions of writers
 //Perhaps another X macro?
 #if defined(USE_HDF5)
 //Instantiate the templates for HDF5 writer
-    template void LARE3D::registerOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
-    template void LARE3D::registerOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
-    template void LARE3D::writeOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
-    template void LARE3D::writeOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D_neutral::registerOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D_neutral::registerOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D_neutral::writeOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D_neutral::writeOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
 #else
 //Instantiate the templates for simple writer
-    template void LARE3D::registerOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
-    template void LARE3D::registerOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
-    template void LARE3D::writeOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
-    template void LARE3D::writeOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D_neutral::registerOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D_neutral::registerOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D_neutral::writeOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D_neutral::writeOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
 #endif
 
-    void LARE3D::energy_correction(simulationData &data)
+    void LARE3D_neutral::energy_correction(simulationData &data)
     {
         using Range = pw::Range;
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_dataType dke = pw::max(-data.delta_ke(ix, iy, iz), 0.0) / (data.rho(ix, iy, iz) * data.cv(ix, iy, iz));
-                data.energy_electron(ix, iy, iz) += 0.5 * dke;
-                data.energy_ion(ix, iy, iz) += 0.5 * dke;
+                data.energy_neutral(ix, iy, iz) += 0.5 * dke;
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
     }

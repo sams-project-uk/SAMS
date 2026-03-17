@@ -1,8 +1,8 @@
-#include "shared_data.h"
-#include "remapData.h"
-#include "general_remap.hpp"
+#include "shared_data_neutral.h"
+#include "remapData_neutral.h"
+#include "general_remap_neutral.hpp"
 
-namespace LARE
+namespace LARE_neutral
 {
     namespace pw = portableWrapper;
 
@@ -14,7 +14,7 @@ namespace LARE
     template <auto mPtr>
     void x_mom_flux(simulationData &data, remapData &remap_data);
 
-    void LARE3D::remap_x(simulationData &data, remapData &remap_data)
+    void LARE3D_neutral::remap_x(simulationData &data, remapData &remap_data)
     {
         if (USE_GENERAL_REMAP) {
             return remap<AxisName::X>(*this, data, remap_data);
@@ -129,27 +129,13 @@ namespace LARE
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 
-        /*x_energy_flux<&simulationData::energy_electron>(data, remap_data);
+        x_energy_flux<&simulationData::energy_neutral>(data, remap_data);
 
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
-                data.energy_electron(ix, iy, iz) =
-                    (data.energy_electron(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) +
-                     remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) /
-                    (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
-            },
-            Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-
-        pw::fence();
-        */
-        x_energy_flux<&simulationData::energy_ion>(data, remap_data);
-
-        pw::applyKernel(
-            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                T_indexType ixm = ix - 1;
-                data.energy_ion(ix, iy, iz) =
-                    (data.energy_ion(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) +
+                data.energy_neutral(ix, iy, iz) =
+                    (data.energy_neutral(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) +
                      remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) /
                     (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
             },
@@ -267,7 +253,7 @@ namespace LARE
         remap_data.xpass = 0;
 
         this->boundary_conditions();
-    } // END LARE3D::remap_x
+    } // END LARE3D_neutral::remap_x
 
     // Flux of by due to vx
     void vx_by_flux(simulationData &data, remapData &remap_data)

@@ -1,8 +1,8 @@
-#include "shared_data.h"
-#include "remapData.h"
-#include "general_remap.hpp"
+#include "shared_data_neutral.h"
+#include "remapData_neutral.h"
+#include "general_remap_neutral.hpp"
 
-namespace LARE
+namespace LARE_neutral
 {
 
     namespace pw = portableWrapper;
@@ -15,7 +15,7 @@ namespace LARE
     template <auto mPtr>
     void z_mom_flux(simulationData &data, remapData &remap_data);
 
-    void LARE3D::remap_z(simulationData &data, remapData &remap_data)
+    void LARE3D_neutral::remap_z(simulationData &data, remapData &remap_data)
     {
         if (USE_GENERAL_REMAP) {
             return remap<AxisName::Z>(*this, data, remap_data);
@@ -133,16 +133,10 @@ namespace LARE
         data.rho(ix,iy,iz) = (remap_data.rho1(ix,iy,iz) * data.cv1(ix,iy,iz) + data.dm(ix,iy,izm) - data.dm(ix,iy,iz)) / remap_data.cv2(ix,iy,iz); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
 
-        /*z_energy_flux<&simulationData::energy_electron>(data, remap_data);
+        z_energy_flux<&simulationData::energy_neutral>(data, remap_data);
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izm = iz - 1;
-        data.energy_electron(ix, iy, iz) = (data.energy_electron(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-        pw::fence();
-        */
-        z_energy_flux<&simulationData::energy_ion>(data, remap_data);
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        T_indexType izm = iz - 1;
-        data.energy_ion(ix, iy, iz) = (data.energy_ion(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+        data.energy_neutral(ix, iy, iz) = (data.energy_neutral(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
 
         // Redefine dyb1, cv1, cv2, dm and vz1 for velocity (vertex) cells.
@@ -248,7 +242,7 @@ namespace LARE
         pw::fence();
         remap_data.zpass = 0.0;
 
-    } // END LARE3D::remap_z
+    } // END LARE3D_neutral::remap_z
 
     // Evans & Hawley constrained transport remap of vz*Bx fluxes
     void vz_bx_flux(simulationData &data, remapData &remap_data)

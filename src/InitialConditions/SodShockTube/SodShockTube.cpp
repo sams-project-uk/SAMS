@@ -34,7 +34,7 @@ namespace examples
             data.t_end = 0.2;
             data.dt_snapshots = data.t_end / 10;
 
-            data.nx = 1024;
+            data.nx = 64;
             data.ny = 2;
             data.nz = 2;
 
@@ -112,7 +112,7 @@ namespace examples
         void SodShockTube::initialConditions(SAMS::harness &harnessRef, LARE::simulationData &data)
         {
             pw::portableArray<SAMS::T_dataType, 3> rho;
-            pw::portableArray<SAMS::T_dataType, 3> energy_electron;
+            pw::portableArray<SAMS::T_dataType, 3> energy_ion;
             pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
 
             auto &axisRegistry = harnessRef.axisRegistry;
@@ -122,7 +122,7 @@ namespace examples
 
             auto &varRegistry = harnessRef.variableRegistry;
             varRegistry.fillPPArray("rho", rho);
-            varRegistry.fillPPArray("energy_electron", energy_electron);
+            varRegistry.fillPPArray("energy_ion", energy_ion);
 
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
@@ -139,7 +139,8 @@ namespace examples
                         pressure = 0.1;
                     }
                     //Specific internal energy
-                    energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                    energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                    //printf("%f \n",pressure);
                 },
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
         }

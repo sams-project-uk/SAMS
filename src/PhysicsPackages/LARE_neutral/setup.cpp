@@ -12,11 +12,11 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#include "shared_data.h"
+#include "shared_data_neutral.h"
 #include "variableRegistry.h"
 #include "axisRegistry.h"
 
-namespace LARE
+namespace LARE_neutral
 {
 
     namespace pw = portableWrapper;
@@ -24,56 +24,54 @@ namespace LARE
     /**
      * Register LARE's axes with the axis registry.
      */
-    void LARE3D::registerAxes(SAMS::harness &harness)
+    void LARE3D_neutral::registerAxes(SAMS::harness &harness)
     {
         auto &axisReg = harness.axisRegistry;
-        axisReg.registerAxis("X", SAMS::MPIAxis(0));
-        axisReg.registerAxis("Y", SAMS::MPIAxis(1));
-        axisReg.registerAxis("Z", SAMS::MPIAxis(2));
+        //axisReg.registerAxis("X", SAMS::MPIAxis(0));
+        //axisReg.registerAxis("Y", SAMS::MPIAxis(1));
+        //axisReg.registerAxis("Z", SAMS::MPIAxis(2));
     }
 
     /**
      * Register variables with the portable array manager.
      */
-    void LARE3D::registerVariables(SAMS::harness &harness)
+    void LARE3D_neutral::registerVariables(SAMS::harness &harness)
     {
 
         auto &varRegistry = harness.variableRegistry;
 
         const int ghosts = 2; // 2 Ghost cells at top and bottom of each dimension
 
-        varRegistry.registerVariable<T_dataType>("energy_electron", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("energy_neutral", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
-        varRegistry.registerVariable<T_dataType>("energy_ion", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("rho_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
-        varRegistry.registerVariable<T_dataType>("rho", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("vx_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("vx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("vy_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("vy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("vz_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("vz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARE/vx1_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("LARE/vx1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARE/vy1_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("LARE/vy1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARE/vz1_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("LARE/vz1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("bx_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
-        varRegistry.registerVariable<T_dataType>("bx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("by_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
 
-        varRegistry.registerVariable<T_dataType>("by", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("bz_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("bz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
-
-        varRegistry.registerVariable<T_dataType>("LARE/dm", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Y", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Z", ghosts, SAMS::staggerType::CENTRED));
+        varRegistry.registerVariable<T_dataType>("LARE/dm_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Y", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Z", ghosts, SAMS::staggerType::CENTRED));
     }
 
     /**
-     * Allocate the data arrays for the LARE3D.
-     * This allocates the permanent state arrays that are used throughout the LARE3D.
+     * Allocate the data arrays for the LARE3D_neutral.
+     * This allocates the permanent state arrays that are used throughout the LARE3D_neutral.
      */
-    void LARE3D::allocate(SAMS::harness &harness, simulationData &data, remapData& remap_data)
+    void LARE3D_neutral::allocate(SAMS::harness &harness, simulationData &data, remapData& remap_data)
     {
         T_sizeType nx, ny, nz;
 
@@ -127,31 +125,29 @@ namespace LARE
 
         using Range = pw::Range;
         // Grab the final variable sizes from the registry and wrap the arrays
-        varRegistry.fillPPArray("energy_electron", data.energy_electron);
-        pw::assign(data.energy_electron, 0.0);
-        varRegistry.fillPPArray("energy_ion", data.energy_ion);
-        pw::assign(data.energy_ion, 0.0);
-        varRegistry.fillPPArray("rho", data.rho);
+        varRegistry.fillPPArray("energy_neutral", data.energy_neutral);
+        pw::assign(data.energy_neutral, 0.0);
+        varRegistry.fillPPArray("rho_n", data.rho);
         pw::assign(data.rho, 0.0);
-        varRegistry.fillPPArray("vx", data.vx);
+        varRegistry.fillPPArray("vx_n", data.vx);
         pw::assign(data.vx, 0.0);
-        varRegistry.fillPPArray("vy", data.vy);
+        varRegistry.fillPPArray("vy_n", data.vy);
         pw::assign(data.vy, 0.0);
-        varRegistry.fillPPArray("vz", data.vz);
+        varRegistry.fillPPArray("vz_n", data.vz);
         pw::assign(data.vz, 0.0);
-        varRegistry.fillPPArray("bx", data.bx);
+        varRegistry.fillPPArray("bx_n", data.bx);
         pw::assign(data.bx, 0.0);
-        varRegistry.fillPPArray("by", data.by);
+        varRegistry.fillPPArray("by_n", data.by);
         pw::assign(data.by, 0.0);
-        varRegistry.fillPPArray("bz", data.bz);
+        varRegistry.fillPPArray("bz_n", data.bz);
         pw::assign(data.bz, 0.0);
-        varRegistry.fillPPArray("LARE/vx1", data.vx1);
+        varRegistry.fillPPArray("LARE/vx1_n", data.vx1);
         pw::assign(data.vx1, 0.0);
-        varRegistry.fillPPArray("LARE/vy1", data.vy1);
+        varRegistry.fillPPArray("LARE/vy1_n", data.vy1);
         pw::assign(data.vy1, 0.0);
-        varRegistry.fillPPArray("LARE/vz1", data.vz1);
+        varRegistry.fillPPArray("LARE/vz1_n", data.vz1);
         pw::assign(data.vz1, 0.0);
-        varRegistry.fillPPArray("LARE/dm", data.dm);
+        varRegistry.fillPPArray("LARE/dm_n", data.dm);
         pw::assign(data.dm, 0.0);
 
         data.isxLB = harness.MPIManager.isEdge(0, SAMS::domain::edges::lower);
@@ -252,7 +248,7 @@ namespace LARE
         }
 
         data.mpiType = SAMS::gettypeRegistry().getMPIType<T_dataType>();
-
+        
         manager.allocate(remap_data.rho1, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
         manager.allocate(remap_data.cv2, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
         manager.allocate(remap_data.cvc1, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
@@ -263,9 +259,9 @@ namespace LARE
     }
 
     /**
-     * Setup the basic LARE3D parameters like grid points etc.
+     * Setup the basic LARE3D_neutral parameters like grid points etc.
      */
-    void LARE3D::grid(simulationData &data)
+    void LARE3D_neutral::grid(simulationData &data)
     {
 
         pw::portableArrayManager localManager;

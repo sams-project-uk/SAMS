@@ -12,16 +12,16 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#include "shared_data.h"
-#include "remapData.h"
+#include "shared_data_neutral.h"
+#include "remapData_neutral.h"
 
-namespace LARE
+namespace LARE_neutral
 {
 
     namespace pw = portableWrapper;
 
-    void LARE3D::eulerian_remap(simulationData &data, remapData &remap_data)
-    {
+    void LARE3D_neutral::eulerian_remap(simulationData &data, remapData &remap_data)
+        {
         using Range = pw::Range;
         int case_test;
 

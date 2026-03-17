@@ -12,23 +12,26 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#ifndef SHARED_DATA_H
-#define SHARED_DATA_H
+#ifndef SHARED_DATA_NEUTRAL_H
+#define SHARED_DATA_NEUTRAL_H
 
 #include <cstdint>
 #include <cassert>
 #include <string>
-#include "constants.h"
+#include "constants_neutral.h"
 #include "pp/parallelWrapper.h"
-#include "remapData.h"
-#include "typedefs.h"
+#include "remapData_neutral.h"
+#include "typedefs_neutral.h"
+//#include "typedefs.h"
 #include "mpiManager.h"
 #include "variableDef.h"
 #include "harness.h"
 #include "runner.h"
 #include "io/writerProto.h"
 
-namespace LARE
+//using LARE::volume_array;
+
+namespace LARE_neutral
 {
 
 
@@ -54,13 +57,13 @@ namespace LARE
     };
 
     /**
-     * This is a struct that hold all LARE3D data
-     * Putting this is a struct allows separate LARE3Ds in the same code
+     * This is a struct that hold all LARE3D_neutral data
+     * Putting this is a struct allows separate LARE3D_neutrals in the same code
      */
     struct simulationData
     {
 
-        bool configured = false; // Indicates if the LARE3D data has been configured
+        bool configured = false; // Indicates if the LARE3D_neutral data has been configured
 
         pw::Range xcLocalRange;
         pw::Range xcLocalDomainRange;
@@ -94,10 +97,10 @@ namespace LARE
 
         // Simulation parameters
         T_dataType dt, dtr, dt_multiplier;
-        T_dataType time;  // Current LARE3D time
-        int64_t step;      // Current LARE3D step
+        T_dataType time;  // Current LARE3D_neutral time
+        int64_t step;      // Current LARE3D_neutral step
         int64_t nsteps;   // Maximum number of steps, if < 0 run until t_end
-        T_dataType t_end; // End time of the LARE3D
+        T_dataType t_end; // End time of the LARE3D_neutral
 
         // Domain parameters
         T_indexType nx, ny, nz; // Could be unsigned but when comparing signed and unsigned, unsigned wins
@@ -143,8 +146,6 @@ namespace LARE
         T_dataType lastOutputTime=0.0; // Time of last output
 
         // Physical arrays
-        volumeArray energy_electron; // Electron specific internal energy
-        volumeArray energy_ion;      // Ion specific
         volumeArray energy_neutral;      // Neutral specific
         volumeArray p_visc;          // Viscous pressure
         volumeArray rho;             // Density
@@ -232,12 +233,10 @@ namespace LARE
         bool iszUB = false; // Is this processor on the z-max boundary
 
         MPI_Datatype mpiType = MPI_DATATYPE_NULL; // MPI datatype for T_dataType
-        
-        const char* shock_tube_problem;
     };
 
 
-    class LARE3D
+    class LARE3D_neutral
     {
     private:
         SAMS::harness &harness;
@@ -294,7 +293,7 @@ namespace LARE
         void velocity_bcs();
         /**
          * Boundary conditions for remap velocity
-         * Normally the same as velocity_bcs, but can be different for some LARE3Ds
+         * Normally the same as velocity_bcs, but can be different for some LARE3D_neutrals
          */
         void remap_v_bcs();
 
@@ -331,14 +330,14 @@ namespace LARE
     public:
 
         /**
-         * Constructor for LARE3D simulation data
+         * Constructor for LARE3D_neutral simulation data
          */
-        LARE3D(SAMS::harness &harnessRef) : harness(harnessRef), manager(harnessRef.memoryRegistry.getArrayManager()) {}
+        LARE3D_neutral(SAMS::harness &harnessRef) : harness(harnessRef), manager(harnessRef.memoryRegistry.getArrayManager()) {}
 
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */
-        constexpr static std::string_view name = "LARE3D";
+        constexpr static std::string_view name = "LARE3D_neutral";
 
         /**
          * Lare is a core simulation
@@ -358,7 +357,7 @@ namespace LARE
 
 
         /**
-         * Initialize the LARE3D simulation. Called by the runner at the start of the simulation.
+         * Initialize the LARE3D_neutral simulation. Called by the runner at the start of the simulation.
          */
         void initialize(){
         }
@@ -389,11 +388,11 @@ namespace LARE
         void defaultVariables(simulationData &data);
 
         /**
-         * Get the variables needed for LARE3D
+         * Get the variables needed for LARE3D_neutral
          * i.e. convert the raw memory from the variable registry into
-         * the volumeArray/lineArray types used by LARE3D
+         * the volumeArray/lineArray types used by LARE3D_neutral
          * @param harnessRef SAMS harness
-         * @param data LARE3D simulation data
+         * @param data LARE3D_neutral simulation data
          */
         void getVariables(SAMS::harness &harnessRef, simulationData &data, remapData &remap_data){
             allocate(harnessRef, data, remap_data);
@@ -402,50 +401,50 @@ namespace LARE
 
         /**
          * Physics timestep functions
-         * This is the predictor step of the LARE3D timestep
-         * @param data LARE3D simulation data
+         * This is the predictor step of the LARE3D_neutral timestep
+         * @param data LARE3D_neutral simulation data
          */
         void startOfTimestep(simulationData &data, SAMS::controlFunctions &controlFns){
             lagrangian_step(data, controlFns);
         }
 
         /**
-         * This is the corrector step of the LARE3D timestep
-         * @param data LARE3D simulation data
+         * This is the corrector step of the LARE3D_neutral timestep
+         * @param data LARE3D_neutral simulation data
          */
         void halfTimestep(simulationData &data){
             corrector_step(data);
         }
 
         /**
-         * This is called at the end of the LARE3D timestep
-         * @param data LARE3D simulation data
+         * This is called at the end of the LARE3D_neutral timestep
+         * @param data LARE3D_neutral simulation data
          */
         void endOfTimestep(simulationData &data, remapData &remap_data){
             eulerian_remap(data, remap_data);
             if (data.rke){
                 energy_correction(data);
             }
-            eta_calc(data);
+            //eta_calc(data);
         }
 
         /**
-         * Set the timestep based on LARE3D data
+         * Set the timestep based on LARE3D_neutral data
          * @note This function is called in response to the control function setTimestep being called
          * by a package. The runner will NOT call this function directly.
          * @param timeData SAMS timeState data
-         * @param data LARE3D simulation data
+         * @param data LARE3D_neutral simulation data
          */
         void calculateTimestep(SAMS::timeState &timeData, simulationData &data){
             set_dt(data);
-            //printf("Plasma timestep = %f \n",data.dt);
+            //printf("Neutral timestep = %f \n",data.dt);
             timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
         }
 
         /**
          * Gather the timestep back after all packages have calculated it
          * @param timeData SAMS timeState data
-         * @param data LARE3D simulation data
+         * @param data LARE3D_neutral simulation data
          */
         void getTimestep(SAMS::timeState &timeData, simulationData &data){
             data.dt = timeData.dt;
@@ -464,7 +463,7 @@ namespace LARE
         void writeOutputVariables(writer<T> &writer, simulationData &data);
 
         /**
-         * Allocate the LARE3D data arrays
+         * Allocate the LARE3D_neutral data arrays
          * @param harness SAMS harness
          * @param data Simulation data struct
          * This function allocates the arrays in the simulationData struct.
@@ -473,32 +472,32 @@ namespace LARE
         void allocate(SAMS::harness &harness, simulationData &data, remapData &remap_data);
 
         /**
-         * Setup the LARE3D data
+         * Setup the LARE3D_neutral data
          * @param data Simulation data struct
-         * This function sets up the LARE3D data, including the geometry, boundary conditions,
+         * This function sets up the LARE3D_neutral data, including the geometry, boundary conditions,
          * and other parameters. It also calculates the cell sizes and initializes the arrays.
          */
         void controlvariables(simulationData &data);
         /**
-         * Setup the grid for the LARE3D
+         * Setup the grid for the LARE3D_neutral
          * @param harness SAMS harness
          * @param data Simulation data struct
-         * This function sets up the grid for the LARE3D, including the cell sizes and coordinates. Automatically creates for the specified geometry.
+         * This function sets up the grid for the LARE3D_neutral, including the cell sizes and coordinates. Automatically creates for the specified geometry.
          */
         void grid(simulationData &data);
 
         /**
          * Call all the boundary condition functions
          * @param data Simulation data struct
-         * This function calls all the boundary condition functions for the LARE3D.
+         * This function calls all the boundary condition functions for the LARE3D_neutral.
          * It is called at the end of each time step to apply the boundary conditions.
          */
         void boundary_conditions();
 
         /**
-         * Lagrangian step for the LARE3D
+         * Lagrangian step for the LARE3D_neutral
          * @param data Simulation data struct
-         * This function performs a Lagrangian step for the LARE3D
+         * This function performs a Lagrangian step for the LARE3D_neutral
          */
         void lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns);
 
@@ -506,7 +505,7 @@ namespace LARE
          * Calculate the resistivity eta based on current density
          * @param data Simulation data struct
          */
-        void eta_calc(simulationData &data);
+        //void eta_calc(simulationData &data);
 
         /**
          * Core remap control function
