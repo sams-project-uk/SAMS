@@ -71,7 +71,7 @@ namespace LARE_neutral
      * Allocate the data arrays for the LARE3D_neutral.
      * This allocates the permanent state arrays that are used throughout the LARE3D_neutral.
      */
-    void LARE3D_neutral::allocate(SAMS::harness &harness, simulationData &data)
+    void LARE3D_neutral::allocate(SAMS::harness &harness, simulationData &data, remapData& remap_data)
     {
         T_sizeType nx, ny, nz;
 
@@ -248,6 +248,14 @@ namespace LARE_neutral
         }
 
         data.mpiType = SAMS::gettypeRegistry().getMPIType<T_dataType>();
+        
+        manager.allocate(remap_data.rho1, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+        manager.allocate(remap_data.cv2, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+        manager.allocate(remap_data.cvc1, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+        manager.allocate(remap_data.db1, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+        manager.allocate(remap_data.rho_v, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+        manager.allocate(remap_data.rho_v1, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+        manager.allocate(remap_data.flux, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
     }
 
     /**
