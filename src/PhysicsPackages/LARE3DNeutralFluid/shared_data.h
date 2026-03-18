@@ -161,7 +161,7 @@ namespace LARE
   //      T_dataType lastOutputTime=0.0; // Time of last output
 
         // Physical arrays
-        volumeArray energy_ion;      // Ion specific only
+        volumeArray energy;
 
         volumeArray p_visc;          // Viscous pressure
         volumeArray rho;             // Density

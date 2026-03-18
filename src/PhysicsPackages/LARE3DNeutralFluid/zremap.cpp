@@ -96,10 +96,10 @@ namespace LARE
         data.rho(ix,iy,iz) = (remap_data.rho1(ix,iy,iz) * data.cv1(ix,iy,iz) + data.dm(ix,iy,izm) - data.dm(ix,iy,iz)) / remap_data.cv2(ix,iy,iz); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
 
-        z_energy_flux<&simulationData::energy_ion>(data, remap_data, core_data);
+        z_energy_flux<&simulationData::energy>(data, remap_data, core_data);
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izm = iz - 1;
-        data.energy_ion(ix, iy, iz) = (data.energy_ion(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+        data.energy(ix, iy, iz) = (data.energy(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
 
         // Redefine dyb1, cv1, cv2, dm and vz1 for velocity (vertex) cells.
@@ -261,7 +261,7 @@ namespace LARE
     }
 
     /**
-     * This has been designed to be both y_energy_electron_flux and y_energy_ion_flux.
+     * This has been designed to be both y_energy_electron_flux and y_energy_flux.
      * The template parameter mPtr allows us to pass in the member function pointer
      * for the appropriate energy type.
      */

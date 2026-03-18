@@ -44,7 +44,7 @@ namespace LARE
 
         const int ghosts = 2; // 2 Ghost cells at top and bottom of each dimension
 
-        varRegistry.registerVariable<T_dataType>("energy_ion", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("energy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
         varRegistry.registerVariable<T_dataType>("rho", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
@@ -122,8 +122,8 @@ namespace LARE
 
         using Range = pw::Range;
         // Grab the final variable sizes from the registry and wrap the arrays
-        varRegistry.fillPPArray("energy_ion", data.energy_ion);
-        pw::assign(data.energy_ion, 0.0);
+        varRegistry.fillPPArray("energy", data.energy);
+        pw::assign(data.energy, 0.0);
         varRegistry.fillPPArray("rho", data.rho);
         pw::assign(data.rho, 0.0);
         varRegistry.fillPPArray("vx", data.vx);

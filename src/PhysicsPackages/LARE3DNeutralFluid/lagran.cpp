@@ -74,7 +74,7 @@ namespace LARE
         // All of the arrays are deallocated when lagranManager goes out of scope
         //  Initialize p_i, pressure
         volumeArray cvl = data.cv;
-        volumeArray energy_il = data.energy_ion;
+        volumeArray energy_il = data.energy;
 
         pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
             auto &d = data;
@@ -356,9 +356,9 @@ namespace LARE
 
         if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy>)
         {
-            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz)));
+            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy(ix, iy, iz)));
         } else if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>)
-            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) ), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy(ix, iy, iz) ), eosIndex(ix), eosIndex(iy), eosIndex(iz));
          else
         {
             static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS sound speed interface");
@@ -411,7 +411,7 @@ namespace LARE
         // Predictor step for energy and pressure
         pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
             T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
-            T_dataType e1_i = data.energy_ion(ix, iy, iz) - data.pressure(ix, iy, iz) * dv / data.rho(ix, iy, iz);
+            T_dataType e1_i = data.energy(ix, iy, iz) - data.pressure(ix, iy, iz) * dv / data.rho(ix, iy, iz);
             e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
 
             if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>){
@@ -538,7 +538,7 @@ namespace LARE
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
             // Energy at end of Lagrangian step
-            data.energy_ion(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.pressure(ix, iy, iz)) / data.rho(ix, iy, iz);
+            data.energy(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.pressure(ix, iy, iz)) / data.rho(ix, iy, iz);
 
             // Update density based on volume change
             data.rho(ix, iy, iz) /= (1.0 + dv);

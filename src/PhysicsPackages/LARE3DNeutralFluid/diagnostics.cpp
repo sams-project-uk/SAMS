@@ -77,7 +77,7 @@ namespace LARE
         getHostVersion(data, manager, data.rho, host);
         writer.writeData("rho_n", host.data());
 
-        getHostVersion(data, manager, data.energy_ion, host);
+        getHostVersion(data, manager, data.energy, host);
         writer.writeData("energy_n", host.data());
 
         getHostVersion(data, manager, data.vx, host);
@@ -114,7 +114,7 @@ namespace LARE
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_dataType dke = pw::max(-data.delta_ke(ix, iy, iz), 0.0) / (data.rho(ix, iy, iz) * data.cv(ix, iy, iz));
-                data.energy_ion(ix, iy, iz) += dke;
+                data.energy(ix, iy, iz) += dke;
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
     }

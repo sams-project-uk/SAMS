@@ -32,7 +32,7 @@ template<typename T_EOS>
     pw::assign(data.vz, 0.0);
 
     pw::assign(data.rho, 0.0);
-    pw::assign(data.energy_ion, 0.0);
+    pw::assign(data.energy, 0.0);
 
     if (data.rke)
     {
