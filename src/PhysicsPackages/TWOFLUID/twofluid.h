@@ -50,7 +50,9 @@ namespace TWOFLUID
         LARE::volumeArray gm_rec; //recombination rate
         
         LARE::volumeArray ac; //coupling coeficient
-        LARE::T_dataType two_fluid_timestep; //timestep 
+        LARE::T_dataType two_fluid_timestep; //timestep
+
+        LARE::T_dataType alpha0, alpha0_NF; // Coupling coefficient
     };
  
     using idealGas = LARE::idealGas;
@@ -61,6 +63,8 @@ namespace TWOFLUID
     class PIP
     {
         public:
+            // Blocks compilation if the Equation Of State is not idealGas
+            static_assert(std::is_same_v<T_EOS, idealGas>);
         
             static constexpr std::string_view name = "PIP";
             
@@ -69,6 +73,7 @@ namespace TWOFLUID
             using T_dataType = SAMS::T_dataType;
 
             void initialize(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){};
+            void defaultValues(data_two_fluid_source & plasma_source);
             void allocate(data_two_fluid_source &plasma_source,SAMS::harness &harness);
             void registerVariables(SAMS::harness &harness);
             void startOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){

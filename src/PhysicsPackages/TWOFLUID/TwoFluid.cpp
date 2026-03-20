@@ -34,17 +34,12 @@ namespace TWOFLUID
     /*
     * Default values
     */
-/*    template<typename T_EOS>
-    void PIP<T_EOS>::defaultValues(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral){
-        SAMS::cout << "Setting default values" << std::endl;
+    template<typename T_EOS>
+    void PIP<T_EOS>::defaultValues(data_two_fluid_source & data){
         data.alpha0=1000.0;
-        dataNeutral.alpha0=data.alpha0;
-        dataNeutral.is_neutral=true;
-        SAMS::cout << "dataNeutral=" << dataNeutral.is_neutral << std::endl;
-        SAMS::cout << "data=" << data.is_neutral << std::endl;
-        //printf("Here \n");
+        data.alpha0_NF = 1000.0;
     }
-*/
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /**
      * Register variables with the portable array manager.
@@ -201,10 +196,8 @@ namespace TWOFLUID
                 SAMS::T_dataType  temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
                 SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
                 plasma_source.ac(ix,iy,iz)=std::sqrt(0.5*(temperature_neutral+temperature_ion));
-      //TODO stubbed alpha0, restore line below          
-    //            plasma_source.ac(ix,iy,iz)=dataNeutral.alpha0*std::sqrt(0.5*(temperature_neutral+temperature_ion));
+                plasma_source.ac(ix,iy,iz)=plasma_source.alpha0_NF*std::sqrt(0.5*(temperature_neutral+temperature_ion));
             	}, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-            //return alpha0*std::sqrt(0.5*(temperature_neutral+temperature_ion));
 
         };
         
