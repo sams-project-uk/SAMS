@@ -44,23 +44,23 @@ namespace LARE
 
         const int ghosts = 2; // 2 Ghost cells at top and bottom of each dimension
 
-        varRegistry.registerVariable<T_dataType>("energy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("LARENF/energy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
-        varRegistry.registerVariable<T_dataType>("rho", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("LARENF/rho", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
-        varRegistry.registerVariable<T_dataType>("vx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARENF/vx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("vy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARENF/vy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("vz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARENF/vz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("LARE/vx1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARENF/vx1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("LARE/vy1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARENF/vy1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("LARE/vz1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("LARENF/vz1", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("LARE/dm", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Y", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Z", ghosts, SAMS::staggerType::CENTRED));
+        varRegistry.registerVariable<T_dataType>("LARENF/dm", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Y", ghosts, SAMS::staggerType::CENTRED), SAMS::dimension("Z", ghosts, SAMS::staggerType::CENTRED));
     }
 
     /**
@@ -122,23 +122,23 @@ namespace LARE
 
         using Range = pw::Range;
         // Grab the final variable sizes from the registry and wrap the arrays
-        varRegistry.fillPPArray("energy", data.energy);
+        varRegistry.fillPPArray("LARENF/energy", data.energy);
         pw::assign(data.energy, 0.0);
-        varRegistry.fillPPArray("rho", data.rho);
+        varRegistry.fillPPArray("LARENF/rho", data.rho);
         pw::assign(data.rho, 0.0);
-        varRegistry.fillPPArray("vx", data.vx);
+        varRegistry.fillPPArray("LARENF/vx", data.vx);
         pw::assign(data.vx, 0.0);
-        varRegistry.fillPPArray("vy", data.vy);
+        varRegistry.fillPPArray("LARENF/vy", data.vy);
         pw::assign(data.vy, 0.0);
-        varRegistry.fillPPArray("vz", data.vz);
+        varRegistry.fillPPArray("LARENF/vz", data.vz);
         pw::assign(data.vz, 0.0);
-        varRegistry.fillPPArray("LARE/vx1", data.vx1);
+        varRegistry.fillPPArray("LARENF/vx1", data.vx1);
         pw::assign(data.vx1, 0.0);
-        varRegistry.fillPPArray("LARE/vy1", data.vy1);
+        varRegistry.fillPPArray("LARENF/vy1", data.vy1);
         pw::assign(data.vy1, 0.0);
-        varRegistry.fillPPArray("LARE/vz1", data.vz1);
+        varRegistry.fillPPArray("LARENF/vz1", data.vz1);
         pw::assign(data.vz1, 0.0);
-        varRegistry.fillPPArray("LARE/dm", data.dm);
+        varRegistry.fillPPArray("LARENF/dm", data.dm);
         pw::assign(data.dm, 0.0);
 
         data.isxLB = harness.MPIManager.isEdge(0, SAMS::domain::edges::lower);
