@@ -76,6 +76,9 @@ namespace TWOFLUID
             void defaultValues(data_two_fluid_source & plasma_source);
             void allocate(data_two_fluid_source &plasma_source,SAMS::harness &harness);
             void registerVariables(SAMS::harness &harness);
+            void getVariables(data_two_fluid_source &plasma_source,SAMS::harness &harness){
+                allocate(plasma_source, harness);
+            }
             void startOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 apply_two_fluid_source(data,dataNeutral,plasma_source);
             };

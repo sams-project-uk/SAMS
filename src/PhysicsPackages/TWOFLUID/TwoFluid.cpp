@@ -52,31 +52,31 @@ namespace TWOFLUID
 
         const int ghosts = 2; // 2 Ghost cells at top and bottom of each dimension
 
-        varRegistry.registerVariable<T_dataType>("ac", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("PIPSource/ac", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
-        varRegistry.registerVariable<T_dataType>("source_mass", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("PIPSource/mass", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
         
-        varRegistry.registerVariable<T_dataType>("source_mass_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("PIPSource/mass_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
         
-        varRegistry.registerVariable<T_dataType>("source_energy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("PIPSource/energy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
         
-        varRegistry.registerVariable<T_dataType>("source_energy_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("PIPSource/energy_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 
-        varRegistry.registerVariable<T_dataType>("source_vx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
         
-        varRegistry.registerVariable<T_dataType>("source_vx_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vx_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("source_vy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
         
-        varRegistry.registerVariable<T_dataType>("source_vy_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vy_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 
-        varRegistry.registerVariable<T_dataType>("source_vz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
         
-        varRegistry.registerVariable<T_dataType>("source_vz_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vz_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
         
-        varRegistry.registerVariable<T_dataType>("gm_ion", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("PIPSource/gm_ion", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
         
-        varRegistry.registerVariable<T_dataType>("gm_rec", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+        varRegistry.registerVariable<T_dataType>("PIPSource/gm_rec", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
     }
 /////////////////////////////////////////////////////////////////////////////////
     template<typename T_EOS>
@@ -88,32 +88,32 @@ namespace TWOFLUID
         auto &varRegistry = harness.variableRegistry;
         
         using Range = pw::Range;
-        varRegistry.fillPPArray("ac", plasma_source.ac);
+        varRegistry.fillPPArray("PIPSource/ac", plasma_source.ac);
         pw::assign(plasma_source.ac, 0.0);
-        varRegistry.fillPPArray("source_mass", plasma_source.source_mass);
+        varRegistry.fillPPArray("PIPSource/mass", plasma_source.source_mass);
         pw::assign(plasma_source.source_mass, 0.0);
-        varRegistry.fillPPArray("source_mass_n", plasma_source.source_mass_n);
+        varRegistry.fillPPArray("PIPSource/mass_n", plasma_source.source_mass_n);
         pw::assign(plasma_source.source_mass_n, 0.0);
-        varRegistry.fillPPArray("source_energy", plasma_source.source_energy);
+        varRegistry.fillPPArray("PIPSource/energy", plasma_source.source_energy);
         pw::assign(plasma_source.source_energy, 0.0);
-        varRegistry.fillPPArray("source_energy_n", plasma_source.source_energy_n);
+        varRegistry.fillPPArray("PIPSource/energy_n", plasma_source.source_energy_n);
         pw::assign(plasma_source.source_energy_n, 0.0);
-        varRegistry.fillPPArray("source_vx", plasma_source.source_v_x);
+        varRegistry.fillPPArray("PIPSource/vx", plasma_source.source_v_x);
         pw::assign(plasma_source.source_v_x, 0.0);
-        varRegistry.fillPPArray("source_vx_n", plasma_source.source_v_x_n);
+        varRegistry.fillPPArray("PIPSource/vx_n", plasma_source.source_v_x_n);
         pw::assign(plasma_source.source_v_x_n, 0.0);
-        varRegistry.fillPPArray("source_vy", plasma_source.source_v_y);
+        varRegistry.fillPPArray("PIPSource/vy", plasma_source.source_v_y);
         pw::assign(plasma_source.source_v_y, 0.0);
-        varRegistry.fillPPArray("source_vy_n", plasma_source.source_v_y_n);
+        varRegistry.fillPPArray("PIPSource/vy_n", plasma_source.source_v_y_n);
         pw::assign(plasma_source.source_v_y_n, 0.0);
-        varRegistry.fillPPArray("source_vz", plasma_source.source_v_z);
+        varRegistry.fillPPArray("PIPSource/vz", plasma_source.source_v_z);
         pw::assign(plasma_source.source_v_z, 0.0);
-        varRegistry.fillPPArray("source_vz_n", plasma_source.source_v_z_n);
+        varRegistry.fillPPArray("PIPSource/vz_n", plasma_source.source_v_z_n);
         pw::assign(plasma_source.source_v_z_n, 0.0);
         
-        varRegistry.fillPPArray("gm_ion", plasma_source.gm_ion);
+        varRegistry.fillPPArray("PIPSource/gm_ion", plasma_source.gm_ion);
         pw::assign(plasma_source.gm_ion, 0.0);
-        varRegistry.fillPPArray("gm_rec", plasma_source.gm_rec);
+        varRegistry.fillPPArray("PIPSource/gm_rec", plasma_source.gm_rec);
         pw::assign(plasma_source.gm_rec, 0.0);
         
     }
@@ -192,10 +192,8 @@ namespace TWOFLUID
             using Range = portableWrapper::Range;
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 //Get Temperatures
-                SAMS::T_dataType  temperature_electron = data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
                 SAMS::T_dataType  temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
                 SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
-                plasma_source.ac(ix,iy,iz)=std::sqrt(0.5*(temperature_neutral+temperature_ion));
                 plasma_source.ac(ix,iy,iz)=plasma_source.alpha0_NF*std::sqrt(0.5*(temperature_neutral+temperature_ion));
             	}, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
 

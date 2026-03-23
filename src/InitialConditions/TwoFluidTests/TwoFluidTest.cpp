@@ -110,7 +110,6 @@ namespace examples
             attachBoundaryConditions("by", harness);
             attachBoundaryConditions("bz", harness);
             attachBoundaryConditions("energy_ion", harness);
-            attachBoundaryConditions("energy_electron", harness);
             attachBoundaryConditions("rho", harness);
             attachBoundaryConditions("vx", harness);
             attachBoundaryConditions("vy", harness);
@@ -148,7 +147,7 @@ namespace examples
             if (problem =="sod"){
                 printf("sod Shock Tube \n");
                 pw::portableArray<SAMS::T_dataType, 3> rho;
-                pw::portableArray<SAMS::T_dataType, 3> energy_electron;
+                pw::portableArray<SAMS::T_dataType, 3> energy_ion;
                 pw::portableArray<SAMS::T_dataType, 3> rho_n;
                 pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
                 pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
@@ -161,10 +160,9 @@ namespace examples
 
                 auto &varRegistry = harnessRef.variableRegistry;
                 varRegistry.fillPPArray("rho", rho);
-                varRegistry.fillPPArray("energy_ion", energy_electron);
-                varRegistry.fillPPArray("energy_electron", energy_electron);
-                varRegistry.fillPPArray("rho_n", rho_n);
-                varRegistry.fillPPArray("energy_neutral", energy_neutral);
+                varRegistry.fillPPArray("energy_ion", energy_ion);
+                varRegistry.fillPPArray("LARENF/rho", rho_n);
+                varRegistry.fillPPArray("LARENF/energy", energy_neutral);
                 varRegistry.fillPPArray("bx", bx);
                 varRegistry.fillPPArray("by", by);
                 varRegistry.fillPPArray("bz", bz);
@@ -189,7 +187,7 @@ namespace examples
                             pressure_n = 1.0;
                         }
                         //Specific internal energy
-                        energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                        energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
                         energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
                         bx(ix,iy,iz)=0.0;
                         by(ix,iy,iz)=0.0;
@@ -203,7 +201,6 @@ namespace examples
                 
                 pw::portableArray<SAMS::T_dataType, 3> rho;
                 pw::portableArray<SAMS::T_dataType, 3> bx,by,bz;
-                pw::portableArray<SAMS::T_dataType, 3> energy_electron;
                 pw::portableArray<SAMS::T_dataType, 3> energy_ion;
                 pw::portableArray<SAMS::T_dataType, 3> rho_n;
                 pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
@@ -219,10 +216,9 @@ namespace examples
                 varRegistry.fillPPArray("bx", bx);
                 varRegistry.fillPPArray("by", by);
                 varRegistry.fillPPArray("bz", bz);
-                varRegistry.fillPPArray("energy_electron", energy_electron);
                 varRegistry.fillPPArray("energy_ion", energy_ion);
-                varRegistry.fillPPArray("rho_n", rho_n);
-                varRegistry.fillPPArray("energy_neutral", energy_neutral);
+                varRegistry.fillPPArray("LARENF/rho", rho_n);
+                varRegistry.fillPPArray("LARENF/energy_neutral", energy_neutral);
                 
                 LARE::T_dataType xi_n=0.9;
                 LARE::T_dataType xi_p=1.0-xi_n;
@@ -266,8 +262,7 @@ namespace examples
                 
                 pw::portableArray<SAMS::T_dataType, 3> rho;
                 pw::portableArray<SAMS::T_dataType, 3> bx,by,bz;
-                pw::portableArray<SAMS::T_dataType, 3> energy_electron;
-                pw::portableArray<SAMS::T_dataType, 3> energy_ion;
+                pw::portableArray<SAMS::T_dataType, 3> energy;
                 pw::portableArray<SAMS::T_dataType, 3> rho_n;
                 pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
                 pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
@@ -282,10 +277,9 @@ namespace examples
                 varRegistry.fillPPArray("bx", bx);
                 varRegistry.fillPPArray("by", by);
                 varRegistry.fillPPArray("bz", bz);
-                varRegistry.fillPPArray("energy_electron", energy_electron);
-                varRegistry.fillPPArray("energy_ion", energy_ion);
-                varRegistry.fillPPArray("rho_n", rho_n);
-                varRegistry.fillPPArray("energy_neutral", energy_neutral);
+                varRegistry.fillPPArray("energy_ion", energy);
+                varRegistry.fillPPArray("LARENF/rho", rho_n);
+                varRegistry.fillPPArray("LARENF/energy", energy_neutral);
                 
                 //if empirical should go here
                 
@@ -323,7 +317,7 @@ namespace examples
                         }
                         //Specific internal energy
                         //energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
-                        energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                        energy(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
                         energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
                     },
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));
