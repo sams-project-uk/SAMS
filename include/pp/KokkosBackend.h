@@ -22,6 +22,12 @@
 
 #ifdef USE_KOKKOS
 
+//Check if Kokkos_OffsetView.hpp is available, which indicates Kokkos 3.0 or later
+#if __has_include(<Kokkos_OffsetView.hpp>)
+#include <Kokkos_OffsetView.hpp>
+#define KOKKOS_HAS_OFFSET_VIEW
+#endif
+
 namespace portableWrapper{
     namespace kokkos {
         /**
@@ -252,6 +258,9 @@ namespace portableWrapper{
             using type = T;
         };
 
+        /**
+         * Build a tuple of sizes and strides for each level of the portable array, which can then be used to construct a Kokkos LayoutStride
+         */
         template<int level=0,typename T, int rank, arrayTags tag>
          auto autobuildLayoutStrideTuple(const portableArray<T, rank, tag> &array) {
             if constexpr (level<rank-1){
@@ -263,6 +272,37 @@ namespace portableWrapper{
                 return std::make_tuple(array.getSize(level), array.getStride(level));
             }
          }
+
+         /**
+          * Build a tuple of lower bounds for constructing a Kokkos OffsetView
+          */
+        template<int level=0,typename T, int rank, arrayTags tag>
+        auto autobuildOffsetViewLowerBounds(const portableArray<T, rank, tag> &array) {
+            if constexpr (level<rank-1){
+                return std::tuple_cat(
+                    std::make_tuple(array.getLowerBound(level)),
+                    autobuildOffsetViewLowerBounds<level+1,T,rank,tag>(array)
+                );
+            } else {
+                return std::make_tuple(array.getLowerBound(level));
+            }
+         }
+
+         /**
+          * Build a tuple of lower bounds followed by upper bounds for constructing a Kokkos OffsetView 
+         */
+        template<int level=0,typename T, int rank, arrayTags tag>
+        auto autobuildOffsetViewUpperAndLowerBounds(const portableArray<T, rank, tag> &array) {
+            if constexpr (level<rank-1){
+                return std::tuple_cat(
+                    std::make_tuple(array.getLowerBound(level),array.getUpperBound(level)),
+                    autobuildOffsetViewUpperAndLowerBounds<level+1,T,rank,tag>(array)
+                );
+            } else {
+                return std::make_tuple(array.getLowerBound(level),array.getUpperBound(level));
+            }
+         }
+
 
         /**
          * Function to convert a portableArray to a Kokkos View
@@ -294,6 +334,32 @@ namespace portableWrapper{
             return viewType(portableArray.data(), stride);
         }
 
+        #ifdef KOKKOS_HAS_OFFSET_VIEW
+
+        /**
+         * Since Kokkos offset view is in the experimental namespace (currently) we create an alias for it so that users of the portable wrapper don't have to worry about this detail.
+         * This will be called portableWrapper::kokkos::OffsetView and will be an alias for Kokkos::Experimental::OffsetView when Kokkos 3.0 or later is available, and will not be defined otherwise.
+         */
+         template<typename... T>
+         using OffsetView = Kokkos::Experimental::OffsetView<T...>;
+
+        /**
+         * Function to convert a portableArray to a Kokkos offset view
+         */
+        template<typename T, int rank, arrayTags tag>
+        UNREPEATED auto toOffsetView(portableArray<T, rank, tag>& portableArray) {
+
+            auto view = toView(portableArray); 
+            //Then create a tuple of lower bounds
+            auto BoundsTuple = autobuildOffsetViewLowerBounds(portableArray);
+            using kokkosSpace = std::conditional_t<tag == arrayTags::host, Kokkos::HostSpace, KOKKOS_EXECUTION_SPACE::memory_space>;
+            return std::apply([&view](auto&&... bounds){ 
+                return Kokkos::Experimental::OffsetView<typename deepPointer<T, rank>::type,kokkosSpace>(view, Kokkos::Array<int64_t, sizeof...(bounds)>{bounds...});
+            }, BoundsTuple);
+        }
+        #else
+        #error "Kokkos offset view is not available in this version of Kokkos. Please upgrade to Kokkos 3.0 or later to use this feature."
+        #endif
 
         template<typename T_data, int rankS, int rankD, arrayTags tagS, arrayTags tagD>
         UNREPEATED void copyData(portableArray<T_data, rankD, tagD> &destination, const portableArray<T_data, rankS, tagS> &source) {
