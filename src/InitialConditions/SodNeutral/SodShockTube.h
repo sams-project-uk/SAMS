@@ -4,6 +4,7 @@
 #include "harness.h"
 #include "runner.h"
 #include "shared_data.h"
+#include "LARE3DSingleTemperature/shared_data.h"
 #include "LARE3DNeutralFluid/shared_data.h"
 #include "builtInBoundaryConditions.h"
 

@@ -7,8 +7,6 @@ namespace LARE{
     template<typename T_EOS>
     void LARE3DNF<T_EOS>::defaultValues(simulationData &data){
 
-        data.dt_multiplier = 0.8; // Default multiplier for time step
-
         // Shock viscosity coefficients
         data.visc1 = 0.1;
         data.visc2 = 1.0;
@@ -17,9 +15,6 @@ namespace LARE{
         data.gas_gamma = 1.4;
 
         data.rke = false; // Remap kinetic energy correction off by default
-
-        // Initialize time=0
-        data.time = 0.0;
     }
 
 template<typename T_EOS>

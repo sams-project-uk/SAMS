@@ -20,19 +20,19 @@ namespace LARE
     namespace pw = portableWrapper;
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data, const domainData & core_data)
     {
         using Range = pw::Range;
         int case_test;
         pw::portableArrayManager remapManager;
 
         // We can allocate everything other than flux here
-        remapManager.allocate(remap_data.rho1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-        remapManager.allocate(remap_data.cv2, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-        remapManager.allocate(remap_data.cvc1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-        remapManager.allocate(remap_data.db1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-        remapManager.allocate(remap_data.rho_v, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-        remapManager.allocate(remap_data.rho_v1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.rho1, Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
+        remapManager.allocate(remap_data.cv2, Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
+        remapManager.allocate(remap_data.cvc1, Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
+        remapManager.allocate(remap_data.db1, Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
+        remapManager.allocate(remap_data.rho_v, Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
+        remapManager.allocate(remap_data.rho_v1, Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
         // Flux is one element larger in the direction of remap, so it is allocated in each remap function
 
         if (data.rke)
@@ -85,7 +85,7 @@ namespace LARE
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         data.x(ix, iy, iz) = core_data.xb(ix);
         data.y(ix, iy, iz) = core_data.yb(iy);
-        data.z(ix, iy, iz) = core_data.zb(iz); }, Range(-2, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        data.z(ix, iy, iz) = core_data.zb(iz); }, Range(-2, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
 
         remapManager.deallocate(remap_data.rho1);
         remapManager.deallocate(remap_data.cv2);

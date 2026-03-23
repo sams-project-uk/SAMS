@@ -22,7 +22,7 @@ namespace LARE
         using T_dataType = SAMS::T_dataType;
 
     template<typename T_EOS>
-    DEVICEPREFIX INLINE T_dataType edge_viscosity(const typename LARE3DNF<T_EOS>::simulationData &data,
+    DEVICEPREFIX INLINE T_dataType edge_viscosity(const typename LARE3DNF<T_EOS>::simulationData &data, const typename LARE3DNF<T_EOS>::domainData & core_data,
                                                   T_dataType dvdots, T_dataType dx, T_dataType dxm, T_dataType dxp, T_dataType cs_edge,
                                                   int i0, int i1, int i2, int i3,
                                                   int j0, int j1, int j2, int j3,
@@ -38,7 +38,7 @@ namespace LARE
         T_dataType dv = std::sqrt(dv2);
 
         T_dataType psi = 0.0;
-        dvdots = dv * data.dt / dx < 1.e-14 ? 0.0 : dvdots / dv;
+        dvdots = dv * core_data.dt / dx < 1.e-14 ? 0.0 : dvdots / dv;
 
         T_dataType dvxm = data.vx(i0, j0, k0) - data.vx(i1, j1, k1);
         T_dataType dvxp = data.vx(i2, j2, k2) - data.vx(i3, j3, k3);
@@ -49,8 +49,8 @@ namespace LARE
 
         T_dataType rl = 1.0, rr = 1.0;
 
-        rl = dv * data.dt / dx < 1.e-14 ? 1.0 : (dvxp * dvx + dvyp * dvy + dvzp * dvz) * dx / (dxp * dv2);
-        rr = dv * data.dt / dx < 1.e-14 ? 1.0 : (dvxm * dvx + dvym * dvy + dvzm * dvz) * dx / (dxm * dv2);
+        rl = dv * core_data.dt / dx < 1.e-14 ? 1.0 : (dvxp * dvx + dvyp * dvy + dvzp * dvz) * dx / (dxp * dv2);
+        rr = dv * core_data.dt / dx < 1.e-14 ? 1.0 : (dvxm * dvx + dvym * dvy + dvzm * dvz) * dx / (dxm * dv2);
 
         psi = pw::min({0.5 * (rr + rl), 2.0 * rl, 2.0 * rr, 1.0});
         psi = pw::max(0.0, psi);
@@ -63,13 +63,13 @@ namespace LARE
 }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::lagrangian_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data, SAMS::controlFunctions &controlFns)
+    void LARE3DNF<T_EOS>::lagrangian_step(simulationData &data, const domainData & core_data, SAMS::controlFunctions &controlFns)
     {   
         using Range = pw::Range;
 
-        Range xbp = pw::Range(-1, data.nx + 1);
-        Range ybp = pw::Range(-1, data.ny + 1);
-        Range zbp = pw::Range(-1, data.nz + 1);
+        Range xbp = pw::Range(-1, core_data.nx + 1);
+        Range ybp = pw::Range(-1, core_data.ny + 1);
+        Range zbp = pw::Range(-1, core_data.nz + 1);
 
         // All of the arrays are deallocated when lagranManager goes out of scope
         //  Initialize p_i, pressure
@@ -127,16 +127,16 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::shock_viscosity(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::shock_viscosity(simulationData &data, const domainData & core_data)
     {
         using Range = pw::Range;
         data.visc2_norm = 0.25 * (data.gas_gamma + 1.0) * data.visc2;
         pw::portableArrayManager svManager;
         // Temporary arrays for sound speed
         pw::portableArray<T_dataType, 3> cs, cs_v;
-        Range xp1 = pw::Range(-1, data.nx + 1);
-        Range yp1 = pw::Range(-1, data.ny + 1);
-        Range zp1 = pw::Range(-1, data.nz + 1);
+        Range xp1 = pw::Range(-1, core_data.nx + 1);
+        Range yp1 = pw::Range(-1, core_data.ny + 1);
+        Range zp1 = pw::Range(-1, core_data.nz + 1);
         svManager.allocate(cs, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
         svManager.allocate(cs_v, xp1, yp1, zp1);
 
@@ -185,11 +185,11 @@ namespace LARE
             T_dataType dvdots = -(data.vx(i1, j1, k1) - data.vx(i2, j2, k2));
             T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
             // Edge viscosities from Caramana
-            data.alpha1(ix, iy, iz) = edge_viscosity<T_EOS>(data,
+            data.alpha1(ix, iy, iz) = edge_viscosity<T_EOS>(data, core_data,
                                                        dvdots, dx, dxm, dxp, cs_edge,
                                                        i0, i1, i2, i3, j0, j1, j2, j3, k0, k1, k2, k3);
         },
-                        Range(0, data.nx + 1), Range(0, data.ny + 2), Range(0, data.nz + 2));
+                        Range(0, core_data.nx + 1), Range(0, core_data.ny + 2), Range(0, core_data.nz + 2));
 
         // alpha2
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -205,10 +205,10 @@ namespace LARE
         T_dataType dxm = core_data.dyb(iym) * core_data.hy(ix);
         T_dataType dvdots = -(data.vy(i1, j1, k1) - data.vy(i2, j2, k2));
         T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
-        data.alpha2(ix, iy, iz) = edge_viscosity<T_EOS>(data,
+        data.alpha2(ix, iy, iz) = edge_viscosity<T_EOS>(data, core_data,
             dvdots, dx, dxm, dxp,
             cs_edge,
-            i0, i1, i2, i3, j0, j1, j2, j3, k0, k1, k2, k3); }, Range(-1, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 2));
+            i0, i1, i2, i3, j0, j1, j2, j3, k0, k1, k2, k3); }, Range(-1, core_data.nx + 1), Range(0, core_data.ny + 1), Range(0, core_data.nz + 2));
 
         // alpha3
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -224,11 +224,11 @@ namespace LARE
         T_dataType dxm = core_data.dzb(izm) * core_data.hz(ix, iy);
         T_dataType dvdots = -(data.vz(i1, j1, k1) - data.vz(i2, j2, k2));
         T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
-        data.alpha3(ix, iy, iz) = edge_viscosity<T_EOS>(data,
+        data.alpha3(ix, iy, iz) = edge_viscosity<T_EOS>(data, core_data,
             dvdots, dx, dxm, dxp,
             cs_edge,
             i0, i1, i2, i3, j0, j1, j2, j3,
-            k0, k1, k2, k3); }, Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(0, data.nz + 1));
+            k0, k1, k2, k3); }, Range(-1, core_data.nx + 1), Range(-1, core_data.ny + 1), Range(0, core_data.nz + 1));
 
         pw::fence();
 
@@ -276,7 +276,7 @@ namespace LARE
 
             data.visc_heat(ix, iy, iz) = data.visc_heat(ix, iy, iz) / data.cv(ix, iy, iz);
         },
-                        Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
+                        Range(0, core_data.nx + 1), Range(0, core_data.ny + 1), Range(0, core_data.nz + 1));
 
         pw::assign(data.fx_visc, 0.0);
         pw::assign(data.fy_visc, 0.0);
@@ -325,19 +325,19 @@ namespace LARE
                  a6 * (data.vz(ix, iy, iz) - data.vz(ix, iy, izp))) /
                 data.cv_v(ix, iy, iz);
         },
-                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+                        Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::set_dt(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::set_dt(simulationData &data, const domainData & core_data)
     {
         using Range = pw::Range;
 
         int i0 = core_data.geometry == geometryType::Cartesian ? 0 : 1;
 
         // Now need to do a map and reduction
-        T_dataType dt1 = data.dt_multiplier *
+        T_dataType dt1 = core_data.dt_multiplier *
                   pw::applyReduction(LAMBDA(auto ix, auto iy, auto iz) {
         T_indexType izm = iz - 1;
         T_indexType iym = iy - 1;
@@ -397,14 +397,13 @@ namespace LARE
         T_dataType dt4 = volume / pw::max(avzm, avzp, dvz, 1.0e-10 * volume);
 
         return pw::min(dt1, dt2, dt3, dt4);
-        }, LAMBDA(T_dataType & a, const T_dataType &b) { a = pw::min(a, b); }, data.largest_number, Range(i0, data.nx), Range(0, data.ny), Range(0, data.nz));
+        }, LAMBDA(T_dataType & a, const T_dataType &b) { a = pw::min(a, b); }, data.largest_number, Range(i0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
 
-        data.dt = dt1;
-        data.dtr = data.dt;
+        data.dt_1 = dt1;
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::predictor_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::predictor_step(simulationData &data, const domainData & core_data)
     {
         using Range = pw::Range;
 
@@ -412,7 +411,7 @@ namespace LARE
         pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
             T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
             T_dataType e1_i = data.energy(ix, iy, iz) - data.pressure(ix, iy, iz) * dv / data.rho(ix, iy, iz);
-            e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
+            e1_i += data.visc_heat(ix, iy, iz) * core_data.dt / 2.0 / data.rho(ix, iy, iz);
 
             if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>){
                 data.pressure(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i));
@@ -422,7 +421,7 @@ namespace LARE
                 static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS getPressure interface");
             }
         },
-                        Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
+                        Range(0, core_data.nx + 1), Range(0, core_data.ny + 1), Range(0, core_data.nz + 1));
 
         pw::fence();
 
@@ -478,23 +477,23 @@ namespace LARE
             }
 
             // Update positions
-            data.x(ix, iy, iz) += data.vx(ix, iy, iz) * data.dt;
-            data.y(ix, iy, iz) += data.vy(ix, iy, iz) * data.dt;
-            data.z(ix, iy, iz) += data.vz(ix, iy, iz) * data.dt;
+            data.x(ix, iy, iz) += data.vx(ix, iy, iz) * core_data.dt;
+            data.y(ix, iy, iz) += data.vy(ix, iy, iz) * core_data.dt;
+            data.z(ix, iy, iz) += data.vz(ix, iy, iz) * core_data.dt;
 
             // Half-step velocities for remap
-            data.vx1(ix, iy, iz) = data.vx(ix, iy, iz) + data.dt / 2.0 * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-            data.vy1(ix, iy, iz) = data.vy(ix, iy, iz) + data.dt / 2.0 * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-            data.vz1(ix, iy, iz) = data.vz(ix, iy, iz) + data.dt / 2.0 * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+            data.vx1(ix, iy, iz) = data.vx(ix, iy, iz) + core_data.dt / 2.0 * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+            data.vy1(ix, iy, iz) = data.vy(ix, iy, iz) + core_data.dt / 2.0 * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+            data.vz1(ix, iy, iz) = data.vz(ix, iy, iz) + core_data.dt / 2.0 * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz);
         },
-                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+                        Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
         // Remap (half timestep) boundary conditions
         this->remap_v_bcs();
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::corrector_step(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::corrector_step(simulationData &data, const domainData & core_data)
     {
 
         using Range = pw::Range;
@@ -503,9 +502,9 @@ namespace LARE
 
         // Correct velocities to final values
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        data.vx(ix, iy, iz) += data.dt * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-        data.vy(ix, iy, iz) += data.dt * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-        data.vz(ix, iy, iz) += data.dt * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz); }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+        data.vx(ix, iy, iz) += core_data.dt * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+        data.vy(ix, iy, iz) += core_data.dt * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+        data.vz(ix, iy, iz) += core_data.dt * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz); }, Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
         velocity_bcs();
 
@@ -533,19 +532,19 @@ namespace LARE
             T_dataType dvydy = (vyb * core_data.dyab(ix, iy, iz) - vybm * core_data.dyab(ix, iym, iz)) / vol;
             T_dataType dvzdz = (vzb * core_data.dzab(ix, iy, iz) - vzbm * core_data.dzab(ix, iy, izm)) / vol;
 
-            T_dataType dv = (dvxdx + dvydy + dvzdz) * data.dt;
+            T_dataType dv = (dvxdx + dvydy + dvzdz) * core_data.dt;
 
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
             // Energy at end of Lagrangian step
-            data.energy(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.pressure(ix, iy, iz)) / data.rho(ix, iy, iz);
+            data.energy(ix, iy, iz) += (core_data.dt * data.visc_heat(ix, iy, iz) - dv * data.pressure(ix, iy, iz)) / data.rho(ix, iy, iz);
 
             // Update density based on volume change
             data.rho(ix, iy, iz) /= (1.0 + dv);
 
             // total_visc_heating += dt * visc_heat(ix, iy, iz) * cv(ix, iy, iz);
         },
-                        Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+                        Range(1, core_data.nx), Range(1, core_data.ny), Range(1, core_data.nz));
         pw::fence();
 
         this->energy_bcs();
@@ -554,7 +553,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::shock_heating(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::shock_heating(simulationData &data, const domainData & core_data)
     {
         using Range = pw::Range;
 
@@ -662,6 +661,6 @@ namespace LARE
 
             data.visc_heat(ix, iy, iz) = pw::max(data.visc_heat(ix, iy, iz) / data.cv(ix, iy, iz), 0.0);
         },
-                        Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
+                        Range(0, core_data.nx + 1), Range(0, core_data.ny + 1), Range(0, core_data.nz + 1));
     }
 }

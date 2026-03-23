@@ -5,13 +5,14 @@ namespace LARE
     namespace pw = portableWrapper;
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::remap_y(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::remap_y(simulationData &data, remapData &remap_data, const domainData & core_data)
     {
+    return;
         using Range = pw::Range;
         pw::portableArrayManager yRemapManager;
         remap_data.flux.nullify();
 
-        yRemapManager.allocate(remap_data.flux, Range(-1, data.nx + 2), Range(-2, data.ny + 2), Range(-1, data.nz + 2));
+        yRemapManager.allocate(remap_data.flux, Range(-1, core_data.nx + 2), Range(-2, core_data.ny + 2), Range(-1, core_data.nz + 2));
 
         pw::assign(data.dm, 0.0);
         pw::assign(remap_data.rho1, data.rho);
@@ -56,20 +57,20 @@ namespace LARE
                 T_dataType dvydy = (vyb * core_data.dyab(ix, iy, iz) - vybm * core_data.dyab(ix, iym, iz)) / vol;
                 T_dataType dvzdz = remap_data.zpass * (vzb * core_data.dzab(ix, iy, iz) - vzbm * core_data.dzab(ix, iy, izm)) / vol;
 
-                T_dataType dv = (dvxdx + dvzdz) * data.dt;
+                T_dataType dv = (dvxdx + dvzdz) * core_data.dt;
 
                 // Control volume after remap
                 remap_data.cv2(ix, iy, iz) = vol * (1.0 + dv);
 
-                dv = dv + dvydy * data.dt;
+                dv = dv + dvydy * core_data.dt;
 
                 // Control volume before remap
                 data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
                 // dyb before remap
-                remap_data.db1(ix, iy, iz) = core_data.hyc(ix) * core_data.dyb(iy) + (vyb - vybm) * data.dt;
+                remap_data.db1(ix, iy, iz) = core_data.hyc(ix) * core_data.dyb(iy) + (vyb - vybm) * core_data.dt;
             },
-            Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+            Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
         pw::fence();
 
         // cvc1 = vertex CV before remap
@@ -80,7 +81,7 @@ namespace LARE
                 T_indexType izp = iz + 1;
                 remap_data.cvc1(ix, iy, iz) = 0.125 * (data.cv1(ix, iy, iz) + data.cv1(ixp, iy, iz) + data.cv1(ix, iyp, iz) + data.cv1(ixp, iyp, iz) + data.cv1(ix, iy, izp) + data.cv1(ixp, iy, izp) + data.cv1(ix, iyp, izp) + data.cv1(ixp, iyp, izp));
             },
-            Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz + 1));
+            Range(-1, core_data.nx + 1), Range(-1, core_data.ny + 1), Range(-1, core_data.nz + 1));
         pw::fence();
 
 
@@ -96,7 +97,7 @@ namespace LARE
                                         data.dm(ix, iym, iz) - data.dm(ix, iy, iz)) /
                                        remap_data.cv2(ix, iy, iz);
             },
-            Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+            Range(1, core_data.nx), Range(1, core_data.ny), Range(1, core_data.nz));
         pw::fence();
 
         y_energy_flux<&simulationData::energy>(data, remap_data, core_data);
@@ -108,7 +109,7 @@ namespace LARE
                      remap_data.flux(ix, iym, iz) - remap_data.flux(ix, iy, iz)) /
                     (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
             },
-            Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+            Range(1, core_data.nx), Range(1, core_data.ny), Range(1, core_data.nz));
         pw::fence();
 
         // Redefine dyb1, cv1, cv2, dm and vy1 for velocity (vertex) cells.
@@ -132,7 +133,7 @@ namespace LARE
 
                 remap_data.rho_v(ix, iy, iz) *= 0.125 / remap_data.cvc1(ix, iy, iz);
             },
-            Range(0, data.nx), Range(-1, data.ny + 1), Range(0, data.nz));
+            Range(0, core_data.nx), Range(-1, core_data.ny + 1), Range(0, core_data.nz));
         pw::fence();
 
         // Move cv2 to vertex using flux array as a temporary
@@ -147,10 +148,10 @@ namespace LARE
                                                        remap_data.cv2(ix, iy, izp) + remap_data.cv2(ixp, iy, izp) +
                                                        remap_data.cv2(ix, iyp, izp) + remap_data.cv2(ixp, iyp, izp));
             },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
         // Now copy it back
-        pw::assign(remap_data.cv2(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)));
+        pw::assign(remap_data.cv2(Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz)), remap_data.flux(Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz)));
         pw::fence();
 
         // Move vy1 to y face centred for momentum remap
@@ -159,10 +160,10 @@ namespace LARE
                 T_indexType iyp = iy + 1;
                 remap_data.flux(ix, iy, iz) = (data.vy1(ix, iy, iz) + data.vy1(ix, iyp, iz)) * 0.5;
             },
-            Range(0, data.nx), Range(-2, data.ny + 1), Range(0, data.nz));
+            Range(0, core_data.nx), Range(-2, core_data.ny + 1), Range(0, core_data.nz));
         pw::fence();
         // And copy it back
-        pw::assign(data.vy1(Range(0, data.nx), Range(-2, data.ny + 1), Range(0, data.nz)), remap_data.flux(Range(0, data.nx), Range(-2, data.ny + 1), Range(0, data.nz)));
+        pw::assign(data.vy1(Range(0, core_data.nx), Range(-2, core_data.ny + 1), Range(0, core_data.nz)), remap_data.flux(Range(0, core_data.nx), Range(-2, core_data.ny + 1), Range(0, core_data.nz)));
         pw::fence();
 
         // Vertex control volume mass change
@@ -177,10 +178,10 @@ namespace LARE
                                                        data.dm(ix, iy, izp) + data.dm(ixp, iy, izp) +
                                                        data.dm(ix, iyp, izp) + data.dm(ixp, iyp, izp));
             },
-            Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
+            Range(0, core_data.nx), Range(-1, core_data.ny), Range(0, core_data.nz));
         pw::fence();
 
-        pw::assign(data.dm(Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz)), remap_data.flux(Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz)));
+        pw::assign(data.dm(Range(0, core_data.nx), Range(-1, core_data.ny), Range(0, core_data.nz)), remap_data.flux(Range(0, core_data.nx), Range(-1, core_data.ny), Range(0, core_data.nz)));
         pw::fence();
 
         // Update vertex mass
@@ -190,7 +191,7 @@ namespace LARE
                 remap_data.rho_v1(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + data.dm(ix, iym, iz) - data.dm(ix, iy, iz)) /
                                                 remap_data.cv2(ix, iy, iz);
             },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
 
         y_mom_flux<&simulationData::vx>(data, remap_data, core_data);
@@ -201,7 +202,7 @@ namespace LARE
                                        remap_data.flux(ix, iym, iz) - remap_data.flux(ix, iy, iz)) /
                                       (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
             },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
 
         y_mom_flux<&simulationData::vy>(data, remap_data, core_data);
@@ -212,7 +213,7 @@ namespace LARE
                                        remap_data.flux(ix, iym, iz) - remap_data.flux(ix, iy, iz)) /
                                       (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
             },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
 
         y_mom_flux<&simulationData::vz>(data, remap_data, core_data);
@@ -223,7 +224,7 @@ namespace LARE
                                        remap_data.flux(ix, iym, iz) - remap_data.flux(ix, iy, iz)) /
                                       (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
             },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
 
         this->boundary_conditions();
@@ -232,7 +233,7 @@ namespace LARE
     } // END LARE3D::remap_y
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::y_mass_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::y_mass_flux(simulationData &data, remapData &remap_data, const domainData & core_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -247,7 +248,7 @@ namespace LARE
                 T_dataType v_advect = (data.vy1(ixm, iy, iz) + data.vy1(ix, iy, iz) +
                                        data.vy1(ixm, iy, izm) + data.vy1(ix, iy, izm)) *
                                       0.25;
-                T_dataType o_v = v_advect * data.dt * area;
+                T_dataType o_v = v_advect * core_data.dt * area;
 
                 T_dataType fm = data.rho(ix, iym, iz);
                 T_dataType fi = data.rho(ix, iy, iz);
@@ -279,7 +280,7 @@ namespace LARE
 
                 data.dm(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
             },
-            Range(0, data.nx + 1), Range(0, data.ny), Range(0, data.nz + 1));
+            Range(0, core_data.nx + 1), Range(0, core_data.ny), Range(0, core_data.nz + 1));
         pw::fence();
     }
 
@@ -290,7 +291,7 @@ namespace LARE
      */
     template<typename T_EOS>
     template <auto mPtr>
-    void LARE3DNF<T_EOS>::y_energy_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::y_energy_flux(simulationData &data, remapData &remap_data, const domainData & core_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -306,7 +307,7 @@ namespace LARE
                 T_dataType v_advect = (data.vy1(ixm, iy, iz) + data.vy1(ix, iy, iz) +
                                        data.vy1(ixm, iy, izm) + data.vy1(ix, iy, izm)) *
                                       0.25;
-                T_dataType o_v = v_advect * data.dt * area;
+                T_dataType o_v = v_advect * core_data.dt * area;
 
                 T_dataType fm = (data.*mPtr)(ix, iym, iz);
                 T_dataType fi = (data.*mPtr)(ix, iy, iz);
@@ -341,13 +342,13 @@ namespace LARE
 
                 remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - dmu)) * data.dm(ix, iy, iz);
             },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
     }
 
     template<typename T_EOS>
     template <auto mPtr>
-    void LARE3DNF<T_EOS>::y_mom_flux(simulationData &data, remapData &remap_data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::y_mom_flux(simulationData &data, remapData &remap_data, const domainData & core_data)
     {
         using Range = pw::Range;
         pw::assign(remap_data.flux, 0.0);
@@ -359,7 +360,7 @@ namespace LARE
         T_dataType area = core_data.dyac(ix, iy, iz);
 
         T_dataType v_advect = data.vy1(ix, iy, iz);
-        T_dataType o_v = v_advect * data.dt * area;
+        T_dataType o_v = v_advect * core_data.dt * area;
 
         T_dataType fm  = (data.*mPtr)(ix, iym, iz);
         T_dataType fi  = (data.*mPtr)(ix, iy, iz);
@@ -392,7 +393,7 @@ namespace LARE
         T_dataType rhou = remap_data.rho_v(ix, iy, iz) * vad_p + remap_data.rho_v(ix, iyp, iz) * vad_m;
         T_dataType dmu = std::abs(data.dm(ix, iy, iz)) / dybu / rhou;
 
-        remap_data.flux(ix, iy, iz) = fu + Di * (1.0 - dmu); }, Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
+        remap_data.flux(ix, iy, iz) = fu + Di * (1.0 - dmu); }, Range(0, core_data.nx), Range(-1, core_data.ny), Range(0, core_data.nz));
 
         pw::fence();
 
@@ -421,11 +422,11 @@ namespace LARE
                 pw::atomic::accelerated::Add(data.delta_ke(ixp,iyp,iz), dk);
                 pw::atomic::accelerated::Add(data.delta_ke(ix ,iyp,iz), dk);
                 pw::atomic::accelerated::Add(data.delta_ke(ixp,iyp,izp), dk);
-                pw::atomic::accelerated::Add(data.delta_ke(ix ,iyp,izp), dk); }, Range(0, data.nx), Range(0, data.ny - 1), Range(0, data.nz));
+                pw::atomic::accelerated::Add(data.delta_ke(ix ,iyp,izp), dk); }, Range(0, core_data.nx), Range(0, core_data.ny - 1), Range(0, core_data.nz));
             pw::fence();
         }
 
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) { remap_data.flux(ix, iy, iz) *= data.dm(ix, iy, iz); }, Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
+        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) { remap_data.flux(ix, iy, iz) *= data.dm(ix, iy, iz); }, Range(0, core_data.nx), Range(-1, core_data.ny), Range(0, core_data.nz));
         pw::fence();
     }
 }

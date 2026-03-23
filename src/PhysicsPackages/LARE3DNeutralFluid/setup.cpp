@@ -68,16 +68,14 @@ namespace LARE
      * This allocates the permanent state arrays that are used throughout the LARE3D.
      */
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::allocate(SAMS::harness &harness, simulationData &data)
+    void LARE3DNF<T_EOS>::allocate(SAMS::harness &harness, simulationData &data, domainData & core_data)
     {
-        T_sizeType nx, ny, nz;
-
         auto &axRegistry = harness.axisRegistry;
         auto &varRegistry = harness.variableRegistry;
         // Centred since LARE thinks in terms of cell centres for nx, ny, nz
-        nx = axRegistry.getLocalDomainElements("X", SAMS::staggerType::CENTRED);
-        ny = axRegistry.getLocalDomainElements("Y", SAMS::staggerType::CENTRED);
-        nz = axRegistry.getLocalDomainElements("Z", SAMS::staggerType::CENTRED);
+        core_data.nx = axRegistry.getLocalDomainElements("X", SAMS::staggerType::CENTRED);
+        core_data.ny = axRegistry.getLocalDomainElements("Y", SAMS::staggerType::CENTRED);
+        core_data.nz = axRegistry.getLocalDomainElements("Z", SAMS::staggerType::CENTRED);
 
         // Get the ranges for the whole local domain
         data.xcLocalRange = axRegistry.getLocalRange("X", SAMS::staggerType::CENTRED);
@@ -111,14 +109,6 @@ namespace LARE
         data.xbLocalDomainRange = axRegistry.getLocalDomainRange("X", SAMS::staggerType::HALF_CELL);
         data.ybLocalDomainRange = axRegistry.getLocalDomainRange("Y", SAMS::staggerType::HALF_CELL);
         data.zbLocalDomainRange = axRegistry.getLocalDomainRange("Z", SAMS::staggerType::HALF_CELL);
-
-        data.nx = nx;
-        data.ny = ny;
-        data.nz = nz;
-
-        data.nx_global = axRegistry.getDimension("X").getGlobalDomainCount(SAMS::staggerType::CENTRED);
-        data.ny_global = axRegistry.getDimension("Y").getGlobalDomainCount(SAMS::staggerType::CENTRED);
-        data.nz_global = axRegistry.getDimension("Z").getGlobalDomainCount(SAMS::staggerType::CENTRED);
 
         using Range = pw::Range;
         // Grab the final variable sizes from the registry and wrap the arrays
@@ -159,14 +149,14 @@ namespace LARE
         manager.allocate(data.cv1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
         manager.allocate(data.cvc, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
 
-        Range xcp = pw::Range(0, data.nx + 1);
-        Range ycp = pw::Range(0, data.ny + 1);
-        Range zcp = pw::Range(0, data.nz + 1);
-        Range ycpp = pw::Range(0, data.ny + 2);
-        Range zcpp = pw::Range(0, data.nz + 2);
-        Range xbp = pw::Range(-1, data.nx + 1);
-        Range ybp = pw::Range(-1, data.ny + 1);
-        Range zbp = pw::Range(-1, data.nz + 1);
+        Range xcp = pw::Range(0, core_data.nx + 1);
+        Range ycp = pw::Range(0, core_data.ny + 1);
+        Range zcp = pw::Range(0, core_data.nz + 1);
+        Range ycpp = pw::Range(0, core_data.ny + 2);
+        Range zcpp = pw::Range(0, core_data.nz + 2);
+        Range xbp = pw::Range(-1, core_data.nx + 1);
+        Range ybp = pw::Range(-1, core_data.ny + 1);
+        Range zbp = pw::Range(-1, core_data.nz + 1);
         // Allocate arrays using the portableArrayManager
         manager.allocate(data.alpha1, xcp, ycpp, zcpp);
         manager.allocate(data.alpha2, xbp, ycp, zcpp);
@@ -185,15 +175,15 @@ namespace LARE
         manager.allocate(data.flux_y, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
         manager.allocate(data.flux_z, data.xbLocalDomainRange, data.ybLocalDomainRange, data.zbLocalDomainRange);
 
-        manager.allocate(data.x, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
-        manager.allocate(data.y, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
-        manager.allocate(data.z, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
-        manager.allocate(data.xp, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
-        manager.allocate(data.yp, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
-        manager.allocate(data.zp, Range(-2, nx + 2), Range(-2, ny + 2), Range(-2, nz + 2));
+        manager.allocate(data.x, Range(-2, core_data.nx + 2), Range(-2, core_data.ny + 2), Range(-2, core_data.nz + 2));
+        manager.allocate(data.y, Range(-2, core_data.nx + 2), Range(-2, core_data.ny + 2), Range(-2, core_data.nz + 2));
+        manager.allocate(data.z, Range(-2, core_data.nx + 2), Range(-2, core_data.ny + 2), Range(-2, core_data.nz + 2));
+        manager.allocate(data.xp, Range(-2, core_data.nx + 2), Range(-2, core_data.ny + 2), Range(-2, core_data.nz + 2));
+        manager.allocate(data.yp, Range(-2, core_data.nx + 2), Range(-2, core_data.ny + 2), Range(-2, core_data.nz + 2));
+        manager.allocate(data.zp, Range(-2, core_data.nx + 2), Range(-2, core_data.ny + 2), Range(-2, core_data.nz + 2));
         if (data.rke)
         {
-            manager.allocate(data.delta_ke, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+            manager.allocate(data.delta_ke, Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
         }
 
         data.mpiType = SAMS::gettypeRegistry().getMPIType<T_dataType>();
@@ -205,7 +195,7 @@ namespace LARE
      * Setup the basic LARE3D parameters like grid points etc.
      */
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::grid(simulationData &data, const LARE3DST<T_EOS>::simulationData & core_data)
+    void LARE3DNF<T_EOS>::grid(simulationData &data, const domainData & core_data)
     {
     };
 }
