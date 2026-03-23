@@ -20,6 +20,7 @@
 #include "OrszagTang3D.h"
 #include "EmeryWindTunnel.h"
 #include "KarmanVortex.h"
+#include "InitialConditions/SodNeutral/SodShockTube.h"
 
 #include "LARE3DSingleTemperature/shared_data.h"
 #include "LARE3DNeutralFluid/shared_data.h"
@@ -41,8 +42,7 @@ int main(int argc, char *argv[]){
 
     //Create and initialize the runner
     SAMS::runner<LARE::LARE3D<>, LARE::LARE3DST<>, LARE::LARE3DNF<>, LARE::LARE3DInitialConditions<>, examples::SodShockTube<>, examples::BrioAndWu<>, 
-		    examples::MHDRotor<>, examples::OrszagTang<>, examples::OrszagTang3D<>, examples::EmeryWindTunnel<>, 
-        examples::KarmanVortex<>> runner;
+		    examples::MHDRotor<>, examples::OrszagTang<>, examples::OrszagTang3D<>, examples::EmeryWindTunnel<>, examples::KarmanVortex<>, examples::SodShockTubeNeutral<> > runner;
     runner.initialize(argc, argv);
     //Finish welcome message
     SAMS::finishWelcomeMessage();
