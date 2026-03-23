@@ -119,18 +119,15 @@ namespace examples
             attachBoundaryConditions("LARE/vz1", harness);
             attachBoundaryConditions("LARE/dm", harness);
         
-            attachBoundaryConditions("bx_n", harness);
-            attachBoundaryConditions("by_n", harness);
-            attachBoundaryConditions("bz_n", harness);
-            attachBoundaryConditions("energy_neutral", harness);
-            attachBoundaryConditions("rho_n", harness);
-            attachBoundaryConditions("vx_n", harness);
-            attachBoundaryConditions("vy_n", harness);
-            attachBoundaryConditions("vz_n", harness);
-            attachBoundaryConditions("LARE/vx1_n", harness);
-            attachBoundaryConditions("LARE/vy1_n", harness);
-            attachBoundaryConditions("LARE/vz1_n", harness);
-            attachBoundaryConditions("LARE/dm_n", harness);
+            attachBoundaryConditions("LARENF/energy", harness);
+            attachBoundaryConditions("LARENF/rho", harness);
+            attachBoundaryConditions("LARENF/vx", harness);
+            attachBoundaryConditions("LARENF/vy", harness);
+            attachBoundaryConditions("LARENF/vz", harness);
+            attachBoundaryConditions("LARENF/vx1", harness);
+            attachBoundaryConditions("LARENF/vy1", harness);
+            attachBoundaryConditions("LARENF/vz1", harness);
+            attachBoundaryConditions("LARENF/dm", harness);
         }
 
         /**
