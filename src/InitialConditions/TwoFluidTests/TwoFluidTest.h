@@ -35,7 +35,7 @@ namespace examples
          */
         constexpr static std::string_view name = "TwoFluidTest";
 
-        const std::string problem = "hillier"; // Which problem/ TODO - this should be a data item somewhere...
+        const std::string problem = "sod"; // Which problem/ TODO - this should be a data item somewhere...
         /**
          * Initial conditions should not be timed
          */

@@ -32,10 +32,7 @@ namespace examples
         {
 
             data.t_end = 0.2;
-            //data.t_end = 0.0000001;
             data.dt_snapshots = data.t_end / 10;
-            //dataNeutral.t_end = data.t_end;
-            //dataNeutral.dt_snapshots = data.dt_snapshots;
 
             data.nx = 512;
             data.ny = 2;
@@ -54,9 +51,7 @@ namespace examples
             // Shock viscosity coefficients
             data.visc1 = 0.1;
             data.visc2 = 1.0;
-            dataNeutral.dt_multiplier = data.dt_multiplier; // Default multiplier for time step
             // Geometry options: cartesian, cylindrical, spherical
-    //        dataNeutral.geometry = LARE::LARE3DNF<T_EOS>::geometryType::Cartesian;
             // Shock viscosity coefficients
             dataNeutral.visc1 = data.visc1;
             dataNeutral.visc2 = data.visc2;
