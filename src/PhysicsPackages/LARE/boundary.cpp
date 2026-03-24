@@ -20,11 +20,12 @@ namespace LARE
 {
 
     //Lare style boundary conditions are now provided
-    //via the LARE3DInitialConditions class in the
+    //via the LARE3DKokkosInitialConditions class in the
     //InitialConditions/LARE package.
     namespace pw = portableWrapper;
 
-    void LARE3D::boundary_conditions()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::boundary_conditions()
     {
         bfield_bcs();
         energy_bcs();
@@ -32,7 +33,8 @@ namespace LARE
         velocity_bcs();
     }
 
-    void LARE3D::bfield_bcs()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::bfield_bcs()
     {
         auto &varRegistry = harness.variableRegistry;
         varRegistry.applyBoundaryConditions("bx");
@@ -41,7 +43,8 @@ namespace LARE
         pw::fence();
     }
 
-    void LARE3D::energy_bcs()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::energy_bcs()
     {
         auto &varRegistry = harness.variableRegistry;
         varRegistry.applyBoundaryConditions("energy_electron");
@@ -49,14 +52,16 @@ namespace LARE
         pw::fence();
     }
 
-    void LARE3D::density_bcs()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::density_bcs()
     {
         auto &varRegistry = harness.variableRegistry;
         varRegistry.applyBoundaryConditions("rho");
         pw::fence();
     }
 
-    void LARE3D::velocity_bcs()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::velocity_bcs()
     {
         auto &varRegistry = harness.variableRegistry;
         varRegistry.applyBoundaryConditions("vx");
@@ -65,7 +70,8 @@ namespace LARE
         pw::fence();
     }
 
-    void LARE3D::remap_v_bcs()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::remap_v_bcs()
     {
         auto &varRegistry = harness.variableRegistry;
         varRegistry.applyBoundaryConditions("LARE/vx1");
@@ -74,21 +80,24 @@ namespace LARE
         pw::fence();
     }
 
-    void LARE3D::dm_x_bcs()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::dm_x_bcs()
     {
         auto &varRegistry = harness.variableRegistry;
         varRegistry.applyBoundaryConditions("LARE/dm", 0); //Apply on X dimension
         pw::fence();
     }
 
-    void LARE3D::dm_y_bcs()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::dm_y_bcs()
     {
         auto &varRegistry = harness.variableRegistry;
         varRegistry.applyBoundaryConditions("LARE/dm", 1); //Apply on Y dimension
         pw::fence();
     }
 
-    void LARE3D::dm_z_bcs()
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::dm_z_bcs()
     {
         auto &varRegistry = harness.variableRegistry;
         varRegistry.applyBoundaryConditions("LARE/dm", 2); //Apply on Z dimension

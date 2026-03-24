@@ -238,12 +238,31 @@ namespace SAMS{
         }
 
         #ifdef USE_KOKKOS
-        /*template<typename T, int Arank, portableWrapper::arrayTags tag>
+        /**
+         * Return a Kokkos view wrapping the variable data. Only available if Kokkos is enabled and the variable memory space is compatible with Kokkos.
+         * @return The Kokkos view
+         * @tparam T The type of the elements in the array. Must match the variable type.
+         * @tparam Arank The rank of the array. Must match the variable rank.
+         * @tparam tag The memory space tag for the array. Must match the variable memory space
+         */
+        template<typename T, int Arank, portableWrapper::arrayTags tag = portableWrapper::arrayTags::accelerated>
         auto getKokkosView(const std::string name) const {
             const auto & varDef = getVariable(name);
-            auto ppArray = varDef.getPPArray<T, Arank, tag>();
-            return portableWrapper::kokkos::toView(ppArray);
-        }*/
+            return varDef.getKokkosView<T, Arank, tag>();
+        }
+
+        /**
+         * Return a Kokkos offset view wrapping the variable data. Only available if Kokkos is enabled and the variable memory space is compatible with Kokkos, and if Kokkos offset views are supported by the version of Kokkos being used.
+         * @return The Kokkos offset view
+         * @tparam T The type of the elements in the array. Must match the variable type.
+         * @tparam Arank The rank of the array. Must match the variable rank.
+         * @tparam tag The memory space tag for the array. Must match the variable memory space
+         */
+        template<typename T, int Arank, portableWrapper::arrayTags tag = portableWrapper::arrayTags::accelerated>
+        auto getKokkosOffsetView(const std::string name) const {
+            const auto & varDef = getVariable(name);
+             return varDef.getKokkosOffsetView<T, Arank, tag>();
+        }
         #endif
 
        /**

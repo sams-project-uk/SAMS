@@ -17,43 +17,12 @@
 namespace LARE
 {
 
-    /**
-     * Class representing data only needed during the lagrangian step
-     */
-    struct lagranData
-    {
-        volumeArray bx1;       // X-magnetic field at half timestep
-        volumeArray by1;       // Y-magnetic field at half timestep
-        volumeArray bz1;       // Z-magnetic field at half timestep
-        volumeArray alpha1;    // Alpha1 coefficient for magnetic field update
-        volumeArray alpha2;    // Alpha2 coefficient for magnetic field update
-        volumeArray alpha3;    // Alpha3 coefficient for magnetic field update
-        volumeArray visc_heat; // Viscous heating
-        volumeArray pressure;  // Pressure array
-        volumeArray p_e;       // Electron pressure
-        volumeArray p_i;       // Ion pressure
-        volumeArray rho_v;     // Density at half timestep
-        volumeArray cv_v;      // Control volume at half timestep
-        volumeArray fx;        // X-force
-        volumeArray fy;        // Y-force
-        volumeArray fz;        // Z-force
-        volumeArray fx_visc;   // X-viscous force
-        volumeArray fy_visc;   // Y-viscous force
-        volumeArray fz_visc;   // Z-viscous force
-        volumeArray flux_x;    // X-flux
-        volumeArray flux_y;    // Y-flux
-        volumeArray flux_z;    // Z-flux
-        volumeArray curlb;     // Curl of the magnetic field
-    };
+    namespace{
 
-    void shock_viscosity(simulationData &data);
-    void resistive_effects(LARE3D &sim, simulationData &data);
-    void rkstep(simulationData &data);
-    void bstep(LARE3D &sim, simulationData &data);
-    void b_field_and_cv1_update(simulationData &data);
-    void shock_heating(simulationData &data);
+        using T_dataType = SAMS::T_dataType;
 
-    DEVICEPREFIX INLINE T_dataType edge_viscosity(const simulationData &data,
+    template<typename T_EOS>
+    DEVICEPREFIX INLINE T_dataType edge_viscosity(const typename LARE3D<T_EOS>::simulationData &data,
                                                   T_dataType dvdots, T_dataType dx, T_dataType dxm, T_dataType dxp, T_dataType cs_edge,
                                                   int i0, int i1, int i2, int i3,
                                                   int j0, int j1, int j2, int j3,
@@ -91,8 +60,10 @@ namespace LARE
                              (data.visc2_norm * dv + std::sqrt(data.visc2_norm * data.visc2_norm * dv2 + (data.visc1 * cs_edge) * (data.visc1 * cs_edge)));
         return q_k_bar * (1.0 - psi) * dvdots;
     }
+}
 
-    void LARE3D::lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns)
     {   
         using Range = pw::Range;
 
@@ -110,17 +81,29 @@ namespace LARE
         volumeArray energy_el = data.energy_electron;
         volumeArray energy_il = data.energy_ion;
 
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        //Auto here to engage the template engine  to allow constexpr if statements to work properly in the kernel
+        pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
+            auto &d = data;
             T_indexType izm = iz - 1;
             T_indexType iym = iy - 1;
             T_indexType ixm = ix - 1;
-            data.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
-            data.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
-            data.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
+            d.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
+            d.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
+            d.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
 
-            data.p_e(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_el(ix, iy, iz);
-            data.p_i(ix, iy, iz) = (gas_gamma - 1.0) * data.rho(ix, iy, iz) * energy_il(ix, iy, iz);
-            data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
+            if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>)
+            {
+                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz)));
+                d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)));
+            } else if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>)
+            {
+                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+                d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+            } else
+            {
+                static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS pressure interface");
+            }
+            d.pressure(ix, iy, iz) = d.p_e(ix, iy, iz) + d.p_i(ix, iy, iz);
         },
                         data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
 
@@ -164,7 +147,7 @@ namespace LARE
             for (int i = 0; i < substeps; ++i)
             {
                 this->eta_calc(data);
-                resistive_effects(*this, data);
+                resistive_effects(data);
             }
             data.dt = actual_dt; // Restore the original dt after sub-stepping
         }
@@ -172,7 +155,8 @@ namespace LARE
         this->predictor_step(data);
     }
 
-    void shock_viscosity(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::shock_viscosity(simulationData &data)
     {
         using Range = pw::Range;
         data.visc2_norm = 0.25 * (data.gas_gamma + 1.0) * data.visc2;
@@ -233,7 +217,7 @@ namespace LARE
             T_dataType dvdots = -(data.vx(i1, j1, k1) - data.vx(i2, j2, k2));
             T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
             // Edge viscosities from Caramana
-            data.alpha1(ix, iy, iz) = edge_viscosity(data,
+            data.alpha1(ix, iy, iz) = edge_viscosity<T_EOS>(data,
                                                        dvdots, dx, dxm, dxp, cs_edge,
                                                        i0, i1, i2, i3, j0, j1, j2, j3, k0, k1, k2, k3);
         },
@@ -253,7 +237,7 @@ namespace LARE
         T_dataType dxm = data.dyb(iym) * data.hy(ix);
         T_dataType dvdots = -(data.vy(i1, j1, k1) - data.vy(i2, j2, k2));
         T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
-        data.alpha2(ix, iy, iz) = edge_viscosity(data,
+        data.alpha2(ix, iy, iz) = edge_viscosity<T_EOS>(data,
             dvdots, dx, dxm, dxp,
             cs_edge,
             i0, i1, i2, i3, j0, j1, j2, j3, k0, k1, k2, k3); }, Range(-1, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 2));
@@ -272,7 +256,7 @@ namespace LARE
         T_dataType dxm = data.dzb(izm) * data.hz(ix, iy);
         T_dataType dvdots = -(data.vz(i1, j1, k1) - data.vz(i2, j2, k2));
         T_dataType cs_edge = pw::min(cs_v(i1, j1, k1), cs_v(i2, j2, k2));
-        data.alpha3(ix, iy, iz) = edge_viscosity(data,
+        data.alpha3(ix, iy, iz) = edge_viscosity<T_EOS>(data,
             dvdots, dx, dxm, dxp,
             cs_edge,
             i0, i1, i2, i3, j0, j1, j2, j3,
@@ -377,7 +361,8 @@ namespace LARE
         pw::fence();
     }
 
-    void LARE3D::set_dt(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::set_dt(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -385,7 +370,7 @@ namespace LARE
 
         // Now need to do a map and reduction
         T_dataType dt1 = data.dt_multiplier *
-                  pw::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                  pw::applyReduction(LAMBDA(auto ix, auto iy, auto iz) {
         T_indexType izm = iz - 1;
         T_indexType iym = iy - 1;
         T_indexType ixm = ix - 1;
@@ -398,7 +383,18 @@ namespace LARE
         T_dataType dhz = dz * data.hzc(ix, iy);
 
         T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
-        T_dataType cs2 = data.gas_gamma * data.pressure(ix, iy, iz) / rho0;
+
+        T_dataType cs2;
+
+        if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy>)
+        {
+            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)));
+        } else if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>)
+            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+         else
+        {
+            static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS sound speed interface");
+        }
 
         T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
                          data.by(ix, iy, iz) * data.by(ix, iy, iz) +
@@ -442,7 +438,8 @@ namespace LARE
         data.dtr = data.dt;
     }
 
-    void LARE3D::eta_calc(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::eta_calc(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -475,7 +472,8 @@ namespace LARE
         pw::fence();
     }
 
-    void resistive_effects(LARE3D &sim, simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::resistive_effects(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -484,7 +482,7 @@ namespace LARE
         pw::assign(data.bz1, data.bz);
 
         rkstep(data);
-        bstep(sim, data);
+        bstep(data);
 
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izm = iz - 1;
@@ -498,13 +496,14 @@ namespace LARE
 
         data.energy_electron(ix,iy,iz) += sum_curlb * data.dt/(8.0 * data.rho(ix,iy,iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
-        sim.energy_bcs();
+        energy_bcs();
 
         //Once more to get j_perp and j_par correct
         rkstep(data);
     }
 
-    void rkstep(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::rkstep(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -534,7 +533,8 @@ namespace LARE
         pw::fence();
     }
 
-    void bstep(LARE3D &sim, simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::bstep(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -586,10 +586,11 @@ namespace LARE
                 data.flux_x(ixm, iym, iz)
         ) * data.dt / area; }, Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
         pw::fence();
-        sim.bfield_bcs();
+        bfield_bcs();
     }
 
-    void LARE3D::predictor_step(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::predictor_step(simulationData &data)
     {
         using Range = pw::Range;
         // Update magnetic field and cell volume at half time step
@@ -601,14 +602,22 @@ namespace LARE
         data.bz1(ix,iy,iz)*=data.cv1(ix,iy,iz); }, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
         // Predictor step for energy and pressure
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
             T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
             T_dataType e1_e = data.energy_electron(ix, iy, iz) - data.p_e(ix, iy, iz) * dv / data.rho(ix, iy, iz);
             T_dataType e1_i = data.energy_ion(ix, iy, iz) - data.p_i(ix, iy, iz) * dv / data.rho(ix, iy, iz);
             e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
 
-            data.p_e(ix, iy, iz) = e1_e * (data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.cv(ix, iy, iz) / data.cv1(ix, iy, iz);
-            data.p_i(ix, iy, iz) = e1_i * (data.gas_gamma - 1.0) * data.rho(ix, iy, iz) * data.cv(ix, iy, iz) / data.cv1(ix, iy, iz);
+            if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>){
+                data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e));
+                data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i));
+            } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>){
+                data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+                data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+            } else {
+                static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS getPressure interface");
+            }
+
             data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
         },
                         Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
@@ -736,7 +745,8 @@ namespace LARE
         this->remap_v_bcs();
     }
 
-    void LARE3D::corrector_step(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::corrector_step(simulationData &data)
     {
 
         using Range = pw::Range;
@@ -803,7 +813,8 @@ namespace LARE
         this->velocity_bcs();
     }
 
-    void b_field_and_cv1_update(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::b_field_and_cv1_update(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -881,7 +892,8 @@ namespace LARE
         pw::fence();
     }
 
-    void shock_heating(simulationData &data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::shock_heating(simulationData &data)
     {
         using Range = pw::Range;
 

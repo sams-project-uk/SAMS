@@ -1,19 +1,11 @@
 #include "shared_data.h"
-#include "remapData.h"
 
 namespace LARE
 {
     namespace pw = portableWrapper;
 
-    void vy_bx_flux(simulationData &data, remapData &remap_data);
-    void vy_bz_flux(simulationData &data, remapData &remap_data);
-    void y_mass_flux(simulationData &data, remapData &remap_data);
-    template <auto mPtr>
-    void y_energy_flux(simulationData &data, remapData &remap_data);
-    template <auto mPtr>
-    void y_mom_flux(simulationData &data, remapData &remap_data);
-
-    void LARE3D::remap_y(simulationData &data, remapData &remap_data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::remap_y(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::portableArrayManager yRemapManager;
@@ -289,7 +281,8 @@ namespace LARE
     } // END LARE3D::remap_y
 
     // Evans & Hawley constrained transport remap of vy*Bx fluxes
-    void vy_bx_flux(simulationData &data, remapData &remap_data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::vy_bx_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -341,7 +334,8 @@ namespace LARE
     }
 
     // Evans & Hawley constrained transport remap of vy*Bz fluxes
-    void vy_bz_flux(simulationData &data, remapData &remap_data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::vy_bz_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -392,7 +386,8 @@ namespace LARE
         pw::fence();
     }
 
-    void y_mass_flux(simulationData &data, remapData &remap_data)
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::y_mass_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -448,8 +443,9 @@ namespace LARE
      * The template parameter mPtr allows us to pass in the member function pointer
      * for the appropriate energy type.
      */
+    template<typename T_EOS>
     template <auto mPtr>
-    void y_energy_flux(simulationData &data, remapData &remap_data)
+    void LARE3D<T_EOS>::y_energy_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::applyKernel(
@@ -504,8 +500,9 @@ namespace LARE
         pw::fence();
     }
 
+    template<typename T_EOS>
     template <auto mPtr>
-    void y_mom_flux(simulationData &data, remapData &remap_data)
+    void LARE3D<T_EOS>::y_mom_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         pw::assign(remap_data.flux, 0.0);
