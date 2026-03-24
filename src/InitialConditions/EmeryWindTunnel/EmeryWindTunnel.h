@@ -40,6 +40,7 @@ namespace examples
         void setYParallelVectorBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue);
         void setYParallelVectorBcs(std::string varName, SAMS::harness &harness);
 
+        inline static constexpr auto nameType = SAMS::constexprName("EmeryWindTunnel") + T_EOS::name;        
 
         bool singleTemperature = false;
 
