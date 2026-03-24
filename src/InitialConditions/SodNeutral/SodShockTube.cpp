@@ -30,26 +30,27 @@ namespace examples
          * @param data LARE3D simulation data
          */
         template<typename T_EOS>
-        void SodShockTubeNeutral<T_EOS>::controlVariables(LARE::LARE3DNF<T_EOS>::simulationData &data, LARE::LARE3DST<T_EOS>::simulationData & coreData)
+        void SodShockTubeNeutral<T_EOS>::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &data_n)
         {
 
-            coreData.t_end = 0.2;
-            coreData.dt_snapshots = data.t_end / 10;
+            data.t_end = 0.2;
+            data.dt_snapshots = data.t_end / 10;
 
-            coreData.nx = 1024;
-            coreData.ny = 2;
-            coreData.nz = 2;
+            data.nx = 1024;
+            data.ny = 2;
+            data.nz = 2;
 
-            coreData.x_min = 0.0;
-            coreData.x_max = 1.0;
-            coreData.y_min = 0.0;
-            coreData.y_max = (coreData.x_max - coreData.x_min) * coreData.ny / coreData.nx;
-            coreData.z_min = 0.0;
-            coreData.z_max = (coreData.x_max - coreData.x_min) * coreData.nz / coreData.nx;
 
-            coreData.dt_multiplier = 0.8; // Default multiplier for time step
+            data.x_min = 0.0;
+            data.x_max = 1.0;
+            data.y_min = 0.0;
+            data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
+            data.z_min = 0.0;
+            data.z_max = (data.x_max - data.x_min) * data.nz / data.nx;
+
+            data.dt_multiplier = 0.8; // Default multiplier for time step
             // Geometry options: cartesian, cylindrical, spherical
-            coreData.geometry = LARE::geometryType::Cartesian;
+            data.geometry = LARE::geometryType::Cartesian;
             // Shock viscosity coefficients
             data.visc1 = 0.1;
             data.visc2 = 1.0;
@@ -57,10 +58,22 @@ namespace examples
             // Ratio of specific heat capacities
             data.gas_gamma = 1.4;
 
-            coreData.mf = 1.2;
+            // Average mass of an ion in proton masses
+            data.mf = 1.2;
+
+            // Resistive MHD options
+            data.resistiveMHD = false;
+            data.eta_background = 1.e-10;
+            data.j_max = 1.0;
+            data.eta0 = 2.e-10;
 
             // Remap kinetic energy correction
             data.rke = false;
+
+            data_n.visc1 = 0.1;
+            data_n.visc2 = 1.0;
+            data_n.gas_gamma = 1.4;
+            data_n.rke = false;
         }
 
         /**
@@ -86,6 +99,19 @@ namespace examples
         void SodShockTubeNeutral<T_EOS>::setBoundaryConditions(SAMS::harness &harness)
         {
             //Grab variables and set boundary condition functions
+            attachBoundaryConditions("bx", harness);
+            attachBoundaryConditions("by", harness);
+            attachBoundaryConditions("bz", harness);
+            attachBoundaryConditions("energy_ion", harness);
+            attachBoundaryConditions("rho", harness);
+            attachBoundaryConditions("vx", harness);
+            attachBoundaryConditions("vy", harness);
+            attachBoundaryConditions("vz", harness);
+            attachBoundaryConditions("LARE/vx1", harness);
+            attachBoundaryConditions("LARE/vy1", harness);
+            attachBoundaryConditions("LARE/vz1", harness);
+            attachBoundaryConditions("LARE/dm", harness);
+            
             attachBoundaryConditions("LARENF/energy", harness);
             attachBoundaryConditions("LARENF/rho", harness);
             attachBoundaryConditions("LARENF/vx", harness);
@@ -103,10 +129,11 @@ namespace examples
          * @param data LARE3D simulation data
          */
         template<typename T_EOS>
-        void SodShockTubeNeutral<T_EOS>::initialConditions(SAMS::harness &harnessRef, LARE::LARE3DNF<T_EOS>::simulationData &data)
+        void SodShockTubeNeutral<T_EOS>::initialConditions(SAMS::harness &harnessRef, LARE::LARE3DST<T_EOS>::simulationData &data)
         {
             pw::portableArray<SAMS::T_dataType, 3> rho;
-            pw::portableArray<SAMS::T_dataType, 3> energy;
+            pw::portableArray<SAMS::T_dataType, 3> rho_n;
+            pw::portableArray<SAMS::T_dataType, 3> energy, energy_n;
             pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
 
             auto &axisRegistry = harnessRef.axisRegistry;
@@ -115,9 +142,10 @@ namespace examples
             axisRegistry.fillPPLocalAxis("Z", zc, SAMS::staggerType::CENTRED);
 
             auto &varRegistry = harnessRef.variableRegistry;
-            varRegistry.fillPPArray("LARENF/rho", rho);
-            varRegistry.fillPPArray("LARENF/energy", energy);
-
+            varRegistry.fillPPArray("rho", rho);
+            varRegistry.fillPPArray("energy_ion", energy);
+            varRegistry.fillPPArray("LARENF/rho", rho_n);
+            varRegistry.fillPPArray("LARENF/energy", energy_n);
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
@@ -136,7 +164,26 @@ namespace examples
                     energy(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
                 },
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
-        }
+
+            pw::applyKernel(
+                LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
+                {
+                    SAMS::T_dataType pressure;
+                    if (xc(ix) < 0.5)
+                    {
+                        rho_n(ix, iy, iz) = 1.0;
+                        pressure = 1.0;
+                    }
+                    else
+                    {
+                        rho_n(ix, iy, iz) = 0.125;
+                        pressure = 0.1;
+                    }
+                    //Specific internal energy
+                    energy_n(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho_n(ix, iy, iz));
+                },
+                rho_n.getRange(0), rho_n.getRange(1), rho_n.getRange(2));
+                }
 
        /**
          * Check whether to terminate the simulation
@@ -147,7 +194,7 @@ namespace examples
          * It sets the terminate flag to true if the simulation should end.
          */
         template<typename T_EOS>
-        void SodShockTubeNeutral<T_EOS>::queryTerminate(bool &terminate, LARE::LARE3DNF<T_EOS>::simulationData &data, SAMS::timeState &tData){
+        void SodShockTubeNeutral<T_EOS>::queryTerminate(bool &terminate, LARE::LARE3DST<T_EOS>::simulationData &data, SAMS::timeState &tData){
             //End at correct time for Sod Shock Tube (ends at t=0.2)
             if (tData.time >= data.t_end){
                 terminate |= true;

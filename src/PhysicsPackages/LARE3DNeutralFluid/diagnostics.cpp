@@ -113,7 +113,7 @@ namespace LARE
         using Range = pw::Range;
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                T_dataType dke = pw::max(-data.delta_ke(ix, iy, iz), 0.0) / (data.rho(ix, iy, iz) * data.cv(ix, iy, iz));
+                T_dataType dke = pw::max(-data.delta_ke(ix, iy, iz), 0.0) / (data.rho(ix, iy, iz) * core_data.cv(ix, iy, iz));
                 data.energy(ix, iy, iz) += dke;
             },
             Range(1, core_data.nx), Range(1, core_data.ny), Range(1, core_data.nz));

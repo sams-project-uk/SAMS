@@ -38,7 +38,7 @@ namespace LARE
         T_dataType dv = std::sqrt(dv2);
 
         T_dataType psi = 0.0;
-        dvdots = dv * core_data.dt / dx < 1.e-14 ? 0.0 : dvdots / dv;
+        dvdots = dv * data.dt / dx < 1.e-14 ? 0.0 : dvdots / dv;
 
         T_dataType dvxm = data.vx(i0, j0, k0) - data.vx(i1, j1, k1);
         T_dataType dvxp = data.vx(i2, j2, k2) - data.vx(i3, j3, k3);
@@ -49,8 +49,8 @@ namespace LARE
 
         T_dataType rl = 1.0, rr = 1.0;
 
-        rl = dv * core_data.dt / dx < 1.e-14 ? 1.0 : (dvxp * dvx + dvyp * dvy + dvzp * dvz) * dx / (dxp * dv2);
-        rr = dv * core_data.dt / dx < 1.e-14 ? 1.0 : (dvxm * dvx + dvym * dvy + dvzm * dvz) * dx / (dxm * dv2);
+        rl = dv * data.dt / dx < 1.e-14 ? 1.0 : (dvxp * dvx + dvyp * dvy + dvzp * dvz) * dx / (dxp * dv2);
+        rr = dv * data.dt / dx < 1.e-14 ? 1.0 : (dvxm * dvx + dvym * dvy + dvzm * dvz) * dx / (dxm * dv2);
 
         psi = pw::min({0.5 * (rr + rl), 2.0 * rl, 2.0 * rr, 1.0});
         psi = pw::max(0.0, psi);
@@ -73,7 +73,7 @@ namespace LARE
 
         // All of the arrays are deallocated when lagranManager goes out of scope
         //  Initialize p_i, pressure
-        volumeArray cvl = data.cv;
+        volumeArray cvl = core_data.cv;
         volumeArray energy_il = data.energy;
 
         pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
@@ -156,14 +156,14 @@ namespace LARE
         T_indexType ixp = ix + 1;
 
         T_dataType sum =
-            cs(ix, iy, iz) * data.cv(ix, iy, iz) +
-            cs(ixp, iy, iz) * data.cv(ixp, iy, iz) +
-            cs(ix, iyp, iz) * data.cv(ix, iyp, iz) +
-            cs(ixp, iyp, iz) * data.cv(ixp, iyp, iz) +
-            cs(ix, iy, izp) * data.cv(ix, iy, izp) +
-            cs(ixp, iy, izp) * data.cv(ixp, iy, izp) +
-            cs(ix, iyp, izp) * data.cv(ix, iyp, izp) +
-            cs(ixp, iyp, izp) * data.cv(ixp, iyp, izp);
+            cs(ix, iy, iz) * core_data.cv(ix, iy, iz) +
+            cs(ixp, iy, iz) * core_data.cv(ixp, iy, iz) +
+            cs(ix, iyp, iz) * core_data.cv(ix, iyp, iz) +
+            cs(ixp, iyp, iz) * core_data.cv(ixp, iyp, iz) +
+            cs(ix, iy, izp) * core_data.cv(ix, iy, izp) +
+            cs(ixp, iy, izp) * core_data.cv(ixp, iy, izp) +
+            cs(ix, iyp, izp) * core_data.cv(ix, iyp, izp) +
+            cs(ixp, iyp, izp) * core_data.cv(ixp, iyp, izp);
         cs_v(ix, iy, iz) = 0.125 * sum / data.cv_v(ix, iy, iz); }, xp1, yp1, zp1);
         pw::fence();
 
@@ -274,7 +274,7 @@ namespace LARE
                 -0.25 * dx * dy * data.alpha3(ixm, iym, iz) * a11 
                 -0.25 * dx * dy * data.alpha3(ix,  iym, iz) * a12;
 
-            data.visc_heat(ix, iy, iz) = data.visc_heat(ix, iy, iz) / data.cv(ix, iy, iz);
+            data.visc_heat(ix, iy, iz) = data.visc_heat(ix, iy, iz) / core_data.cv(ix, iy, iz);
         },
                         Range(0, core_data.nx + 1), Range(0, core_data.ny + 1), Range(0, core_data.nz + 1));
 
@@ -391,7 +391,7 @@ namespace LARE
         T_dataType avzm = abs(vzbm);
         T_dataType avzp = abs(vzbp);
 
-        T_dataType volume = data.cv(ix,iy,iz);
+        T_dataType volume = core_data.cv(ix,iy,iz);
         T_dataType dt2 = volume / pw::max(avxm, avxp, dvx, 1.0e-10 * volume);
         T_dataType dt3 = volume / pw::max(avym, avyp, dvy, 1.0e-10 * volume);
         T_dataType dt4 = volume / pw::max(avzm, avzp, dvz, 1.0e-10 * volume);
@@ -399,24 +399,25 @@ namespace LARE
         return pw::min(dt1, dt2, dt3, dt4);
         }, LAMBDA(T_dataType & a, const T_dataType &b) { a = pw::min(a, b); }, data.largest_number, Range(i0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
 
-        data.dt_1 = dt1;
+        data.dt = dt1;
     }
 
     template<typename T_EOS>
     void LARE3DNF<T_EOS>::predictor_step(simulationData &data, const domainData & core_data)
     {
         using Range = pw::Range;
+        cv1_update(data, core_data);
 
         // Predictor step for energy and pressure
         pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
-            T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
+            T_dataType dv = data.cv1(ix, iy, iz) / core_data.cv(ix, iy, iz) - 1.0;
             T_dataType e1_i = data.energy(ix, iy, iz) - data.pressure(ix, iy, iz) * dv / data.rho(ix, iy, iz);
-            e1_i += data.visc_heat(ix, iy, iz) * core_data.dt / 2.0 / data.rho(ix, iy, iz);
+            e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
 
             if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>){
-                data.pressure(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i));
+                data.pressure(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*core_data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i));
             } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>){
-                data.pressure(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+                data.pressure(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*core_data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i), eosIndex(ix), eosIndex(iy), eosIndex(iz));
             } else {
                 static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS getPressure interface");
             }
@@ -477,14 +478,13 @@ namespace LARE
             }
 
             // Update positions
-            data.x(ix, iy, iz) += data.vx(ix, iy, iz) * core_data.dt;
-            data.y(ix, iy, iz) += data.vy(ix, iy, iz) * core_data.dt;
-            data.z(ix, iy, iz) += data.vz(ix, iy, iz) * core_data.dt;
-
+            data.x(ix, iy, iz) += data.vx(ix, iy, iz) * data.dt;
+            data.y(ix, iy, iz) += data.vy(ix, iy, iz) * data.dt;
+            data.z(ix, iy, iz) += data.vz(ix, iy, iz) * data.dt;
             // Half-step velocities for remap
-            data.vx1(ix, iy, iz) = data.vx(ix, iy, iz) + core_data.dt / 2.0 * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-            data.vy1(ix, iy, iz) = data.vy(ix, iy, iz) + core_data.dt / 2.0 * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-            data.vz1(ix, iy, iz) = data.vz(ix, iy, iz) + core_data.dt / 2.0 * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+            data.vx1(ix, iy, iz) = data.vx(ix, iy, iz) + data.dt / 2.0 * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+            data.vy1(ix, iy, iz) = data.vy(ix, iy, iz) + data.dt / 2.0 * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+            data.vz1(ix, iy, iz) = data.vz(ix, iy, iz) + data.dt / 2.0 * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz);
         },
                         Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
@@ -502,9 +502,9 @@ namespace LARE
 
         // Correct velocities to final values
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        data.vx(ix, iy, iz) += core_data.dt * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-        data.vy(ix, iy, iz) += core_data.dt * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-        data.vz(ix, iy, iz) += core_data.dt * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz); }, Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
+        data.vx(ix, iy, iz) += data.dt * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+        data.vy(ix, iy, iz) += data.dt * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
+        data.vz(ix, iy, iz) += data.dt * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz); }, Range(0, core_data.nx), Range(0, core_data.ny), Range(0, core_data.nz));
         pw::fence();
         velocity_bcs();
 
@@ -527,22 +527,20 @@ namespace LARE
             // vz1 at Bz(i,j,k-1)
             T_dataType vzbm = 0.25 * (data.vz1(ix, iy, izm) + data.vz1(ixm, iy, izm) + data.vz1(ix, iym, izm) + data.vz1(ixm, iym, izm));
 
-            T_dataType vol = data.cv(ix, iy, iz);
+            T_dataType vol = core_data.cv(ix, iy, iz);
             T_dataType dvxdx = (vxb * core_data.dxab(ix, iy, iz) - vxbm * core_data.dxab(ixm, iy, iz)) / vol;
             T_dataType dvydy = (vyb * core_data.dyab(ix, iy, iz) - vybm * core_data.dyab(ix, iym, iz)) / vol;
             T_dataType dvzdz = (vzb * core_data.dzab(ix, iy, iz) - vzbm * core_data.dzab(ix, iy, izm)) / vol;
 
-            T_dataType dv = (dvxdx + dvydy + dvzdz) * core_data.dt;
+            T_dataType dv = (dvxdx + dvydy + dvzdz) * data.dt;
 
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
             // Energy at end of Lagrangian step
-            data.energy(ix, iy, iz) += (core_data.dt * data.visc_heat(ix, iy, iz) - dv * data.pressure(ix, iy, iz)) / data.rho(ix, iy, iz);
-
+            data.energy(ix, iy, iz) -= dv * data.pressure(ix, iy, iz) / data.rho(ix, iy, iz);
+            data.energy(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.pressure(ix, iy, iz)) / data.rho(ix, iy, iz);
             // Update density based on volume change
             data.rho(ix, iy, iz) /= (1.0 + dv);
-
-            // total_visc_heating += dt * visc_heat(ix, iy, iz) * cv(ix, iy, iz);
         },
                         Range(1, core_data.nx), Range(1, core_data.ny), Range(1, core_data.nz));
         pw::fence();
@@ -552,6 +550,80 @@ namespace LARE
         this->velocity_bcs();
     }
 
+    template<typename T_EOS>
+    void LARE3DNF<T_EOS>::cv1_update(simulationData &data, const domainData & core_data)
+    {
+        using Range = pw::Range;
+
+        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType izm = iz - 1;
+            T_indexType iym = iy - 1;
+            T_indexType ixm = ix - 1;
+
+            // vx at Bx(i,j,k)
+            T_dataType vxb = 0.25 * (data.vx(ix, iy, iz) + data.vx(ix, iym, iz) + data.vx(ix, iy, izm) + data.vx(ix, iym, izm));
+            // vx at Bx(i-1,j,k)
+            T_dataType vxbm = 0.25 * (data.vx(ixm, iy, iz) + data.vx(ixm, iym, iz) + data.vx(ixm, iy, izm) + data.vx(ixm, iym, izm));
+            // vy at By(i,j,k)
+            T_dataType vyb = 0.25 * (data.vy(ix, iy, iz) + data.vy(ixm, iy, iz) + data.vy(ix, iy, izm) + data.vy(ixm, iy, izm));
+            // vy at By(i,j-1,k)
+            T_dataType vybm = 0.25 * (data.vy(ix, iym, iz) + data.vy(ixm, iym, iz) + data.vy(ix, iym, izm) + data.vy(ixm, iym, izm));
+            // vz at Bz(i,j,k)
+            T_dataType vzb = 0.25 * (data.vz(ix, iy, iz) + data.vz(ixm, iy, iz) + data.vz(ix, iym, iz) + data.vz(ixm, iym, iz));
+            // vz at Bz(i,j,k-1)
+            T_dataType vzbm = 0.25 * (data.vz(ix, iy, izm) + data.vz(ixm, iy, izm) + data.vz(ix, iym, izm) + data.vz(ixm, iym, izm));
+
+            T_dataType vol = core_data.cv(ix, iy, iz);
+            T_dataType dvxdx = (vxb * core_data.dxab(ix, iy, iz) - vxbm * core_data.dxab(ixm, iy, iz)) / vol;
+            T_dataType dvydy = (vyb * core_data.dyab(ix, iy, iz) - vybm * core_data.dyab(ix, iym, iz)) / vol;
+            T_dataType dvzdz = (vzb * core_data.dzab(ix, iy, iz) - vzbm * core_data.dzab(ix, iy, izm)) / vol;
+
+            T_dataType dv = (dvxdx + dvydy + dvzdz) * data.dt / 2.0;
+            data.cv1(ix, iy, iz) = vol * (1.0 + dv);
+              if(vol < 1e-12) throw std::runtime_error("Bad vol");
+ 
+            // vx at By(i,j,k)
+            vxb = 0.25 * (data.vx(ix, iy, iz) + data.vx(ixm, iy, iz) + data.vx(ix, iy, izm) + data.vx(ixm, iy, izm));
+            // vx at By(i,j-1,k)
+            vxbm = 0.25 * (data.vx(ix, iym, iz) + data.vx(ixm, iym, iz) + data.vx(ix, iym, izm) + data.vx(ixm, iym, izm));
+            // vy at Bx(i,j,k)
+            vyb = 0.25 * (data.vy(ix, iy, iz) + data.vy(ix, iym, iz) + data.vy(ix, iy, izm) + data.vy(ix, iym, izm));
+            // vy at Bx(i-1,j,k)
+            vybm = 0.25 * (data.vy(ixm, iy, iz) + data.vy(ixm, iym, iz) + data.vy(ixm, iy, izm) + data.vy(ixm, iym, izm));
+
+            T_dataType dvxdy = (vxb * core_data.dyab(ix, iy, iz) - vxbm * core_data.dyab(ix, iym, iz)) / vol;
+            T_dataType dvydx = (vyb * core_data.dxab(ix, iy, iz) - vybm * core_data.dxab(ixm, iy, iz)) / vol;
+
+            // vx at Bz(i,j,k)
+            vxb = 0.25 * (data.vx(ix, iy, iz) + data.vx(ixm, iy, iz) + data.vx(ix, iym, iz) + data.vx(ixm, iym, iz));
+            // vx at Bz(i,j,k-1)
+            vxbm = 0.25 * (data.vx(ix, iy, izm) + data.vx(ixm, iy, izm) + data.vx(ix, iym, izm) + data.vx(ixm, iym, izm));
+            // vz at Bx(i,j,k)
+            vzb = 0.25 * (data.vz(ix, iy, iz) + data.vz(ix, iym, iz) + data.vz(ix, iy, izm) + data.vz(ix, iym, izm));
+            // vz at Bx(i-1,j,k)
+            vzbm = 0.25 * (data.vz(ixm, iy, iz) + data.vz(ixm, iym, iz) + data.vz(ixm, iy, izm) + data.vz(ixm, iym, izm));
+
+            T_dataType dvxdz = (vxb * core_data.dzab(ix, iy, iz) - vxbm * core_data.dzab(ix, iy, izm)) / vol;
+            T_dataType dvzdx = (vzb * core_data.dxab(ix, iy, iz) - vzbm * core_data.dxab(ixm, iy, iz)) / vol;
+
+            // vy at Bz(i,j,k)
+            vyb = 0.25 * (data.vy(ix, iy, iz) + data.vy(ixm, iy, iz) + data.vy(ix, iym, iz) + data.vy(ixm, iym, iz));
+            // vy at Bz(i,j,k-1)
+            vybm = 0.25 * (data.vy(ix, iy, izm) + data.vy(ixm, iy, izm) + data.vy(ix, iym, izm) + data.vy(ixm, iym, izm));
+            // vz at By(i,j,k)
+            vzb = 0.25 * (data.vz(ix, iy, iz) + data.vz(ixm, iy, iz) + data.vz(ix, iy, izm) + data.vz(ixm, iy, izm));
+            // vz at By(i,j-1,k)
+            vzbm = 0.25 * (data.vz(ix, iym, iz) + data.vz(ixm, iym, iz) + data.vz(ix, iym, izm) + data.vz(ixm, iym, izm));
+
+            T_dataType dvydz = (vyb * core_data.dzab(ix, iy, iz) - vybm * core_data.dzab(ix, iy, izm)) / vol;
+            T_dataType dvzdy = (vzb * core_data.dyab(ix, iy, iz) - vzbm * core_data.dyab(ix, iym, iz)) / vol;
+
+        },
+                        Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
+        pw::fence();
+    }
+
+ 
     template<typename T_EOS>
     void LARE3DNF<T_EOS>::shock_heating(simulationData &data, const domainData & core_data)
     {
@@ -659,7 +731,7 @@ namespace LARE
                  0.25 * dy * dz * data.alpha1(ix, iyp, izp) * a7 - 0.25 * dx * dz * data.alpha2(ixm, iy, izp) * a8 - 0.25 * dy * dy * data.alpha3(ix, iy, iz) * a9 -
                  0.25 * dx * dy * data.alpha3(ixm, iy, iz) * a10 - 0.25 * dy * dy * data.alpha3(ixm, iym, iz) * a11 - 0.25 * dx * dy * data.alpha3(ix, iym, iz) * a12);
 
-            data.visc_heat(ix, iy, iz) = pw::max(data.visc_heat(ix, iy, iz) / data.cv(ix, iy, iz), 0.0);
+            data.visc_heat(ix, iy, iz) = pw::max(data.visc_heat(ix, iy, iz) / core_data.cv(ix, iy, iz), 0.0);
         },
                         Range(0, core_data.nx + 1), Range(0, core_data.ny + 1), Range(0, core_data.nz + 1));
     }

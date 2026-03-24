@@ -145,7 +145,6 @@ namespace LARE
                         << std::endl;
 
         manager.allocate(data.p_visc, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
-        manager.allocate(data.cv, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
         manager.allocate(data.cv1, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
         manager.allocate(data.cvc, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
 

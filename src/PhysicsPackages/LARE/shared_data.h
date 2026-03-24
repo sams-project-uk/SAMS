@@ -460,6 +460,8 @@ namespace LARE
          */
         void getTimestep(SAMS::timeState &timeData, simulationData &data){
             data.dt = timeData.dt;
+            data.step = timeData.step;
+            data.time = timeData.time;
         }
 
         template<typename T>

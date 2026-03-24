@@ -158,7 +158,6 @@ namespace LARE
         volumeArray vx1;             // Half timestep X-velocity
         volumeArray vy1;             // Half timestep Y-velocity
         volumeArray vz1;             // Half timestep Z-velocity
-        volumeArray cv;  // Control volume
         volumeArray cv1; // Half timestep control volume
         volumeArray cvc;
 
@@ -205,7 +204,7 @@ namespace LARE
         T_dataType nx;
         T_dataType ny;
         T_dataType nz;
-        T_dataType dt, dt_multiplier;
+        T_dataType dt_multiplier;
         int64_t nsteps;
         
         lineArray xb;
@@ -234,6 +233,7 @@ namespace LARE
         planeArray hzc;
         //planeArray hz1;
         planeArray hz2;
+        volumeArray cv;  // Control volume
  
     };
 
@@ -316,7 +316,6 @@ namespace LARE
             core_data.ny = lareData.ny;
             core_data.nz = lareData.nz;
             
-            core_data.dt = lareData.dt;
             core_data.dt_multiplier = lareData.dt_multiplier;
             core_data.nsteps = lareData.nsteps;
 
@@ -345,6 +344,7 @@ namespace LARE
             core_data.hzc = lareData.hzc;
             core_data.hz2 = lareData.hz2;
             core_data.geometry = lareData.geometry;
+            core_data.cv = lareData.cv;
 
         }
 
@@ -457,7 +457,6 @@ namespace LARE
          * @param data LARE3D simulation data
          */
         void calculateTimestep(SAMS::timeState &timeData, simulationData &data, const domainData & core_data){
-            std::cout<<timeData.dt<<std::endl;
             //timeData.dt = 1e-5;
         };
         /*{
@@ -474,7 +473,6 @@ namespace LARE
             data.dt = timeData.dt;
             data.step = timeData.step;
             data.time = timeData.time;
- 
         };
 
         template<typename T>
@@ -520,7 +518,8 @@ namespace LARE
          * It is called at the end of each time step to apply the boundary conditions.
          */
         void boundary_conditions();
-
+        void cv1_update(simulationData &data, const domainData & core_data);
+ 
         void shock_viscosity(simulationData &data, const domainData & core_data );
         void rkstep(simulationData &data);
         void shock_heating(simulationData &data, const domainData & core_data);

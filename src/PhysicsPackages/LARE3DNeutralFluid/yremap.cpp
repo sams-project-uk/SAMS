@@ -52,23 +52,23 @@ namespace LARE
                                    data.vz1(ix, iym, izm) + data.vz1(ixm, iym, izm)) *
                                   0.25;
 
-                T_dataType vol = data.cv(ix, iy, iz);
+                T_dataType vol = core_data.cv(ix, iy, iz);
                 T_dataType dvxdx = remap_data.xpass * (vxb * core_data.dxab(ix, iy, iz) - vxbm * core_data.dxab(ixm, iy, iz)) / vol;
                 T_dataType dvydy = (vyb * core_data.dyab(ix, iy, iz) - vybm * core_data.dyab(ix, iym, iz)) / vol;
                 T_dataType dvzdz = remap_data.zpass * (vzb * core_data.dzab(ix, iy, iz) - vzbm * core_data.dzab(ix, iy, izm)) / vol;
 
-                T_dataType dv = (dvxdx + dvzdz) * core_data.dt;
+                T_dataType dv = (dvxdx + dvzdz) * data.dt;
 
                 // Control volume after remap
                 remap_data.cv2(ix, iy, iz) = vol * (1.0 + dv);
 
-                dv = dv + dvydy * core_data.dt;
+                dv = dv + dvydy * data.dt;
 
                 // Control volume before remap
                 data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
                 // dyb before remap
-                remap_data.db1(ix, iy, iz) = core_data.hyc(ix) * core_data.dyb(iy) + (vyb - vybm) * core_data.dt;
+                remap_data.db1(ix, iy, iz) = core_data.hyc(ix) * core_data.dyb(iy) + (vyb - vybm) * data.dt;
             },
             Range(-1, core_data.nx + 2), Range(-1, core_data.ny + 2), Range(-1, core_data.nz + 2));
         pw::fence();
@@ -248,7 +248,7 @@ namespace LARE
                 T_dataType v_advect = (data.vy1(ixm, iy, iz) + data.vy1(ix, iy, iz) +
                                        data.vy1(ixm, iy, izm) + data.vy1(ix, iy, izm)) *
                                       0.25;
-                T_dataType o_v = v_advect * core_data.dt * area;
+                T_dataType o_v = v_advect * data.dt * area;
 
                 T_dataType fm = data.rho(ix, iym, iz);
                 T_dataType fi = data.rho(ix, iy, iz);
@@ -307,7 +307,7 @@ namespace LARE
                 T_dataType v_advect = (data.vy1(ixm, iy, iz) + data.vy1(ix, iy, iz) +
                                        data.vy1(ixm, iy, izm) + data.vy1(ix, iy, izm)) *
                                       0.25;
-                T_dataType o_v = v_advect * core_data.dt * area;
+                T_dataType o_v = v_advect * data.dt * area;
 
                 T_dataType fm = (data.*mPtr)(ix, iym, iz);
                 T_dataType fi = (data.*mPtr)(ix, iy, iz);
@@ -360,7 +360,7 @@ namespace LARE
         T_dataType area = core_data.dyac(ix, iy, iz);
 
         T_dataType v_advect = data.vy1(ix, iy, iz);
-        T_dataType o_v = v_advect * core_data.dt * area;
+        T_dataType o_v = v_advect * data.dt * area;
 
         T_dataType fm  = (data.*mPtr)(ix, iym, iz);
         T_dataType fi  = (data.*mPtr)(ix, iy, iz);

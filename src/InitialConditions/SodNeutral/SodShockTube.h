@@ -4,7 +4,6 @@
 #include "harness.h"
 #include "runner.h"
 #include "shared_data.h"
-#include "LARE3DSingleTemperature/shared_data.h"
 #include "LARE3DNeutralFluid/shared_data.h"
 #include "builtInBoundaryConditions.h"
 
@@ -47,7 +46,7 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void controlVariables(LARE::LARE3DNF<T_EOS>::simulationData &data, LARE::LARE3DST<T_EOS>::simulationData & coreData);
+        void controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &data_n);
 
         /**
          * Set up the simulation domain
@@ -67,7 +66,7 @@ namespace examples
          * @param harnessRef SAMS harness
          * @param data LARE3D simulation data
          */
-        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3DNF<T_EOS>::simulationData &data);
+        void initialConditions(SAMS::harness &harnessRef, LARE::LARE3DST<T_EOS>::simulationData &data);
 
        /**
          * Check whether to terminate the simulation
@@ -77,7 +76,7 @@ namespace examples
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
-        void queryTerminate(bool &terminate, LARE::LARE3DNF<T_EOS>::simulationData &data, SAMS::timeState &tData);
+        void queryTerminate(bool &terminate, LARE::LARE3DST<T_EOS>::simulationData &data, SAMS::timeState &tData);
 
         /**
          * Check whether to output data to disk
