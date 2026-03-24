@@ -551,8 +551,7 @@ void PIP<T_EOS>::set_dt_collisional(LARE::LARE3DST<T_EOS>::simulationData &data,
 
     using Range = portableWrapper::Range;
 
-    //int i0 = data.geometry == LARE::LARE3DST<T_EOS>::geometryType::Cartesian ? 0:1;
-     int i0 = 1; // TODO FIX THIS!!!
+    int i0 = data.geometry == LARE::geometryType::Cartesian ? 0:1;
     //Now need to do a map and reduction
     plasma_source.two_fluid_timestep = 0.1*data.dt_multiplier * 
     portableWrapper::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
