@@ -49,7 +49,7 @@ namespace portableWrapper{
                     return Kokkos::RangePolicy<KOKKOS_EXECUTION_SPACE,iType>(starts[0], ends[0]);
                 else
                     #if defined(KOKKOS_CUDA) || defined(KOKKOS_HIP)
-                    return Kokkos::MDRangePolicy<Kokkos::Rank<sizeof...(T_ranges),Kokkos::Iterate::Right, Kokkos::Iterate::Right>,KOKKOS_EXECUTION_SPACE,iType>(starts, ends);
+                    return Kokkos::MDRangePolicy<Kokkos::Rank<sizeof...(T_ranges),Kokkos::Iterate::Left, Kokkos::Iterate::Left>,KOKKOS_EXECUTION_SPACE,iType>(starts, ends);
                     #else
                     return Kokkos::MDRangePolicy<Kokkos::Rank<sizeof...(T_ranges),Kokkos::Iterate::Right, Kokkos::Iterate::Right>,KOKKOS_EXECUTION_SPACE,iType>(starts, ends);
                     #endif
