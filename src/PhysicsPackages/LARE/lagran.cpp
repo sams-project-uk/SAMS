@@ -63,7 +63,7 @@ namespace LARE
 }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns)
+    void LARE3D<T_EOS>::lagrangian_step(simulationData &data)
     {   
         using Range = pw::Range;
 
@@ -136,7 +136,7 @@ namespace LARE
                         xbp, ybp, zbp);
 
         shock_viscosity(data);
-        controlFns.calculateTimestep();
+
         if (data.resistiveMHD)
         {
             T_dataType dt_sub = data.dtr;
