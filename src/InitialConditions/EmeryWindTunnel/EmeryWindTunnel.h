@@ -40,13 +40,11 @@ namespace examples
         void setYParallelVectorBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue);
         void setYParallelVectorBcs(std::string varName, SAMS::harness &harness);
 
-        inline static constexpr auto nameType = SAMS::constexprName("EmeryWindTunnel") + T_EOS::name;        
-
+        inline static constexpr auto nameType = SAMS::constexprName("EmeryWindTunnel") + T_EOS::name;
         bool singleTemperature = false;
 
     public:
 
-        inline static constexpr auto nameType = SAMS::constexprName("EmeryWindTunnel") + T_EOS::name;
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */
