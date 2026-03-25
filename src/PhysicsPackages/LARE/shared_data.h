@@ -417,8 +417,8 @@ namespace LARE
          * This is the predictor step of the LARE3D timestep
          * @param data LARE3D simulation data
          */
-        void startOfTimestep(simulationData &data, SAMS::controlFunctions &controlFns){
-            lagrangian_step(data, controlFns);
+        void startOfTimestep(simulationData &data){
+            lagrangian_step(data);
         }
 
         /**
@@ -544,7 +544,7 @@ namespace LARE
          * @param data Simulation data struct
          * This function performs a Lagrangian step for the LARE3D
          */
-        void lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns);
+        void lagrangian_step(simulationData &data);
 
         /**
          * Calculate the resistivity eta based on current density
