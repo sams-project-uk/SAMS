@@ -412,6 +412,9 @@ namespace LARE
             grid(data);
         }
 
+        void beforeStartOfTimestep(simulationData &data){
+            lagrangian_prepare(data);
+        }
         /**
          * Physics timestep functions
          * This is the predictor step of the LARE3D timestep
@@ -536,6 +539,11 @@ namespace LARE
         void z_energy_flux(simulationData &data, remapData &remap_data);
         template <auto mPtr>
         void z_mom_flux(simulationData &data, remapData &remap_data);
+
+        /**
+         * First part of Lagrangian step for the LARE3D
+         */
+        void lagrangian_prepare(simulationData &data);
 
         /**
          * Lagrangian step for the LARE3D
