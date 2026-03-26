@@ -37,35 +37,24 @@ namespace TWOFLUID
     void getHostVersion(data_two_fluid_source &data, pw::portableArrayManager &manager, LARE::volumeArray &device, LARE::hostVolumeArray &host)
     {
         using Range = pw::Range;
-        // Copy the data if needed
-        auto fullHost = manager.makeHostAvailable(device);
-
-        LARE::T_indexType nx=data.source_mass.getSize(0);
-        LARE::T_indexType ny=data.source_mass.getSize(1);
-        LARE::T_indexType nz=data.source_mass.getSize(2);
-        //printf("%li \n",nx);
-        // Now allocate memory for just the part we want to write
-        manager.allocate(host, Range(1, nx), Range(1, ny), Range(1, nz));
-        //Have to copy data since the HDF writer expects contiguous data
-        manager.copyDataHost(host, fullHost(Range(1,nx), Range(1,ny), Range(1,nz)));
-        manager.deallocate(fullHost);
+        // Includes ghost cells, so no need to copy only part
+        host = manager.makeHostAvailable(device);
     }
 
     template<typename T_EOS>
     template<typename T_writer>
         void PIP<T_EOS>::writeOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &data){
-            writer.writeRectilinearMesh("MeshCC_source", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
+            writer.writeRectilinearMesh("MeshCC_source", data.xc_host.data(), data.yc_host.data(), data.zc_host.data());
     }
     
      template<typename T_EOS>
     template<typename T_writer>
-    void PIP<T_EOS>::registerOutputMeshes(writer<T_writer> &writer, data_two_fluid_source &data)
+    void PIP<T_EOS>::registerOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &data)
     {
-        LARE::T_indexType nx=data.source_mass.getSize(0);
-        LARE::T_indexType ny=data.source_mass.getSize(1);
-        LARE::T_indexType nz=data.source_mass.getSize(2);
+        T_indexType nx = data.xc_host.getSize(0);
+        T_indexType ny = data.yc_host.getSize(0);
+        T_indexType nz = data.zc_host.getSize(0);
         writer.template registerRectilinearMesh<LARE::T_dataType>("MeshCC_source", nx, ny, nz);
-
     }
 
     template<typename T_EOS>
@@ -133,7 +122,7 @@ namespace TWOFLUID
 //Instantiate the templates for HDF5 writer
     template void PIP<idealGas>::registerOutputVariables<HDF5File>(writer<HDF5File> &writer, data_two_fluid_source &data);
     template void PIP<idealGas>::writeOutputVariables<HDF5File>(writer<HDF5File> &writer, data_two_fluid_source &data);
-    template void PIP<idealGas>::registerOutputMeshes(writer<HDF5File> &writer, data_two_fluid_source &data);
+    template void PIP<idealGas>::registerOutputMeshes(writer<HDF5File> &writer, LARE::LARE3DST<idealGas>::simulationData &data);
     template void PIP<idealGas>::writeOutputMeshes(writer<HDF5File> &writer, LARE::LARE3DST<idealGas>::simulationData &data);
 #else
 //Instantiate the templates for simple writer

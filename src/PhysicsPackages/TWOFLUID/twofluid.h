@@ -114,7 +114,7 @@ namespace TWOFLUID
             void writeOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &data);
         
             template<typename T_writer>
-            void registerOutputMeshes(writer<T_writer> &writer, data_two_fluid_source &data);
+            void registerOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &data);
             
             template<typename T>
             void registerOutputVariables(writer<T> &writer, data_two_fluid_source &plasma_source);
