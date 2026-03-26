@@ -421,7 +421,7 @@ namespace LARE
             copy_domain(core_data, lareData);
         }
 
-        void beforeStartOfTimestep(simulationData &data, const domainData & core_data){
+        void prepareTimestepCalculation(simulationData &data, const domainData & core_data){
             lagrangian_prepare(data, core_data);
         }
  

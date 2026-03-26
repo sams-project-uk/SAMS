@@ -412,7 +412,7 @@ namespace LARE
             grid(data);
         }
 
-        void beforeStartOfTimestep(simulationData &data){
+        void prepareTimestepCalculation(simulationData &data){
             lagrangian_prepare(data);
         }
         /**

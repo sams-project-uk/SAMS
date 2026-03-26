@@ -146,6 +146,7 @@ namespace SAMS
         FULL_CALL_X(setBoundaryConditions); //Set boundary conditions
         FULL_CALL_X(defaultVariables); //Set default variable values
 
+        FULL_CALL_X(prepareTimestepCalculation); //TODO - is there a more elegant solution?
         FULL_CALL_X(beforeStartOfTimestep); //Actions to perform just prior to timestep (i.e. before core solver)
         FULL_CALL_X(startOfTimestep); //Actions to perform at the start of each timestep
         FULL_CALL_X(halfTimestep); //Actions to perform at half timestep
@@ -568,7 +569,7 @@ namespace SAMS
                 if (step%10 == 0){
                     SAMS::cout << "Starting timestep " << step << " at time " << std::get<timeState>(runnerData).time <<  ", dt = " << std::get<timeState>(runnerData).dt << std::endl;
                 }
-                beforeStartOfTimestep(); //Set timestep value
+                prepareTimestepCalculation(); //Set timestep value
                 calculateTimestep(); //Set timestep value
                 beforeStartOfTimestep();
                 startOfTimestep(); //Start of timestep (predictor)

@@ -79,7 +79,12 @@ namespace TWOFLUID
             void getVariables(data_two_fluid_source &plasma_source,SAMS::harness &harness){
                 allocate(plasma_source, harness);
             }
+            void prepareTimestepCalculation(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                get_ac(data,dataNeutral,plasma_source);
+                get_two_fluid_source(data,dataNeutral,plasma_source);
+            };
             void beforeStartOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                set_dt_collisional(data,dataNeutral,plasma_source);
                 apply_two_fluid_source(data,dataNeutral,plasma_source);
             };
 
@@ -88,15 +93,12 @@ namespace TWOFLUID
             };
 
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
-                get_ac(data,dataNeutral,plasma_source);
-                get_two_fluid_source(data,dataNeutral,plasma_source);
                 set_dt_collisional(data,dataNeutral,plasma_source);
-                //printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
-                //set_dt(data);
-                //timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
+                timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
             };
             void getTimestep(SAMS::timeState &timeData, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral){
-                //data.dt = timeData.dt;
+ //         data.dt = timeData.dt;
+             // TODO - relying on LARE having picked this up
             };
             void get_two_fluid_source(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
             

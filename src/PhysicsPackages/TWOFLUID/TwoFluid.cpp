@@ -196,7 +196,6 @@ namespace TWOFLUID
                 SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
                 plasma_source.ac(ix,iy,iz)=plasma_source.alpha0_NF*std::sqrt(0.5*(temperature_neutral+temperature_ion));
             	}, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
-
         };
         
 ////////////////////////////////////////////////////////////////////////////////////////
