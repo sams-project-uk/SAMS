@@ -74,7 +74,8 @@ namespace LARE
 
         pw::fence();
 
-        vx_by_flux(data, remap_data); // Evans and Hawley constrained transport remap of magnetic fluxes
+        // Evans and Hawley (ApJ, vol 332, p650, (1988)) constrained transport remap of magnetic fluxes
+        vx_by_flux(data, remap_data);
 
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -89,9 +90,11 @@ namespace LARE
                 data.bx(ix, iy, iz) = data.bx(ix, iy, iz) + remap_data.flux(ix, iy, iz) - remap_data.flux(ix, iym, iz);
             },
             Range(0, data.nx), Range(1, data.ny), Range(1, data.nz));
+
         pw::fence();
 
         vx_bz_flux(data, remap_data); // Flux of bz due to vx
+
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
@@ -105,6 +108,7 @@ namespace LARE
                 data.bx(ix, iy, iz) = data.bx(ix, iy, iz) + remap_data.flux(ix, iy, iz) - remap_data.flux(ix, iy, izm);
             },
             Range(0, data.nx), Range(1, data.ny), Range(1, data.nz));
+
         pw::fence();
 
         x_mass_flux(data, remap_data); // Mass flux in x-direction
@@ -116,16 +120,14 @@ namespace LARE
                 data.rho(ix, iy, iz) = (remap_data.rho1(ix, iy, iz) * data.cv1(ix, iy, iz) + data.dm(ixm, iy, iz) - data.dm(ix, iy, iz)) / remap_data.cv2(ix, iy, iz);
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+        // pw::fence();
 
         x_energy_flux<&simulationData::energy_electron>(data, remap_data);
 
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
-                data.energy_electron(ix, iy, iz) =
-                    (data.energy_electron(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) +
-                     remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) /
-                    (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
+                data.energy_electron(ix, iy, iz) = (data.energy_electron(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 
@@ -136,10 +138,7 @@ namespace LARE
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
-                data.energy_ion(ix, iy, iz) =
-                    (data.energy_ion(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) +
-                     remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) /
-                    (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
+                data.energy_ion(ix, iy, iz) = (data.energy_ion(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ixm, iy, iz) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 
@@ -155,19 +154,22 @@ namespace LARE
                 T_indexType iyp = iy + 1;
                 T_indexType izp = iz + 1;
 
-                remap_data.rho_v(ix, iy, iz) = (remap_data.rho1(ix, iy, iz) * data.cv1(ix, iy, iz) +
-                                                remap_data.rho1(ixp, iy, iz) * data.cv1(ixp, iy, iz) +
-                                                remap_data.rho1(ix, iyp, iz) * data.cv1(ix, iyp, iz) +
-                                                remap_data.rho1(ixp, iyp, iz) * data.cv1(ixp, iyp, iz) +
-                                                remap_data.rho1(ix, iy, izp) * data.cv1(ix, iy, izp) +
-                                                remap_data.rho1(ixp, iy, izp) * data.cv1(ixp, iy, izp) +
-                                                remap_data.rho1(ix, iyp, izp) * data.cv1(ix, iyp, izp) +
-                                                remap_data.rho1(ixp, iyp, izp) * data.cv1(ixp, iyp, izp)) *
-                                               0.125 / remap_data.cvc1(ix, iy, iz);
+                remap_data.rho_v(ix, iy, iz) =
+                    (remap_data.rho1(ix, iy, iz) * data.cv1(ix, iy, iz) +
+                    remap_data.rho1(ixp, iy, iz) * data.cv1(ixp, iy, iz) +
+                    remap_data.rho1(ix, iyp, iz) * data.cv1(ix, iyp, iz) +
+                    remap_data.rho1(ixp, iyp, iz) * data.cv1(ixp, iyp, iz) +
+                    remap_data.rho1(ix, iy, izp) * data.cv1(ix, iy, izp) +
+                    remap_data.rho1(ixp, iy, izp) * data.cv1(ixp, iy, izp) +
+                    remap_data.rho1(ix, iyp, izp) * data.cv1(ix, iyp, izp) +
+                    remap_data.rho1(ixp, iyp, izp) * data.cv1(ixp, iyp, izp)) *
+                    0.125 / remap_data.cvc1(ix, iy, iz);
+
             },
             Range(-1, data.nx + 1), Range(0, data.ny), Range(0, data.nz));
+        //pw::fence();
 
-        // Use flux as a temporary to store the new cv2
+        // Move cv2 to vertex using flux array as a temporary
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixp = ix + 1;
@@ -182,19 +184,20 @@ namespace LARE
 
         // Now copy it back to cv2
         pw::assign(remap_data.cv2(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)));
+        //pw::fence();
 
-        // Now shift vx
+        // Move vx1 to x face centred for momentum remap
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixp = ix + 1;
-
                 remap_data.flux(ix, iy, iz) = (data.vx1(ix, iy, iz) + data.vx1(ixp, iy, iz)) * 0.5;
             },
             Range(-2, data.nx + 1), Range(0, data.ny), Range(0, data.nz));
 
         pw::fence();
-
+        // And copy it back
         pw::assign(data.vx1(Range(-2, data.nx + 1), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(-2, data.nx + 1), Range(0, data.ny), Range(0, data.nz)));
+        //pw::fence();
 
         // Now shift mass flux to temporary
         pw::applyKernel(
@@ -218,7 +221,6 @@ namespace LARE
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
-                // Vertex density after remap
                 remap_data.rho_v1(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + data.dm(ixm, iy, iz) - data.dm(ix, iy, iz)) / remap_data.cv2(ix, iy, iz);
             },
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
@@ -257,110 +259,116 @@ namespace LARE
         this->boundary_conditions();
     } // END LARE3D::remap_x
 
-    // Flux of by due to vx
+    // Evans & Hawley constrained transport remap of vx*By fluxes
     template<typename T_EOS>
     void LARE3D<T_EOS>::vx_by_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        T_indexType ixp = ix + 1;
-        T_indexType iyp = iy + 1;
-        T_indexType izm = iz - 1;
-        T_indexType ixm = ix - 1;
-        T_indexType ixp2 = ix + 2;
+        pw::applyKernel(
+            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixp = ix + 1;
+            T_indexType iyp = iy + 1;
+            T_indexType izm = iz - 1;
+            T_indexType ixm = ix - 1;
+            T_indexType ixp2 = ix + 2;
 
-        T_dataType v_advect = (data.vx1(ix, iy, iz) + data.vx1(ix, iy, izm)) * 0.5;
-        T_dataType o_v = v_advect * data.dt;
+            T_dataType v_advect = (data.vx1(ix, iy, iz) + data.vx1(ix, iy, izm)) * 0.5;
+            T_dataType o_v = v_advect * data.dt;
 
-        T_dataType dbx = (remap_data.db1(ix, iy, iz) + remap_data.db1(ix, iyp, iz)) * 0.5;
-        T_dataType dbxp = (remap_data.db1(ixp, iy, iz) + remap_data.db1(ixp, iyp, iz)) * 0.5;
-        T_dataType dbxp2 = (remap_data.db1(ixp2, iy, iz) + remap_data.db1(ixp2, iyp, iz)) * 0.5;
-        T_dataType dbxm = (remap_data.db1(ixm, iy, iz) + remap_data.db1(ixm, iyp, iz)) * 0.5;
+            T_dataType dbx = (remap_data.db1(ix, iy, iz) + remap_data.db1(ix, iyp, iz)) * 0.5;
+            T_dataType dbxp = (remap_data.db1(ixp, iy, iz) + remap_data.db1(ixp, iyp, iz)) * 0.5;
+            T_dataType dbxp2 = (remap_data.db1(ixp2, iy, iz) + remap_data.db1(ixp2, iyp, iz)) * 0.5;
+            T_dataType dbxm = (remap_data.db1(ixm, iy, iz) + remap_data.db1(ixm, iyp, iz)) * 0.5;
 
-        T_dataType fm = data.by(ixm, iy, iz) / dbxm;
-        T_dataType fi = data.by(ix, iy, iz) / dbx;
-        T_dataType fp = data.by(ixp, iy, iz) / dbxp;
-        T_dataType fp2 = data.by(ixp2, iy, iz) / dbxp2;
+            T_dataType fm = data.by(ixm, iy, iz) / dbxm;
+            T_dataType fi = data.by(ix, iy, iz) / dbx;
+            T_dataType fp = data.by(ixp, iy, iz) / dbxp;
+            T_dataType fp2 = data.by(ixp2, iy, iz) / dbxp2;
 
-        T_dataType dfm = fi - fm;
-        T_dataType dfi = fp - fi;
-        T_dataType dfp = fp2 - fp;
+            T_dataType dfm = fi - fm;
+            T_dataType dfi = fp - fi;
+            T_dataType dfp = fp2 - fp;
 
-        T_dataType sign_v = (v_advect >= 0.0) ? 1.0 : -1.0;
-        T_dataType vad_p = (sign_v + 1.0) * 0.5;
-        T_dataType vad_m = 1.0 - vad_p;
+            T_dataType sign_v = (v_advect >= 0.0) ? 1.0 : -1.0;
+            T_dataType vad_p = (sign_v + 1.0) * 0.5;
+            T_dataType vad_m = 1.0 - vad_p;
 
-        T_dataType fu = fi * vad_p + fp * vad_m;
-        T_dataType dfu = dfm * vad_p + dfp * vad_m;
-        T_dataType dxci = remap_data.cvc1(ix, iy, iz);
-        T_dataType dxcu = remap_data.cvc1(ixm, iy, iz) * vad_p + remap_data.cvc1(ixp, iy, iz) * vad_m;
-        T_dataType dxbu = data.cv1(ix, iy, iz) * vad_p + data.cv1(ixp, iy, iz) * vad_m;
+            T_dataType fu = fi * vad_p + fp * vad_m;
+            T_dataType dfu = dfm * vad_p + dfp * vad_m;
+            T_dataType dxci = remap_data.cvc1(ix, iy, iz);
+            T_dataType dxcu = remap_data.cvc1(ixm, iy, iz) * vad_p + remap_data.cvc1(ixp, iy, iz) * vad_m;
+            T_dataType dxbu = data.cv1(ix, iy, iz) * vad_p + data.cv1(ixp, iy, iz) * vad_m;
 
-        T_dataType dxu = dbx * vad_p + dbxp * vad_m;
-        T_dataType phi = std::abs(o_v) / dxu;
+            T_dataType dxu = dbx * vad_p + dbxp * vad_m;
+            T_dataType phi = std::abs(o_v) / dxu;
 
-        T_dataType Da = (2.0 - phi) * std::abs(dfi) / dxci + (1.0 + phi) * std::abs(dfu) / dxcu;
-        Da = Da * sixth;
+            T_dataType Da = (2.0 - phi) * std::abs(dfi) / dxci + (1.0 + phi) * std::abs(dfu) / dxcu;
+            Da = Da * sixth;
 
-        T_dataType ss = 0.5 * ((dfi >= 0.0 ? 1.0 : -1.0) + (dfu >= 0.0 ? 1.0 : -1.0));
+            T_dataType ss = 0.5 * ((dfi >= 0.0 ? 1.0 : -1.0) + (dfu >= 0.0 ? 1.0 : -1.0));
 
-        T_dataType Di = sign_v * ss * pw::min({std::abs(Da) * dxbu, std::abs(dfi), std::abs(dfu)});
+            T_dataType Di = sign_v * ss * pw::min({std::abs(Da) * dxbu, std::abs(dfi), std::abs(dfu)});
 
-        remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v; }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
+        },
+        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
 
         pw::fence();
     }
 
-    // Flux of bz due to vx
+    // Evans & Hawley constrained transport remap of vx*Bz fluxes
     template<typename T_EOS>
     void LARE3D<T_EOS>::vx_bz_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        T_indexType ixm = ix - 1;
-        T_indexType ixp = ix + 1;
-        T_indexType ixp2 = ix + 2;
-        T_indexType iym = iy - 1;
-        T_indexType izp = iz + 1;
+        pw::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            T_indexType ixm = ix - 1;
+            T_indexType ixp = ix + 1;
+            T_indexType ixp2 = ix + 2;
+            T_indexType iym = iy - 1;
+            T_indexType izp = iz + 1;
 
-        T_dataType v_advect = (data.vx1(ix, iy, iz) + data.vx1(ix, iym, iz)) * 0.5;
-        T_dataType o_v = v_advect * data.dt;
+            T_dataType v_advect = (data.vx1(ix, iy, iz) + data.vx1(ix, iym, iz)) * 0.5;
+            T_dataType o_v = v_advect * data.dt;
 
-        T_dataType dbx = (remap_data.db1(ix, iy, iz) + remap_data.db1(ix, iy, izp)) * 0.5;
-        T_dataType dbxp = (remap_data.db1(ixp, iy, iz) + remap_data.db1(ixp, iy, izp)) * 0.5;
-        T_dataType dbxp2 = (remap_data.db1(ixp2, iy, iz) + remap_data.db1(ixp2, iy, izp)) * 0.5;
-        T_dataType dbxm = (remap_data.db1(ixm, iy, iz) + remap_data.db1(ixm, iy, izp)) * 0.5;
+            T_dataType dbx = (remap_data.db1(ix, iy, iz) + remap_data.db1(ix, iy, izp)) * 0.5;
+            T_dataType dbxp = (remap_data.db1(ixp, iy, iz) + remap_data.db1(ixp, iy, izp)) * 0.5;
+            T_dataType dbxp2 = (remap_data.db1(ixp2, iy, iz) + remap_data.db1(ixp2, iy, izp)) * 0.5;
+            T_dataType dbxm = (remap_data.db1(ixm, iy, iz) + remap_data.db1(ixm, iy, izp)) * 0.5;
 
-        T_dataType fm = data.bz(ixm, iy, iz) / dbxm;
-        T_dataType fi = data.bz(ix, iy, iz) / dbx;
-        T_dataType fp = data.bz(ixp, iy, iz) / dbxp;
-        T_dataType fp2 = data.bz(ixp2, iy, iz) / dbxp2;
+            T_dataType fm = data.bz(ixm, iy, iz) / dbxm;
+            T_dataType fi = data.bz(ix, iy, iz) / dbx;
+            T_dataType fp = data.bz(ixp, iy, iz) / dbxp;
+            T_dataType fp2 = data.bz(ixp2, iy, iz) / dbxp2;
 
-        T_dataType dfm = fi - fm;
-        T_dataType dfi = fp - fi;
-        T_dataType dfp = fp2 - fp;
+            T_dataType dfm = fi - fm;
+            T_dataType dfi = fp - fi;
+            T_dataType dfp = fp2 - fp;
 
-        T_dataType sign_v = (v_advect >= 0.0) ? 1.0 : -1.0;
-        T_dataType vad_p = (sign_v + 1.0) * 0.5;
-        T_dataType vad_m = 1.0 - vad_p;
+            T_dataType sign_v = (v_advect >= 0.0) ? 1.0 : -1.0;
+            T_dataType vad_p = (sign_v + 1.0) * 0.5;
+            T_dataType vad_m = 1.0 - vad_p;
 
-        T_dataType fu = fi * vad_p + fp * vad_m;
-        T_dataType dfu = dfm * vad_p + dfp * vad_m;
-        T_dataType dxci = remap_data.cvc1(ix, iy, iz);
-        T_dataType dxcu = remap_data.cvc1(ixm, iy, iz) * vad_p + remap_data.cvc1(ixp, iy, iz) * vad_m;
-        T_dataType dxbu = data.cv1(ix, iy, iz) * vad_p + data.cv1(ixp, iy, iz) * vad_m;
+            T_dataType fu = fi * vad_p + fp * vad_m;
+            T_dataType dfu = dfm * vad_p + dfp * vad_m;
+            T_dataType dxci = remap_data.cvc1(ix, iy, iz);
+            T_dataType dxcu = remap_data.cvc1(ixm, iy, iz) * vad_p + remap_data.cvc1(ixp, iy, iz) * vad_m;
+            T_dataType dxbu = data.cv1(ix, iy, iz) * vad_p + data.cv1(ixp, iy, iz) * vad_m;
 
-        T_dataType dxu = dbx * vad_p + dbxp * vad_m;
-        T_dataType phi = std::abs(o_v) / dxu;
+            T_dataType dxu = dbx * vad_p + dbxp * vad_m;
+            T_dataType phi = std::abs(o_v) / dxu;
 
-        T_dataType Da = (2.0 - phi) * std::abs(dfi) / dxci + (1.0 + phi) * std::abs(dfu) / dxcu;
-        Da = Da * sixth;
+            T_dataType Da = (2.0 - phi) * std::abs(dfi) / dxci + (1.0 + phi) * std::abs(dfu) / dxcu;
+            Da = Da * sixth;
 
-        T_dataType ss = 0.5 * ((dfi >= 0.0 ? 1.0 : -1.0) + (dfu >= 0.0 ? 1.0 : -1.0));
+            T_dataType ss = 0.5 * ((dfi >= 0.0 ? 1.0 : -1.0) + (dfu >= 0.0 ? 1.0 : -1.0));
 
-        T_dataType Di = sign_v * ss * pw::min({std::abs(Da) * dxbu, std::abs(dfi), std::abs(dfu)});
+            T_dataType Di = sign_v * ss * pw::min({std::abs(Da) * dxbu, std::abs(dfi), std::abs(dfu)});
 
-        remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v; }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
+        },
+        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
         pw::fence();
     }
 
@@ -413,6 +421,7 @@ namespace LARE
                 data.dm(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
             },
             Range(0, data.nx), Range(0, data.ny + 1), Range(0, data.nz + 1));
+
         pw::fence();
     }
 
@@ -483,6 +492,7 @@ namespace LARE
     void LARE3D<T_EOS>::x_mom_flux(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
+
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
@@ -527,35 +537,38 @@ namespace LARE
                 remap_data.flux(ix, iy, iz) = fu + Di * (1.0 - dmu);
             },
             Range(-1, data.nx), Range(0, data.ny), Range(0, data.nz));
+
         pw::fence();
+
+        // Kinetic energy correction if rke is enabled
         if (data.rke)
         {
-            pw::applyKernel(
-                LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                    T_indexType ixm = ix - 1;
-                    T_indexType ixp = ix + 1;
-                    T_indexType iyp = iy + 1;
-                    T_indexType izp = iz + 1;
-                    T_dataType m = remap_data.rho_v1(ix, iy, iz) * remap_data.cv2(ix, iy, iz);
-                    T_dataType mp = remap_data.rho_v1(ixp, iy, iz) * remap_data.cv2(ixp, iy, iz);
+            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) 
+            {
+                T_indexType ixm = ix - 1;
+                T_indexType ixp = ix + 1;
+                T_indexType iyp = iy + 1;
+                T_indexType izp = iz + 1;
 
-                    T_dataType ai = ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ixm, iy, iz)) * data.dm(ixm, iy, iz) / m - ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) * data.dm(ix, iy, iz) / m;
+                T_dataType m = remap_data.rho_v1(ix, iy, iz) * remap_data.cv2(ix, iy, iz);
+                T_dataType mp = remap_data.rho_v1(ixp, iy, iz) * remap_data.cv2(ixp, iy, iz);
 
-                    T_dataType aip = ((data.*mPtr)(ixp, iy, iz) - remap_data.flux(ix, iy, iz)) * data.dm(ix, iy, iz) / mp - ((data.*mPtr)(ixp, iy, iz) - remap_data.flux(ixp, iy, iz)) * data.dm(ixp, iy, iz) / mp;
+                T_dataType ai = ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ixm, iy, iz)) * data.dm(ixm, iy, iz) / m - ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) * data.dm(ix, iy, iz) / m;
 
-                    T_dataType dk = ((data.*mPtr)(ixp, iy, iz) - (data.*mPtr)(ix, iy, iz)) * (remap_data.flux(ix, iy, iz) - 0.5 * ((data.*mPtr)(ixp, iy, iz) + (data.*mPtr)(ix, iy, iz))) - 0.5 * ai * ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) + 0.5 * aip * ((data.*mPtr)(ixp, iy, iz) - remap_data.flux(ix, iy, iz));
+                T_dataType aip = ((data.*mPtr)(ixp, iy, iz) - remap_data.flux(ix, iy, iz)) * data.dm(ix, iy, iz) / mp - ((data.*mPtr)(ixp, iy, iz) - remap_data.flux(ixp, iy, iz)) * data.dm(ixp, iy, iz) / mp;
 
-                    dk = dk * data.dm(ix, iy, iz) * 0.5;
-                    pw::atomic::accelerated::Add(data.delta_ke(ixp, iy, iz), dk);
-                    pw::atomic::accelerated::Add(data.delta_ke(ixp, iyp, iz), dk);
-                    pw::atomic::accelerated::Add(data.delta_ke(ixp, iyp, izp), dk);
-                    pw::atomic::accelerated::Add(data.delta_ke(ixp, iy, izp), dk);
-                },
-                Range(0, data.nx - 1), Range(0, data.ny), Range(0, data.nz));
+                T_dataType dk = ((data.*mPtr)(ixp, iy, iz) - (data.*mPtr)(ix, iy, iz)) * (remap_data.flux(ix, iy, iz) - 0.5 * ((data.*mPtr)(ixp, iy, iz) + (data.*mPtr)(ix, iy, iz))) - 0.5 * ai * ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) + 0.5 * aip * ((data.*mPtr)(ixp, iy, iz) - remap_data.flux(ix, iy, iz));
+
+                dk = dk * data.dm(ix, iy, iz) * 0.5;
+                pw::atomic::accelerated::Add(data.delta_ke(ixp, iy, iz), dk);
+                pw::atomic::accelerated::Add(data.delta_ke(ixp, iyp, iz), dk);
+                pw::atomic::accelerated::Add(data.delta_ke(ixp, iyp, izp), dk);
+                pw::atomic::accelerated::Add(data.delta_ke(ixp, iy, izp), dk);
+            },
+            Range(0, data.nx - 1), Range(0, data.ny), Range(0, data.nz));
         }
         pw::fence();
-        pw::applyKernel(
-            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 remap_data.flux(ix, iy, iz) *= data.dm(ix, iy, iz);
             },
             Range(-1, data.nx), Range(0, data.ny), Range(0, data.nz));
