@@ -45,6 +45,7 @@ namespace TWOFLUID
     template<typename T_writer>
         void PIP<T_EOS>::writeOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &data){
             writer.writeRectilinearMesh("MeshCC_source", data.xc_host.data(), data.yc_host.data(), data.zc_host.data());
+            writer.writeRectilinearMesh("MeshBBB_source", data.xb_host.data(), data.yb_host.data(), data.zb_host.data());
     }
     
      template<typename T_EOS>
@@ -55,6 +56,10 @@ namespace TWOFLUID
         T_indexType ny = data.yc_host.getSize(0);
         T_indexType nz = data.zc_host.getSize(0);
         writer.template registerRectilinearMesh<LARE::T_dataType>("MeshCC_source", nx, ny, nz);
+        T_indexType nxb = data.xb_host.getSize(0);
+        T_indexType nyb = data.yb_host.getSize(0);
+        T_indexType nzb = data.zb_host.getSize(0);
+        writer.template registerRectilinearMesh<LARE::T_dataType>("MeshBBB_source", nxb, nyb, nzb);
     }
 
     template<typename T_EOS>
@@ -65,12 +70,12 @@ namespace TWOFLUID
         writer.template registerData<LARE::T_dataType>("source_mass_n", "MeshCC_source");
         writer.template registerData<LARE::T_dataType>("source_energy", "MeshCC_source");
         writer.template registerData<LARE::T_dataType>("source_energy_n", "MeshCC_source");
-        writer.template registerData<LARE::T_dataType>("source_v_x", "MeshCC_source");
-        writer.template registerData<LARE::T_dataType>("source_v_x_n", "MeshCC_source");
-        writer.template registerData<LARE::T_dataType>("source_v_y", "MeshCC_source");
-        writer.template registerData<LARE::T_dataType>("source_v_y_n", "MeshCC_source");
-        writer.template registerData<LARE::T_dataType>("source_v_z", "MeshCC_source");
-        writer.template registerData<LARE::T_dataType>("source_v_z_n", "MeshCC_source");
+        writer.template registerData<LARE::T_dataType>("source_v_x", "MeshBBB_source");
+        writer.template registerData<LARE::T_dataType>("source_v_x_n", "MeshBBB_source");
+        writer.template registerData<LARE::T_dataType>("source_v_y", "MeshBBB_source");
+        writer.template registerData<LARE::T_dataType>("source_v_y_n", "MeshBBB_source");
+        writer.template registerData<LARE::T_dataType>("source_v_z", "MeshBBB_source");
+        writer.template registerData<LARE::T_dataType>("source_v_z_n", "MeshBBB_source");
         writer.template registerData<LARE::T_dataType>("ac", "MeshCC_source");
     }
 
