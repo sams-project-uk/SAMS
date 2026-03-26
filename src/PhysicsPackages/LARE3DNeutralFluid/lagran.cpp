@@ -63,7 +63,7 @@ namespace LARE
 }
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::lagrangian_step(simulationData &data, const domainData & core_data, SAMS::controlFunctions &controlFns)
+    void LARE3DNF<T_EOS>::lagrangian_prepare(simulationData &data, const domainData & core_data)
     {   
         using Range = pw::Range;
 
@@ -121,8 +121,10 @@ namespace LARE
                         xbp, ybp, zbp);
 
         shock_viscosity(data, core_data);
-        controlFns.calculateTimestep();
-
+    }
+    template<typename T_EOS>
+    void LARE3DNF<T_EOS>::lagrangian_step(simulationData &data, const domainData & core_data)
+    {   
         this->predictor_step(data, core_data);
     }
 
@@ -537,7 +539,7 @@ namespace LARE
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
             // Energy at end of Lagrangian step
-            data.energy(ix, iy, iz) -= dv * data.pressure(ix, iy, iz) / data.rho(ix, iy, iz);
+            //data.energy(ix, iy, iz) -= dv * data.pressure(ix, iy, iz) / data.rho(ix, iy, iz);
             data.energy(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.pressure(ix, iy, iz)) / data.rho(ix, iy, iz);
             // Update density based on volume change
             data.rho(ix, iy, iz) /= (1.0 + dv);
@@ -580,7 +582,6 @@ namespace LARE
 
             T_dataType dv = (dvxdx + dvydy + dvzdz) * data.dt / 2.0;
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
-              if(vol < 1e-12) throw std::runtime_error("Bad vol");
  
             // vx at By(i,j,k)
             vxb = 0.25 * (data.vx(ix, iy, iz) + data.vx(ixm, iy, iz) + data.vx(ix, iy, izm) + data.vx(ixm, iy, izm));

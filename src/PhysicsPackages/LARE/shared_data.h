@@ -436,8 +436,8 @@ namespace LARE
          * This is called at the end of the LARE3D timestep
          * @param data LARE3D simulation data
          */
-        void endOfTimestep(simulationData &data, remapData &remap_data, const SAMS::timeState &ts){
-            eulerian_remap(data, remap_data, ts);
+        void endOfTimestep(simulationData &data, remapData &remap_data){
+            eulerian_remap(data, remap_data);
             if (data.rke){
                 energy_correction(data);
             }
@@ -563,7 +563,7 @@ namespace LARE
         /**
          * Core remap control function
          */
-        void eulerian_remap(simulationData &data, remapData &remap_data, const SAMS::timeState &ts);
+        void eulerian_remap(simulationData &data, remapData &remap_data);
 
         /**
          * Function to add back the kinetic energy correction

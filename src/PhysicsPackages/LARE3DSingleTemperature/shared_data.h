@@ -206,13 +206,11 @@ namespace LARE
             grid(data);
         }
 
-        /**
-         * Physics timestep functions
-         * This is the predictor step of the LARE3D timestep
-         * @param data LARE3D simulation data
-         */
-        void startOfTimestep(simulationData &data, SAMS::controlFunctions &controlFns){
-            lagrangian_step(data, controlFns);
+        void beforeStartOfTimestep(simulationData &data){
+            lagrangian_prepare(data);
+        }
+        void startOfTimestep(simulationData &data){
+            lagrangian_step(data);
         }
 
         /**
@@ -331,12 +329,8 @@ namespace LARE
         template <auto mPtr>
         void z_mom_flux(simulationData &data, remapData &remap_data);
 
-        /**
-         * Lagrangian step for the LARE3D
-         * @param data Simulation data struct
-         * This function performs a Lagrangian step for the LARE3D
-         */
-        void lagrangian_step(simulationData &data, SAMS::controlFunctions &controlFns);
+        void lagrangian_prepare(simulationData &data);
+        void lagrangian_step(simulationData &data);
 
         /**
          * Calculate the resistivity eta based on current density
