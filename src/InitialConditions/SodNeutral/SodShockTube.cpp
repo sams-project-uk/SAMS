@@ -1,4 +1,5 @@
-#include "MHDRotor.h"
+
+#include "SodShockTube.h"
 
 namespace examples
 {
@@ -9,18 +10,17 @@ namespace examples
          * @param harness SAMS harness
          */
         template<typename T_EOS>
-        void MHDRotor<T_EOS>::attachBoundaryConditions(const std::string& varName, SAMS::harness &harness)
+        void SodShockTubeNeutral<T_EOS>::attachBoundaryConditions(const std::string& varName, SAMS::harness &harness)
         {
             SAMS::variableDef &varDef = harness.variableRegistry.getVariable(varName);
-            //Periodic boundaries in Z
+            //Periodic boundaries in Y and Z
             std::shared_ptr<SAMS::boundaryConditions> periodicBC = std::make_shared<SAMS::simplePeriodicBC<SAMS::T_dataType, 3>>(varDef);
+            varDef.addBoundaryCondition(1, periodicBC);
             varDef.addBoundaryCondition(2, periodicBC);
 
             //Mirror boundaries in X
             std::shared_ptr<SAMS::boundaryConditions> mirrorBC = std::make_shared<SAMS::simpleMirrorBC<SAMS::T_dataType, 3>>(varDef);
             varDef.addBoundaryCondition(0, mirrorBC);
-            //Mirror boundaries in Y
-            varDef.addBoundaryCondition(1, mirrorBC);
         }
 
         /**
@@ -30,19 +30,21 @@ namespace examples
          * @param data LARE3D simulation data
          */
         template<typename T_EOS>
-        void MHDRotor<T_EOS>::controlVariables(typename LARE::LARE3D<T_EOS>::simulationData &data)
+        void SodShockTubeNeutral<T_EOS>::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &data_n)
         {
 
-            data.t_end = 0.15; // End time of the simulation
-            data.dt_snapshots = data.t_end/10;
-            data.nx = 128;
-            data.ny = 128;
+            data.t_end = 0.2;
+            data.dt_snapshots = data.t_end / 10;
+
+            data.nx = 1024;
+            data.ny = 2;
             data.nz = 2;
+
 
             data.x_min = 0.0;
             data.x_max = 1.0;
             data.y_min = 0.0;
-            data.y_max = 1.0;
+            data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;
             data.z_max = (data.x_max - data.x_min) * data.nz / data.nx;
 
@@ -59,9 +61,6 @@ namespace examples
             // Average mass of an ion in proton masses
             data.mf = 1.2;
 
-            //Run with normalised mu0
-            data.mu0 = 1.0;
-
             // Resistive MHD options
             data.resistiveMHD = false;
             data.eta_background = 1.e-10;
@@ -70,6 +69,11 @@ namespace examples
 
             // Remap kinetic energy correction
             data.rke = false;
+
+            data_n.visc1 = 0.1;
+            data_n.visc2 = 1.0;
+            data_n.gas_gamma = 1.4;
+            data_n.rke = false;
         }
 
         /**
@@ -78,7 +82,7 @@ namespace examples
          * @param data LARE3D simulation data
          */
         template<typename T_EOS>
-        void MHDRotor<T_EOS>::setDomain(SAMS::harness &harness, typename LARE::LARE3D<T_EOS>::simulationData &data) 
+        void SodShockTubeNeutral<T_EOS>::setDomain(SAMS::harness &harness, LARE::LARE3DST<T_EOS>::simulationData &data) 
         {
             auto &axisReg = harness.axisRegistry;
             //Just hard code the domain for the Sod Shock Tube
@@ -92,17 +96,13 @@ namespace examples
          * @param harness SAMS harness
          */
         template<typename T_EOS>
-        void MHDRotor<T_EOS>::setBoundaryConditions(SAMS::harness &harness)
+        void SodShockTubeNeutral<T_EOS>::setBoundaryConditions(SAMS::harness &harness)
         {
             //Grab variables and set boundary condition functions
             attachBoundaryConditions("bx", harness);
             attachBoundaryConditions("by", harness);
             attachBoundaryConditions("bz", harness);
             attachBoundaryConditions("energy_ion", harness);
-            try {
-                attachBoundaryConditions("energy_electron", harness);
-            } catch (const std::exception &e) {
-            }
             attachBoundaryConditions("rho", harness);
             attachBoundaryConditions("vx", harness);
             attachBoundaryConditions("vy", harness);
@@ -111,6 +111,16 @@ namespace examples
             attachBoundaryConditions("LARE/vy1", harness);
             attachBoundaryConditions("LARE/vz1", harness);
             attachBoundaryConditions("LARE/dm", harness);
+            
+            attachBoundaryConditions("LARENF/energy", harness);
+            attachBoundaryConditions("LARENF/rho", harness);
+            attachBoundaryConditions("LARENF/vx", harness);
+            attachBoundaryConditions("LARENF/vy", harness);
+            attachBoundaryConditions("LARENF/vz", harness);
+            attachBoundaryConditions("LARENF/vx1", harness);
+            attachBoundaryConditions("LARENF/vy1", harness);
+            attachBoundaryConditions("LARENF/vz1", harness);
+            attachBoundaryConditions("LARENF/dm", harness);
         }
 
         /**
@@ -119,103 +129,72 @@ namespace examples
          * @param data LARE3D simulation data
          */
         template<typename T_EOS>
-        void MHDRotor<T_EOS>::initialConditions(SAMS::harness &harnessRef, typename LARE::LARE3D<T_EOS>::simulationData &data)
+        void SodShockTubeNeutral<T_EOS>::initialConditions(SAMS::harness &harnessRef, LARE::LARE3DST<T_EOS>::simulationData &data)
         {
             pw::portableArray<SAMS::T_dataType, 3> rho;
-            pw::portableArray<SAMS::T_dataType, 3> energy_electron, energy_ion;
-            pw::portableArray<SAMS::T_dataType, 3> vx, vy, vz;
-            pw::portableArray<SAMS::T_dataType, 3> bx, by, bz;
+            pw::portableArray<SAMS::T_dataType, 3> rho_n;
+            pw::portableArray<SAMS::T_dataType, 3> energy, energy_n;
             pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
-            pw::portableArray<SAMS::T_dataType, 1> xb, yb, zb;
-
-            bool singleTemperature = false;
 
             auto &axisRegistry = harnessRef.axisRegistry;
             axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
             axisRegistry.fillPPLocalAxis("Y", yc, SAMS::staggerType::CENTRED);
             axisRegistry.fillPPLocalAxis("Z", zc, SAMS::staggerType::CENTRED);
-            axisRegistry.fillPPLocalAxis("X", xb, SAMS::staggerType::HALF_CELL);
-            axisRegistry.fillPPLocalAxis("Y", yb, SAMS::staggerType::HALF_CELL);
-            axisRegistry.fillPPLocalAxis("Z", zb, SAMS::staggerType::HALF_CELL);
 
             auto &varRegistry = harnessRef.variableRegistry;
             varRegistry.fillPPArray("rho", rho);
-            try {
-                varRegistry.fillPPArray("energy_electron", energy_electron);
-            } catch (const std::exception &e) {
-                //If energy_electron doesn't exist, fill with energy_ion (single temperature)
-                singleTemperature = true;
-            }
-            varRegistry.fillPPArray("energy_ion", energy_ion);
-            varRegistry.fillPPArray("vx", vx);
-            varRegistry.fillPPArray("vy", vy);
-            varRegistry.fillPPArray("vz", vz);
-            varRegistry.fillPPArray("bx", bx);
-            varRegistry.fillPPArray("by", by);
-            varRegistry.fillPPArray("bz", bz);
+            varRegistry.fillPPArray("energy_ion", energy);
+            varRegistry.fillPPArray("LARENF/rho", rho_n);
+            varRegistry.fillPPArray("LARENF/energy", energy_n);
+            pw::applyKernel(
+                LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
+                {
+                    SAMS::T_dataType pressure;
+                    if (xc(ix) < 0.5)
+                    {
+                        rho(ix, iy, iz) = 1.0;
+                        pressure = 1.0;
+                    }
+                    else
+                    {
+                        rho(ix, iy, iz) = 0.125;
+                        pressure = 0.1;
+                    }
+                    //Specific internal energy
+                    energy(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                },
+                rho.getRange(0), rho.getRange(1), rho.getRange(2));
 
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
                 {
-                    using T_dataType = SAMS::T_dataType;
-                    T_dataType dx = xc(ix)-0.5;
-                    T_dataType dy = yc(iy)-0.5;
-                    T_dataType r = std::sqrt(dx*dx + dy*dy);
-                    T_dataType r0 = 0.1;
-                    T_dataType r1 = 0.115;
-                    T_dataType f = (r1-r)/(r1 - r0);
-                    T_dataType pressure;
-                    T_dataType mag = 5.0/std::sqrt(4.0*M_PI);                    
-
-                    if (r<=r0){
-                        rho(ix, iy, iz) = 10.0;
+                    SAMS::T_dataType pressure;
+                    if (xc(ix) < 0.5)
+                    {
+                        rho_n(ix, iy, iz) = 1.0;
                         pressure = 1.0;
-                        bx(ix,iy,iz) = mag;
-                        by(ix,iy,iz) = 0.0;
-                        bz(ix,iy,iz) = 0.0;
-                        vx(ix,iy,iz) = -20.0*dy;
-                        vy(ix,iy,iz) = 20.0*dx;
-                        vz(ix,iy,iz) = 0.0;
-                    } else if (r<=r1){
-                        rho(ix, iy, iz) = 1.0 + 9.0*f;
-                        pressure = 1.0;
-                        bx(ix,iy,iz) = mag;
-                        by(ix,iy,iz) = 0.0;
-                        bz(ix,iy,iz) = 0.0;
-                        vx(ix,iy,iz) = -20.0*f*dy;
-                        vy(ix,iy,iz) = 20.0*f*dx;
-                        vz(ix,iy,iz) = 0.0;
-                    } else {
-                        rho(ix, iy, iz) = 1.0;
-                        pressure = 1.0;
-                        bx(ix,iy,iz) = mag;
-                        by(ix,iy,iz) = 0.0;
-                        bz(ix,iy,iz) = 0.0;
-                        vx(ix,iy,iz) = 0.0;
-                        vy(ix,iy,iz) = 0.0;
-                        vz(ix,iy,iz) = 0.0;
+                    }
+                    else
+                    {
+                        rho_n(ix, iy, iz) = 0.125;
+                        pressure = 0.1;
                     }
                     //Specific internal energy
-                    if (singleTemperature){
-                         energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
-                    } else {
-                        energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
-                        energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
-                    }
-
+                    energy_n(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho_n(ix, iy, iz));
                 },
-                rho.getRange(0), rho.getRange(1), rho.getRange(2));
-        }
+                rho_n.getRange(0), rho_n.getRange(1), rho_n.getRange(2));
+                }
 
        /**
          * Check whether to terminate the simulation
          * @param terminate Boolean flag to set to true to terminate the simulation
          * @param data LARE3D simulation data
+         * @param tData SAMS time state data
          * This function checks whether the simulation should terminate based on LARE3D data.
          * It sets the terminate flag to true if the simulation should end.
          */
         template<typename T_EOS>
-        void MHDRotor<T_EOS>::queryTerminate(bool &terminate, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
+        void SodShockTubeNeutral<T_EOS>::queryTerminate(bool &terminate, LARE::LARE3DST<T_EOS>::simulationData &data, SAMS::timeState &tData){
             //End at correct time for Sod Shock Tube (ends at t=0.2)
             if (tData.time >= data.t_end){
                 terminate |= true;
@@ -226,15 +205,16 @@ namespace examples
          * Check whether to output data to disk
          * @param shouldOutput Boolean flag to set to true to output data
          * @param data LARE3D simulation data
+        * @param tData SAMS time state data
          * This function checks whether data should be output to disk based on LARE3D data.
          * It returns true if data should be output.
          */
         template<typename T_EOS>
-        void MHDRotor<T_EOS>::queryOutput(bool &shouldOutput, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
+        void SodShockTubeNeutral<T_EOS>::queryOutput(bool &shouldOutput, LARE::LARE3DST<T_EOS>::simulationData &data, SAMS::timeState &tData){
             static double nextOutputTime = data.dt_snapshots;
             if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
                 shouldOutput |= true;
                 nextOutputTime += data.dt_snapshots;
             }
         }
-    }
+}

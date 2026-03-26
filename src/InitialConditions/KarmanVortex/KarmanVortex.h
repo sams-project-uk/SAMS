@@ -35,7 +35,9 @@ namespace examples
         void setBCS(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue);
         void setBCS(std::string varName, SAMS::harness &harness);
 
-        inline static constexpr auto nameType = SAMS::constexprName("KarmanVortex") + T_EOS::name;        
+        inline static constexpr auto nameType = SAMS::constexprName("KarmanVortex") + T_EOS::name;
+
+        bool singleTemperature = false;
 
     public:
         /**

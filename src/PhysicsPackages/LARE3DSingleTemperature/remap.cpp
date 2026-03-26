@@ -12,7 +12,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#include "shared_data.h"
+#include "LARE3DSingleTemperature/shared_data.h"
 
 namespace LARE
 {
@@ -20,7 +20,7 @@ namespace LARE
     namespace pw = portableWrapper;
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data)
+    void LARE3DST<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         int case_test;
