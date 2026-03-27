@@ -181,4 +181,7 @@ namespace examples
                 nextOutputTime += data.dt_snapshots;
             }
         }
+    #define EOS_DEF(value) template class SodShockTube<value>;
+    EOS_DENSITY_ENERGY
+    #undef EOS_DEF
 }

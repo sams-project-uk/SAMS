@@ -118,7 +118,7 @@ namespace examples
         void endOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, KarmanVortexParams &problemParams);
     };
 
-    #define EOS_DEF(value) template class KarmanVortex<value>;
+    #define EOS_DEF(value) extern template class KarmanVortex<value>;
     EOS_DENSITY_ENERGY
     #undef EOS_DEF
 

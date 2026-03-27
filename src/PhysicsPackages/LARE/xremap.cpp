@@ -561,4 +561,5 @@ namespace LARE
             Range(-1, data.nx), Range(0, data.ny), Range(0, data.nz));
         pw::fence();
     }
+    #include "./instantiate.h"
 }

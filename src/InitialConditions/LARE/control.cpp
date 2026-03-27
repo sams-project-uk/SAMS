@@ -82,5 +82,5 @@ template<typename T_EOS>
     pw::assign(data.by, 0.0);
     pw::assign(data.bz, 0.0);
   }
-
+    #include "./instantiate.h"
 }//namespace LARE

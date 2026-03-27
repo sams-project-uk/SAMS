@@ -180,7 +180,7 @@ namespace LARE{
 
     };
 
-    #define EOS_DEF(value) template class LARE3DInitialConditions<value>;
+    #define EOS_DEF(value) extern template class LARE3DInitialConditions<value>;
     EOS_DENSITY_ENERGY
     #undef EOS_DEF
 

@@ -89,7 +89,7 @@ namespace examples
         void queryOutput(bool &shouldOutput, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
     };
 
-    #define EOS_DEF(value) template class OrszagTang<value>;
+    #define EOS_DEF(value) extern template class OrszagTang<value>;
     EOS_DENSITY_ENERGY
     #undef EOS_DEF
 

@@ -54,5 +54,5 @@ template<typename T_EOS>
     }
 
   }
-
+    #include "./instantiate.h"
 }//namespace LARE

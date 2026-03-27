@@ -266,7 +266,7 @@ namespace LARE
 
         SAMS::harness &harness;
 
-         inline void getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host);
+         void getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host);
 
     public:
 
@@ -277,6 +277,8 @@ namespace LARE
         pw::portableArrayManager& manager;
 
         void set_dt(simulationData &data);
+        void set_dt_no_index(simulationData &data);
+        void set_dt_with_index(simulationData &data);
 
         /**
          * Lagrangian predictor step
@@ -562,8 +564,7 @@ namespace LARE
     };
 }
 
-//Use an X macro to instantiate the LARE3D template for all EOS types that use density and energy as inputs. This allows us to easily add new EOS types in the future by simply adding them to the EOS_DENSITY_ENERGY macro in eos.h without having to modify this file.
-#define EOS_DEF(value) template class LARE::LARE3D<value>;
+#define EOS_DEF(value) extern template class LARE::LARE3D<value>;
 EOS_DENSITY_ENERGY
 #undef EOS_DEF
 
