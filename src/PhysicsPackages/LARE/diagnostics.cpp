@@ -25,6 +25,7 @@
 #endif
 #include "shared_data.h"
 #include "mpiManager.h"
+#include "shared_data.h"
 
 namespace LARE
 {
@@ -140,4 +141,6 @@ namespace LARE
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
     }
+
+    #include "./instantiate.h"
 }

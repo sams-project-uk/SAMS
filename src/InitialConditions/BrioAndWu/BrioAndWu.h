@@ -86,7 +86,7 @@ namespace examples
 
     };
 
-    #define EOS_DEF(value) template class BrioAndWu<value>;
+    #define EOS_DEF(value) extern template class BrioAndWu<value>;
     EOS_DENSITY_ENERGY
     #undef EOS_DEF
 

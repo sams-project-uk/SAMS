@@ -196,4 +196,8 @@ namespace examples
             }
     }
 
+    #define EOS_DEF(value) template class OrszagTang3D<value>;
+    EOS_DENSITY_ENERGY
+    #undef EOS_DEF
+
 }

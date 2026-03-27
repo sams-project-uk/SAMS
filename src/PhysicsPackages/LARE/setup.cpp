@@ -441,4 +441,5 @@ namespace LARE
             pw::fence();
         }
     }
+    #include "./instantiate.h"
 }

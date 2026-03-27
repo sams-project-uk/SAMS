@@ -89,7 +89,7 @@ namespace examples
 
     };
 
-    #define EOS_DEF(value) template class SodShockTube<value>;
+    #define EOS_DEF(value) extern template class SodShockTube<value>;
     EOS_DENSITY_ENERGY
     #undef EOS_DEF
 

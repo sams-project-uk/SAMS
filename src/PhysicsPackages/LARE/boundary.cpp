@@ -103,4 +103,6 @@ namespace LARE
         varRegistry.applyBoundaryConditions("LARE/dm", 2); //Apply on Z dimension
         pw::fence();
     }
+
+    #include "./instantiate.h"
 }

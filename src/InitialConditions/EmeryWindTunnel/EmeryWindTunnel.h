@@ -123,7 +123,7 @@ namespace examples
         void endOfTimestep(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
     };
 
-    #define EOS_DEF(value) template class EmeryWindTunnel<value>;
+    #define EOS_DEF(value) extern template class EmeryWindTunnel<value>;
     EOS_DENSITY_ENERGY
     #undef EOS_DEF
 

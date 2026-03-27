@@ -8,8 +8,8 @@ namespace LARE
     template<typename T, int VAR_TYPE>
     struct eosVariable{
         T value;
-        explicit eosVariable(T value_in) : value(value_in) {}
-        operator T&() { return value; }
+        FUNCTORMETHODPREFIX explicit eosVariable(T value_in) : value(value_in) {}
+        FUNCTORMETHODPREFIX operator T&() { return value; }
     };
 
     inline constexpr int densityVar = 0;

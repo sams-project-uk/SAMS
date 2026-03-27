@@ -109,4 +109,5 @@ namespace LARE
         remapManager.deallocate(remap_data.rho_v);
         remapManager.deallocate(remap_data.rho_v1);
     }
+    #include "./instantiate.h"
 }

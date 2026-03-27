@@ -189,5 +189,7 @@ namespace examples{
                 nextOutputTime += data.dt_snapshots;
             }
         }
-
+    #define EOS_DEF(value) template class BrioAndWu<value>;
+    EOS_DENSITY_ENERGY
+    #undef EOS_DEF
 }

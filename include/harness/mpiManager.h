@@ -1298,7 +1298,8 @@ namespace SAMS
             if (comm != rootComm && comm != MPI_COMM_NULL) {
                 checkMPIError(MPI_Comm_free(&comm));
                 comm = MPI_COMM_NULL;
-            }   
+								mpiSubarrayTypeCache.clear();
+            }
             #endif
         }
 
