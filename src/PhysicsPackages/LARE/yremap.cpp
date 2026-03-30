@@ -8,10 +8,6 @@ namespace LARE
     void LARE3D<T_EOS>::remap_y(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
-        pw::portableArrayManager yRemapManager;
-        remap_data.flux.nullify();
-
-        yRemapManager.allocate(remap_data.flux, Range(-1, data.nx + 2), Range(-2, data.ny + 2), Range(-1, data.nz + 2));
 
         pw::assign(data.dm, 0.0);
         pw::assign(remap_data.rho1, data.rho);
