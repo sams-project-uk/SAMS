@@ -59,7 +59,7 @@ namespace LARE
                 // dyb before remap
                 remap_data.db1(ix, iy, iz) = data.hzc(ix, iy) * data.dzb(iz) + (vzb - vzbm) * data.dt;
             },
-        Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+            Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
         pw::fence();
 
         // cvc1 = vertex CV before remap
@@ -70,7 +70,7 @@ namespace LARE
                 T_indexType izp = iz + 1;
                 remap_data.cvc1(ix, iy, iz) = 0.125 * (data.cv1(ix, iy, iz) + data.cv1(ixp, iy, iz) + data.cv1(ix, iyp, iz) + data.cv1(ixp, iyp, iz) + data.cv1(ix, iy, izp) + data.cv1(ixp, iy, izp) + data.cv1(ix, iyp, izp) + data.cv1(ixp, iyp, izp));
             },
-        Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz + 1));
+            Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz + 1));
 
         pw::fence();
 
@@ -82,14 +82,14 @@ namespace LARE
                 T_indexType izm = iz - 1;
                 data.bx(ix, iy, iz) = data.bx(ix, iy, iz) - remap_data.flux(ix,iy,iz) + remap_data.flux(ix,iy,izm);
             },
-        Range(0, data.nx), Range(1, data.ny), Range(1, data.nz));
+            Range(0, data.nx), Range(1, data.ny), Range(1, data.nz));
 
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
                 data.bz(ix, iy, iz) = data.bz(ix, iy, iz) + remap_data.flux(ix,iy,iz) - remap_data.flux(ixm,iy,iz);
             },
-        Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
+            Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
 
         pw::fence();
 
@@ -100,14 +100,14 @@ namespace LARE
                 T_indexType izm = iz - 1;
                 data.by(ix, iy, iz) = data.by(ix, iy, iz) - remap_data.flux(ix,iy,iz) + remap_data.flux(ix,iy,izm);
             },
-        Range(1, data.nx), Range(0, data.ny), Range(1, data.nz));
+            Range(1, data.nx), Range(0, data.ny), Range(1, data.nz));
 
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType iym = iy - 1;
                 data.bz(ix, iy, iz) = data.bz(ix, iy, iz) + remap_data.flux(ix,iy,iz) - remap_data.flux(ix,iym,iz);
             },
-        Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
+            Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
 
         pw::fence();
 
@@ -119,7 +119,7 @@ namespace LARE
                 T_indexType izm = iz - 1;
                 data.rho(ix,iy,iz) = (remap_data.rho1(ix,iy,iz) * data.cv1(ix,iy,iz) + data.dm(ix,iy,izm) - data.dm(ix,iy,iz)) / remap_data.cv2(ix,iy,iz);
             },
-        Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+            Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
 
         z_energy_flux<&simulationData::energy_electron>(data, remap_data);
@@ -129,7 +129,7 @@ namespace LARE
                 T_indexType izm = iz - 1;
                 data.energy_electron(ix, iy, iz) = (data.energy_electron(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
             },
-        Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+            Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 
         pw::fence();
 
@@ -166,7 +166,7 @@ namespace LARE
 
                 remap_data.rho_v(ix, iy, iz) *= 0.125 / remap_data.cvc1(ix, iy, iz);
             },
-        Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz + 1));
+            Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz + 1));
         pw::fence();
 
         // Move cv2 to vertex using flux array as a temporary
@@ -178,7 +178,7 @@ namespace LARE
 
                 remap_data.flux(ix, iy, iz) = 0.125 * (remap_data.cv2(ix, iy, iz) + remap_data.cv2(ixp, iy, iz) + remap_data.cv2(ix, iyp, iz) + remap_data.cv2(ixp, iyp, iz) + remap_data.cv2(ix, iy, izp) + remap_data.cv2(ixp, iy, izp) + remap_data.cv2(ix, iyp, izp) + remap_data.cv2(ixp, iyp, izp));
             },
-        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
 
         pw::fence();
 
@@ -192,7 +192,7 @@ namespace LARE
                 T_indexType izp = iz + 1;
                 remap_data.flux(ix, iy, iz) = (data.vz1(ix, iy, iz) + data.vz1(ix, iy, izp)) * 0.5;
             },
-        Range(0, data.nx), Range(0, data.ny), Range(-2, data.nz + 1));
+            Range(0, data.nx), Range(0, data.ny), Range(-2, data.nz + 1));
 
         pw::fence();
         // And copy it back
@@ -538,7 +538,7 @@ namespace LARE
             },
             Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz));
 
-        //pw::fence();
+        pw::fence();
 
         // Kinetic energy correction if rke is enabled
         if (data.rke)
@@ -565,9 +565,8 @@ namespace LARE
                 pw::atomic::accelerated::Add(data.delta_ke(ixp, iyp, izp), dk);
             },
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz - 1));
-            pw::fence();
         }
-
+        pw::fence();
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
             remap_data.flux(ix, iy, iz) *= data.dm(ix, iy, iz);
             },
