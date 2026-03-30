@@ -583,4 +583,5 @@ namespace LARE
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) { remap_data.flux(ix, iy, iz) *= data.dm(ix, iy, iz); }, Range(0, data.nx), Range(-1, data.ny), Range(0, data.nz));
         pw::fence();
     }
+    #include "./instantiate.h"
 }

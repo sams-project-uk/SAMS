@@ -56,6 +56,6 @@ int main(int argc, char *argv[]){
     runner.finalizePackages();
     //Finalize the runner
     runner.finalize();
-
     portableWrapper::finalize();
+		SAMS::MPI::finalize();
 }

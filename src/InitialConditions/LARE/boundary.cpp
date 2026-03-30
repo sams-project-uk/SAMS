@@ -1132,4 +1132,5 @@ namespace LARE
                 data.dm(pw::Range(), pw::Range(), 0));
         }
     }
+    #include "./instantiate.h"
 }
