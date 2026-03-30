@@ -312,7 +312,6 @@ namespace LARE
             remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
         },
         Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-            
         pw::fence();
     }
 
