@@ -12,7 +12,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#include "shared_data.h"
+#include "LARE3DSingleTemperature/shared_data.h"
 
 namespace LARE
 {
@@ -22,7 +22,7 @@ namespace LARE
         using T_dataType = SAMS::T_dataType;
 
     template<typename T_EOS>
-    DEVICEPREFIX INLINE T_dataType edge_viscosity(const typename LARE3D<T_EOS>::simulationData &data,
+    DEVICEPREFIX INLINE T_dataType edge_viscosity(const typename LARE3DST<T_EOS>::simulationData &data,
                                                   T_dataType dvdots, T_dataType dx, T_dataType dxm, T_dataType dxp, T_dataType cs_edge,
                                                   int i0, int i1, int i2, int i3,
                                                   int j0, int j1, int j2, int j3,
@@ -63,7 +63,7 @@ namespace LARE
 }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::lagrangian_prepare(simulationData &data)
+    void LARE3DST<T_EOS>::lagrangian_prepare(simulationData &data)
     {   
         using Range = pw::Range;
 
@@ -78,46 +78,31 @@ namespace LARE
         volumeArray byl = data.by;
         volumeArray bzl = data.bz;
         volumeArray cvl = data.cv;
-        volumeArray energy_el = data.energy_electron;
         volumeArray energy_il = data.energy_ion;
 
-    
-        if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>)
-        {
-            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                auto &d = data;
-                auto &energy_el  = data.energy_electron;
-                auto &energy_il  = data.energy_ion;
-                T_indexType izm = iz - 1;
-                T_indexType iym = iy - 1;
-                T_indexType ixm = ix - 1;
-                d.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
-                d.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
-                d.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
-                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz)));
+        //Auto here to engage the template engine  to allow constexpr if statements to work properly in the kernel
+        pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
+            auto &d = data;
+            T_indexType izm = iz - 1;
+            T_indexType iym = iy - 1;
+            T_indexType ixm = ix - 1;
+            d.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
+            d.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
+            d.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
+
+            if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>)
+            {
                 d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)));
-                d.pressure(ix, iy, iz) = d.p_e(ix, iy, iz) + d.p_i(ix, iy, iz);
-            },
-                            data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
-        } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>){
-            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                auto &d = data;
-                auto &energy_el  = data.energy_electron;
-                auto &energy_il  = data.energy_ion;
-                T_indexType izm = iz - 1;
-                T_indexType iym = iy - 1;
-                T_indexType ixm = ix - 1;
-                d.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
-                d.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
-                d.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
-                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz), eosIndex(ix), eosIndex(iy), eosIndex(iz)));
-                d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz), eosIndex(ix), eosIndex(iy), eosIndex(iz)));
-                d.pressure(ix, iy, iz) = d.p_e(ix, iy, iz) + d.p_i(ix, iy, iz);
-            },
-                            data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
-        } else {
-            static_assert(pw::alwaysFalse<T_EOS>::value, "T_EOS must have a getPressure method for either density/energy or density with energy and indices");
-        }
+            } else if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>)
+            {
+                d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+            } else
+            {
+                static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS pressure interface");
+            }
+            d.pressure(ix, iy, iz) = d.p_i(ix, iy, iz);
+        },
+                        data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
 
         // Compute rho_v and cv_v
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -150,9 +135,8 @@ namespace LARE
         shock_viscosity(data);
     }
     template<typename T_EOS>
-    void LARE3D<T_EOS>::lagrangian_step(simulationData &data)
-    {
-
+    void LARE3DST<T_EOS>::lagrangian_step(simulationData &data)
+    {   
         if (data.resistiveMHD)
         {
             T_dataType dt_sub = data.dtr;
@@ -172,7 +156,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::shock_viscosity(simulationData &data)
+    void LARE3DST<T_EOS>::shock_viscosity(simulationData &data)
     {
         using Range = pw::Range;
         data.visc2_norm = 0.25 * (data.gas_gamma + 1.0) * data.visc2;
@@ -378,161 +362,84 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::set_dt(simulationData &data)
+    void LARE3DST<T_EOS>::set_dt(simulationData &data)
     {
-        if constexpr(std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy>)
-        {
-            set_dt_no_index(data);
-        } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>){
-            set_dt_no_index(data);
-        } else {
-            static_assert(pw::alwaysFalse<T_EOS>::value, "T_EOS must have a getSoundSpeedSquared method for either density/energy or density with energy and indices");
-        }
-    }
+        using Range = pw::Range;
 
-    template<typename T_EOS>
-    void LARE3D<T_EOS>::set_dt_no_index(simulationData &data)
-    {
+        int i0 = data.geometry == geometryType::Cartesian ? 0 : 1;
+
+        // Now need to do a map and reduction
+        T_dataType dt1 = data.dt_multiplier *
+                  pw::applyReduction(LAMBDA(auto ix, auto iy, auto iz) {
+        T_indexType izm = iz - 1;
+        T_indexType iym = iy - 1;
+        T_indexType ixm = ix - 1;
+        T_dataType dx = data.dxb(ix);
+        T_dataType dy = data.dyb(iy);
+        T_dataType dz = data.dzb(iz);
+
+        T_dataType dhx = dx;
+        T_dataType dhy = dy * data.hyc(ix);
+        T_dataType dhz = dz * data.hzc(ix, iy);
+
+        T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
+
+        T_dataType cs2;
+
         if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy>)
         {
-            using Range = pw::Range;
-
-            int i0 = data.geometry == geometryType::Cartesian ? 0 : 1;
-
-            // Now need to do a map and reduction
-            T_dataType dt1 = data.dt_multiplier *
-                    pw::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-            T_indexType izm = iz - 1;
-            T_indexType iym = iy - 1;
-            T_indexType ixm = ix - 1;
-            T_dataType dx = data.dxb(ix);
-            T_dataType dy = data.dyb(iy);
-            T_dataType dz = data.dzb(iz);
-
-            T_dataType dhx = dx;
-            T_dataType dhy = dy * data.hyc(ix);
-            T_dataType dhz = dz * data.hzc(ix, iy);
-
-            T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
-
-            T_dataType cs2;
-            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)));
-
-            T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
-                            data.by(ix, iy, iz) * data.by(ix, iy, iz) +
-                            data.bz(ix, iy, iz) * data.bz(ix, iy, iz)) / data.mu0 / rho0;
-            T_dataType c_visc2 = data.p_visc(ix, iy, iz) / rho0;
-
-            T_dataType length  = pw::min(dhx, dhy, dhz);
-
-            T_dataType dt1  = length / (std::sqrt(c_visc2) + std::sqrt(cs2 + w1 + c_visc2));
-
-
-            T_dataType ax = 0.25 * data.dxab(ix,iy,iz);
-            T_dataType ay = 0.25 * data.dyab(ix,iy,iz);
-            T_dataType az = 0.25 * data.dzab(ix,iy,iz);
-
-            T_dataType vxbm = (data.vx(ixm,iy ,iz ) + data.vx(ixm,iym,iz ) + data.vx(ixm,iy ,izm) + data.vx(ixm,iym,izm)) * ax;
-            T_dataType vxbp = (data.vx(ix ,iy ,iz ) + data.vx(ix ,iym,iz ) + data.vx(ix ,iy ,izm) + data.vx(ix ,iym,izm)) * ax;
-            T_dataType vybm = (data.vy(ix ,iym,iz ) + data.vy(ixm,iym,iz ) + data.vy(ix ,iym,izm) + data.vy(ixm,iym,izm)) * ay;
-            T_dataType vybp = (data.vy(ix ,iy ,iz ) + data.vy(ixm,iy ,iz ) + data.vy(ix ,iy ,izm) + data.vy(ixm,iy ,izm)) * ay;
-            T_dataType vzbm = (data.vz(ix ,iy ,izm) + data.vz(ixm,iy ,izm) + data.vz(ix ,iym,izm) + data.vz(ixm,iym,izm)) * az;
-            T_dataType vzbp = (data.vz(ix ,iy ,iz ) + data.vz(ixm,iy ,iz ) + data.vz(ix ,iym,iz ) + data.vz(ixm,iym,iz )) * az;
-            T_dataType dvx = abs(vxbp - vxbm);
-            T_dataType dvy = abs(vybp - vybm);
-            T_dataType dvz = abs(vzbp - vzbm);
-            T_dataType avxm = abs(vxbm);
-            T_dataType avxp = abs(vxbp);
-            T_dataType avym = abs(vybm);
-            T_dataType avyp = abs(vybp);
-            T_dataType avzm = abs(vzbm);
-            T_dataType avzp = abs(vzbp);
-
-            T_dataType volume = data.cv(ix,iy,iz);
-            T_dataType dt2 = volume / pw::max(avxm, avxp, dvx, 1.0e-10 * volume);
-            T_dataType dt3 = volume / pw::max(avym, avyp, dvy, 1.0e-10 * volume);
-            T_dataType dt4 = volume / pw::max(avzm, avzp, dvz, 1.0e-10 * volume);
-
-            return pw::min(dt1, dt2, dt3, dt4);
-            }, LAMBDA(T_dataType & a, const T_dataType &b) { a = pw::min(a, b); }, data.largest_number, Range(i0, data.nx), Range(0, data.ny), Range(0, data.nz));
-
-            data.dt = dt1;
-            data.dtr = data.dt;
+            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz)));
+        } else if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>)
+            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) ), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+         else
+        {
+            static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS sound speed interface");
         }
+
+        T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
+                         data.by(ix, iy, iz) * data.by(ix, iy, iz) +
+                         data.bz(ix, iy, iz) * data.bz(ix, iy, iz)) / data.mu0 / rho0;
+        T_dataType c_visc2 = data.p_visc(ix, iy, iz) / rho0;
+
+        T_dataType length  = pw::min(dhx, dhy, dhz);
+
+        T_dataType dt1  = length / (std::sqrt(c_visc2) + std::sqrt(cs2 + w1 + c_visc2));
+
+
+        T_dataType ax = 0.25 * data.dxab(ix,iy,iz);
+        T_dataType ay = 0.25 * data.dyab(ix,iy,iz);
+        T_dataType az = 0.25 * data.dzab(ix,iy,iz);
+
+        T_dataType vxbm = (data.vx(ixm,iy ,iz ) + data.vx(ixm,iym,iz ) + data.vx(ixm,iy ,izm) + data.vx(ixm,iym,izm)) * ax;
+        T_dataType vxbp = (data.vx(ix ,iy ,iz ) + data.vx(ix ,iym,iz ) + data.vx(ix ,iy ,izm) + data.vx(ix ,iym,izm)) * ax;
+        T_dataType vybm = (data.vy(ix ,iym,iz ) + data.vy(ixm,iym,iz ) + data.vy(ix ,iym,izm) + data.vy(ixm,iym,izm)) * ay;
+        T_dataType vybp = (data.vy(ix ,iy ,iz ) + data.vy(ixm,iy ,iz ) + data.vy(ix ,iy ,izm) + data.vy(ixm,iy ,izm)) * ay;
+        T_dataType vzbm = (data.vz(ix ,iy ,izm) + data.vz(ixm,iy ,izm) + data.vz(ix ,iym,izm) + data.vz(ixm,iym,izm)) * az;
+        T_dataType vzbp = (data.vz(ix ,iy ,iz ) + data.vz(ixm,iy ,iz ) + data.vz(ix ,iym,iz ) + data.vz(ixm,iym,iz )) * az;
+        T_dataType dvx = abs(vxbp - vxbm);
+        T_dataType dvy = abs(vybp - vybm);
+        T_dataType dvz = abs(vzbp - vzbm);
+        T_dataType avxm = abs(vxbm);
+        T_dataType avxp = abs(vxbp);
+        T_dataType avym = abs(vybm);
+        T_dataType avyp = abs(vybp);
+        T_dataType avzm = abs(vzbm);
+        T_dataType avzp = abs(vzbp);
+
+        T_dataType volume = data.cv(ix,iy,iz);
+        T_dataType dt2 = volume / pw::max(avxm, avxp, dvx, 1.0e-10 * volume);
+        T_dataType dt3 = volume / pw::max(avym, avyp, dvy, 1.0e-10 * volume);
+        T_dataType dt4 = volume / pw::max(avzm, avzp, dvz, 1.0e-10 * volume);
+
+        return pw::min(dt1, dt2, dt3, dt4);
+        }, LAMBDA(T_dataType & a, const T_dataType &b) { a = pw::min(a, b); }, data.largest_number, Range(i0, data.nx), Range(0, data.ny), Range(0, data.nz));
+
+        data.dt = dt1;
+        data.dtr = data.dt;
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::set_dt_with_index(simulationData &data)
-    {
-        if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>) {
-            using Range = pw::Range;
-
-            int i0 = data.geometry == geometryType::Cartesian ? 0 : 1;
-
-            // Now need to do a map and reduction
-            T_dataType dt1 = data.dt_multiplier *
-                    pw::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-            T_indexType izm = iz - 1;
-            T_indexType iym = iy - 1;
-            T_indexType ixm = ix - 1;
-            T_dataType dx = data.dxb(ix);
-            T_dataType dy = data.dyb(iy);
-            T_dataType dz = data.dzb(iz);
-
-            T_dataType dhx = dx;
-            T_dataType dhy = dy * data.hyc(ix);
-            T_dataType dhz = dz * data.hzc(ix, iy);
-
-            T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
-
-            T_dataType cs2;
-            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
-
-            T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
-                            data.by(ix, iy, iz) * data.by(ix, iy, iz) +
-                            data.bz(ix, iy, iz) * data.bz(ix, iy, iz)) / data.mu0 / rho0;
-            T_dataType c_visc2 = data.p_visc(ix, iy, iz) / rho0;
-
-            T_dataType length  = pw::min(dhx, dhy, dhz);
-
-            T_dataType dt1  = length / (std::sqrt(c_visc2) + std::sqrt(cs2 + w1 + c_visc2));
-
-
-            T_dataType ax = 0.25 * data.dxab(ix,iy,iz);
-            T_dataType ay = 0.25 * data.dyab(ix,iy,iz);
-            T_dataType az = 0.25 * data.dzab(ix,iy,iz);
-
-            T_dataType vxbm = (data.vx(ixm,iy ,iz ) + data.vx(ixm,iym,iz ) + data.vx(ixm,iy ,izm) + data.vx(ixm,iym,izm)) * ax;
-            T_dataType vxbp = (data.vx(ix ,iy ,iz ) + data.vx(ix ,iym,iz ) + data.vx(ix ,iy ,izm) + data.vx(ix ,iym,izm)) * ax;
-            T_dataType vybm = (data.vy(ix ,iym,iz ) + data.vy(ixm,iym,iz ) + data.vy(ix ,iym,izm) + data.vy(ixm,iym,izm)) * ay;
-            T_dataType vybp = (data.vy(ix ,iy ,iz ) + data.vy(ixm,iy ,iz ) + data.vy(ix ,iy ,izm) + data.vy(ixm,iy ,izm)) * ay;
-            T_dataType vzbm = (data.vz(ix ,iy ,izm) + data.vz(ixm,iy ,izm) + data.vz(ix ,iym,izm) + data.vz(ixm,iym,izm)) * az;
-            T_dataType vzbp = (data.vz(ix ,iy ,iz ) + data.vz(ixm,iy ,iz ) + data.vz(ix ,iym,iz ) + data.vz(ixm,iym,iz )) * az;
-            T_dataType dvx = abs(vxbp - vxbm);
-            T_dataType dvy = abs(vybp - vybm);
-            T_dataType dvz = abs(vzbp - vzbm);
-            T_dataType avxm = abs(vxbm);
-            T_dataType avxp = abs(vxbp);
-            T_dataType avym = abs(vybm);
-            T_dataType avyp = abs(vybp);
-            T_dataType avzm = abs(vzbm);
-            T_dataType avzp = abs(vzbp);
-
-            T_dataType volume = data.cv(ix,iy,iz);
-            T_dataType dt2 = volume / pw::max(avxm, avxp, dvx, 1.0e-10 * volume);
-            T_dataType dt3 = volume / pw::max(avym, avyp, dvy, 1.0e-10 * volume);
-            T_dataType dt4 = volume / pw::max(avzm, avzp, dvz, 1.0e-10 * volume);
-
-            return pw::min(dt1, dt2, dt3, dt4);
-            }, LAMBDA(T_dataType & a, const T_dataType &b) { a = pw::min(a, b); }, data.largest_number, Range(i0, data.nx), Range(0, data.ny), Range(0, data.nz));
-
-            data.dt = dt1;
-            data.dtr = data.dt;
-        }
-    }
-
-    template<typename T_EOS>
-    void LARE3D<T_EOS>::eta_calc(simulationData &data)
+    void LARE3DST<T_EOS>::eta_calc(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -566,7 +473,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::resistive_effects(simulationData &data)
+    void LARE3DST<T_EOS>::resistive_effects(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -587,7 +494,7 @@ namespace LARE
             data.curlb(ix, iy, izm) + data.curlb(ixm, iy, izm) +
             data.curlb(ix, iym, izm) + data.curlb(ixm, iym, izm);
 
-        data.energy_electron(ix,iy,iz) += sum_curlb * data.dt/(8.0 * data.rho(ix,iy,iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+        data.energy_ion(ix,iy,iz) += sum_curlb * data.dt/(8.0 * data.rho(ix,iy,iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
         pw::fence();
         energy_bcs();
 
@@ -596,7 +503,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::rkstep(simulationData &data)
+    void LARE3DST<T_EOS>::rkstep(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -627,7 +534,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::bstep(simulationData &data)
+    void LARE3DST<T_EOS>::bstep(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -683,7 +590,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::predictor_step(simulationData &data)
+    void LARE3DST<T_EOS>::predictor_step(simulationData &data)
     {
         using Range = pw::Range;
         // Update magnetic field and cell volume at half time step
@@ -694,35 +601,23 @@ namespace LARE
         data.by1(ix,iy,iz)*=data.cv1(ix,iy,iz);
         data.bz1(ix,iy,iz)*=data.cv1(ix,iy,iz); }, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
-        if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>) {
-            // Predictor step for energy and pressure
-            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
-                T_dataType e1_e = data.energy_electron(ix, iy, iz) - data.p_e(ix, iy, iz) * dv / data.rho(ix, iy, iz);
-                T_dataType e1_i = data.energy_ion(ix, iy, iz) - data.p_i(ix, iy, iz) * dv / data.rho(ix, iy, iz);
-                e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
+        // Predictor step for energy and pressure
+        pw::applyKernel(LAMBDA(auto ix, auto iy, auto iz) {
+            T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
+            T_dataType e1_i = data.energy_ion(ix, iy, iz) - data.p_i(ix, iy, iz) * dv / data.rho(ix, iy, iz);
+            e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
 
-                data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e));
+            if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>){
                 data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i));
-
-                data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
-            },
-                            Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
-        } else {
-            // Predictor step for energy and pressure
-            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
-                T_dataType e1_e = data.energy_electron(ix, iy, iz) - data.p_e(ix, iy, iz) * dv / data.rho(ix, iy, iz);
-                T_dataType e1_i = data.energy_ion(ix, iy, iz) - data.p_i(ix, iy, iz) * dv / data.rho(ix, iy, iz);
-                e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
-
-                data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+            } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>){
                 data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+            } else {
+                static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS getPressure interface");
+            }
 
-                data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
-            },
-                            Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
-        }
+            data.pressure(ix, iy, iz) = data.p_i(ix, iy, iz);
+        },
+                        Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
 
         pw::fence();
 
@@ -848,7 +743,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::corrector_step(simulationData &data)
+    void LARE3DST<T_EOS>::corrector_step(simulationData &data)
     {
 
         using Range = pw::Range;
@@ -899,7 +794,7 @@ namespace LARE
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
             // Energy at end of Lagrangian step
-            data.energy_electron(ix, iy, iz) -= dv * data.p_e(ix, iy, iz) / data.rho(ix, iy, iz);
+            //data.energy_ion(ix, iy, iz) -= dv * data.p_e(ix, iy, iz) / data.rho(ix, iy, iz);
             data.energy_ion(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.p_i(ix, iy, iz)) / data.rho(ix, iy, iz);
 
             // Update density based on volume change
@@ -916,7 +811,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::b_field_and_cv1_update(simulationData &data)
+    void LARE3DST<T_EOS>::b_field_and_cv1_update(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -995,7 +890,7 @@ namespace LARE
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::shock_heating(simulationData &data)
+    void LARE3DST<T_EOS>::shock_heating(simulationData &data)
     {
         using Range = pw::Range;
 
@@ -1105,5 +1000,4 @@ namespace LARE
         },
                         Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
     }
-    #include "./instantiate.h"
 }

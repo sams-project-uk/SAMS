@@ -1,0 +1,138 @@
+/*
+ *    Copyright 2025 SAMS Team
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+#if defined(USE_HDF5)
+#if !__has_include(<hdf5.h>)
+#pragma error "HDF5 support is enabled but the HDF5 library is not available. Please install HDF5 or disable HDF5 support."
+#endif
+#endif
+
+#if defined(USE_HDF5)
+#include "io/writerHDF5.h"
+#else
+#include "io/writerSimple.h"
+#endif
+#include "LARE3DSingleTemperature/shared_data.h"
+#include "mpiManager.h"
+
+namespace LARE
+{
+
+    namespace pw = portableWrapper;
+    /**
+     * Get the part of the data that should be written to disk
+     */
+    template<typename T_EOS>
+    inline void LARE3DST<T_EOS>::getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host)
+    {
+        using Range = pw::Range;
+        // Copy the data if needed
+        auto fullHost = manager.makeHostAvailable(device);
+
+        // Now allocate memory for just the part we want to write
+        manager.allocate(host, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+        //Have to copy data since the HDF writer expects contiguous data
+        manager.copyDataHost(host, fullHost(Range(1,data.nx), Range(1,data.ny), Range(1,data.nz)));
+        manager.deallocate(fullHost);
+    }
+
+    
+    template<typename T_EOS>
+    template<typename T_writer>
+    void LARE3DST<T_EOS>::registerOutputMeshes(writer<T_writer> &writer, simulationData &data)
+    {
+        writer.template registerRectilinearMesh<T_dataType>("MeshCC", data.nx, data.ny, data.nz);
+
+    }
+
+    template<typename T_EOS>
+    template<typename T_writer>
+    void LARE3DST<T_EOS>::registerOutputVariables(writer<T_writer> &writer, simulationData &)
+    {
+        writer.template registerData<T_dataType>("rho", "MeshCC");
+        writer.template registerData<T_dataType>("energy_ion", "MeshCC");
+        writer.template registerData<T_dataType>("vx", "MeshCC");
+        writer.template registerData<T_dataType>("vy", "MeshCC");
+        writer.template registerData<T_dataType>("vz", "MeshCC");
+        writer.template registerData<T_dataType>("bx", "MeshCC");
+        writer.template registerData<T_dataType>("by", "MeshCC");
+        writer.template registerData<T_dataType>("bz", "MeshCC");
+    }
+
+    template<typename T_EOS>
+    template<typename T_writer>
+    void LARE3DST<T_EOS>::writeOutputMeshes(writer<T_writer> &writer, simulationData &data){
+        writer.writeRectilinearMesh("MeshCC", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
+    }
+
+    template<typename T_EOS>
+    template<typename T_writer>
+    void LARE3DST<T_EOS>::writeOutputVariables(writer<T_writer> &writer, simulationData &data)
+    {
+        pw::portableArrayManager manager;
+        hostVolumeArray host;
+
+        getHostVersion(data, manager, data.rho, host);
+        writer.writeData("rho", host.data());
+
+        getHostVersion(data, manager, data.energy_ion, host);
+        writer.writeData("energy_ion", host.data());
+
+        getHostVersion(data, manager, data.vx, host);
+        writer.writeData("vx", host.data());
+
+        getHostVersion(data, manager, data.vy, host);
+        writer.writeData("vy", host.data());
+
+        getHostVersion(data, manager, data.vz, host);
+        writer.writeData("vz", host.data());
+
+        getHostVersion(data, manager, data.bx, host);
+        writer.writeData("bx", host.data());
+
+        getHostVersion(data, manager, data.by, host);
+        writer.writeData("by", host.data());
+
+        getHostVersion(data, manager, data.bz, host);
+        writer.writeData("bz", host.data());
+    }
+
+//Need a better solution than this against future additions of writers
+//Perhaps another X macro?
+#if defined(USE_HDF5)
+//Instantiate the templates for HDF5 writer
+    template void LARE3DST<LARE::idealGas>::registerOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3DST<LARE::idealGas>::registerOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3DST<LARE::idealGas>::writeOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3DST<LARE::idealGas>::writeOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+#else
+//Instantiate the templates for simple writer
+    template void LARE3DST<LARE::idealGas>::registerOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3DST<LARE::idealGas>::registerOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3DST<LARE::idealGas>::writeOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3DST<LARE::idealGas>::writeOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+#endif
+
+    template<typename T_EOS>
+    void LARE3DST<T_EOS>::energy_correction(simulationData &data)
+    {
+        using Range = pw::Range;
+        pw::applyKernel(
+            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                T_dataType dke = pw::max(-data.delta_ke(ix, iy, iz), 0.0) / (data.rho(ix, iy, iz) * data.cv(ix, iy, iz));
+                data.energy_ion(ix, iy, iz) += dke;
+            },
+            Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+    }
+}

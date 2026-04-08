@@ -147,7 +147,10 @@ namespace examples
             SAMS::T_dataType flowVx= problemParams.flowVx;
             //Set driven boundary conditions at lower X boundary, and zero gradient outflow boundary conditions at upper X boundary. Periodic boundaries in Y and Z
             setBCS("energy_ion", harness, 0.5*pressure/(density*(data.gas_gamma - 1.0)));
-            setBCS("energy_electron", harness, 0.5*pressure/(density*(data.gas_gamma - 1.0)));
+            try {
+              setBCS("energy_electron", harness, 0.5*pressure/(density*(data.gas_gamma - 1.0)));
+            } catch (const std::exception &e) {
+            }
             setBCS("rho", harness, density);
             setBCS("vx", harness, flowVx);
             setBCS("LARE/vx1", harness, flowVx);
@@ -189,7 +192,11 @@ namespace examples
 
             auto &varRegistry = harnessRef.variableRegistry;
             varRegistry.fillPPArray("rho", rho);
-            varRegistry.fillPPArray("energy_electron", energy_electron);
+            try {
+                varRegistry.fillPPArray("energy_electron", energy_electron);
+            } catch (const std::exception &e) {
+                this->singleTemperature = true;
+            }
             varRegistry.fillPPArray("energy_ion", energy_ion);
             varRegistry.fillPPArray("vx", vx);
             varRegistry.fillPPArray("vy", vy);
@@ -201,6 +208,8 @@ namespace examples
             SAMS::T_dataType ambPressure = problemParams.ambPressure;
             SAMS::T_dataType density = problemParams.density;
             SAMS::T_dataType flowVx=problemParams.flowVx;
+
+            bool singleTemperature = this->singleTemperature;
 
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
@@ -224,9 +233,12 @@ namespace examples
                     T_dataType pressure = ambPressure;
  
                     //Specific internal energy
-                    energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
-                    energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
-
+                    if (singleTemperature) {
+                        energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                    } else {
+                        energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                        energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                    }
                 },
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
         }
