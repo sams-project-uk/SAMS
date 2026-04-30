@@ -120,7 +120,7 @@ namespace LARE
                 data.rho(ix, iy, iz) = (remap_data.rho1(ix, iy, iz) * data.cv1(ix, iy, iz) + data.dm(ixm, iy, iz) - data.dm(ix, iy, iz)) / remap_data.cv2(ix, iy, iz);
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-        // pw::fence();
+        pw::fence();
 
         x_energy_flux<&simulationData::energy_electron>(data, remap_data);
 
@@ -167,7 +167,7 @@ namespace LARE
 
             },
             Range(-1, data.nx + 1), Range(0, data.ny), Range(0, data.nz));
-        //pw::fence();
+        pw::fence();
 
         // Move cv2 to vertex using flux array as a temporary
         pw::applyKernel(
@@ -184,7 +184,7 @@ namespace LARE
 
         // Now copy it back to cv2
         pw::assign(remap_data.cv2(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)));
-        //pw::fence();
+        pw::fence();
 
         // Move vx1 to x face centred for momentum remap
         pw::applyKernel(
@@ -197,7 +197,7 @@ namespace LARE
         pw::fence();
         // And copy it back
         pw::assign(data.vx1(Range(-2, data.nx + 1), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(-2, data.nx + 1), Range(0, data.ny), Range(0, data.nz)));
-        //pw::fence();
+        pw::fence();
 
         // Now shift mass flux to temporary
         pw::applyKernel(
@@ -254,9 +254,9 @@ namespace LARE
             },
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
         pw::fence();
-        remap_data.xpass = 0;
-
         this->boundary_conditions();
+        pw::fence();
+        remap_data.xpass = 0;
     } // END LARE3D::remap_x
 
     // Evans & Hawley constrained transport remap of vx*By fluxes
@@ -543,8 +543,7 @@ namespace LARE
         // Kinetic energy correction if rke is enabled
         if (data.rke)
         {
-            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) 
-            {
+            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;
                 T_indexType ixp = ix + 1;
                 T_indexType iyp = iy + 1;

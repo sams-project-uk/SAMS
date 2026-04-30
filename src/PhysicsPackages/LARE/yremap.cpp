@@ -312,6 +312,7 @@ namespace LARE
             remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
         },
         Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+
         pw::fence();
     }
 
@@ -542,8 +543,7 @@ namespace LARE
         // Kinetic energy correction if rke is enabled
         if (data.rke)
         {
-            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz)
-            {
+            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixp = ix + 1;
                 T_indexType iym = iy - 1;
                 T_indexType iyp = iy + 1;
@@ -565,8 +565,8 @@ namespace LARE
                 pw::atomic::accelerated::Add(data.delta_ke(ix ,iyp,izp), dk);
             }, 
             Range(0, data.nx), Range(0, data.ny - 1), Range(0, data.nz));
-            pw::fence();
         }
+        pw::fence();
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
             remap_data.flux(ix, iy, iz) *= data.dm(ix, iy, iz);
             },
