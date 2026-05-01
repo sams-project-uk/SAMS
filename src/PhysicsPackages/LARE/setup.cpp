@@ -259,6 +259,32 @@ namespace LARE
         data.eos.setGamma(data.gas_gamma);
     }
 
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::allocate_remap(SAMS::harness &harness, simulationData &data, remapData & remap_data)
+    {
+        T_sizeType nx, ny, nz;
+        using Range = pw::Range;
+
+        auto &axRegistry = harness.axisRegistry;
+        auto &varRegistry = harness.variableRegistry;
+        auto &remapManager = harness.memoryRegistry.getArrayManager();
+        // Centred since LARE thinks in terms of cell centres for nx, ny, nz
+        nx = axRegistry.getLocalDomainElements("X", SAMS::staggerType::CENTRED);
+        ny = axRegistry.getLocalDomainElements("Y", SAMS::staggerType::CENTRED);
+        nz = axRegistry.getLocalDomainElements("Z", SAMS::staggerType::CENTRED);
+
+        //Could use registry for all these also
+        remapManager.allocate(remap_data.rho1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.cv2, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.cvc1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.db1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.rho_v, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.rho_v1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+
+        //Flux now made large enough on all dimensions
+        remapManager.allocate(remap_data.flux, Range(-2, data.nx + 2), Range(-2, data.ny + 2), Range(-2, data.nz + 2));
+
+    }
     /**
      * Setup the basic LARE3D parameters like grid points etc.
      */
