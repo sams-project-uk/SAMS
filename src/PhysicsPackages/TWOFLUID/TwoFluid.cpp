@@ -37,7 +37,7 @@ namespace TWOFLUID
     template<typename T_EOS>
     void PIP<T_EOS>::defaultValues(data_two_fluid_source & data){
         data.alpha0=1000.0;
-        data.alpha0_NF = 1000.0;
+        //data.alpha0_NF = 1000.0; //This isn't needed anymore
     }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,7 +194,7 @@ namespace TWOFLUID
                 //Get Temperatures
                 SAMS::T_dataType  temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
                 SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
-                plasma_source.ac(ix,iy,iz)=plasma_source.alpha0_NF*std::sqrt(0.5*(temperature_neutral+temperature_ion));
+                plasma_source.ac(ix,iy,iz)=plasma_source.alpha0*std::sqrt(0.5*(temperature_neutral+temperature_ion));
             	}, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
 
         };
