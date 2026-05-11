@@ -9,6 +9,9 @@ namespace LARE
     using T_dataType = SAMS::T_dataType;
     using T_sizeType = SAMS::T_sizeType;
     using T_indexType = SAMS::T_indexType;
+    
+    using volumeArray4D = portableWrapper::acceleratedArray<T_dataType, 4>;
+    using volumeArray5D = portableWrapper::acceleratedArray<T_dataType, 5>;
 
     using volumeArray = portableWrapper::acceleratedArray<T_dataType, 3>;
     using hostVolumeArray = portableWrapper::hostArray<T_dataType, 3>;

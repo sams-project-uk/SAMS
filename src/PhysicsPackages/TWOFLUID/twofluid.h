@@ -52,7 +52,14 @@ namespace TWOFLUID
         LARE::volumeArray ac; //coupling coeficient
         LARE::T_dataType two_fluid_timestep; //timestep
 
-        LARE::T_dataType alpha0, alpha0_NF; // Coupling coefficient
+        LARE::T_dataType alpha0; // Coupling coefficient
+        
+        LARE::volumeArray4D level_populations; //4D array of level populations per cell
+        LARE::volumeArray5D level_rates; //5D array of all the rates per cell
+        
+        std::string data_path = "./data/atomic_rates_2.nc";
+        LARE::hostLineArray grid_logT;
+        LARE::hostVolumeArray hydrogen_excitation_rate;
     };
  
     using idealGas = LARE::idealGas;
@@ -124,8 +131,10 @@ namespace TWOFLUID
 
             //void allocate_neutral(SAMS::harness &harness, LARE::LARE3DST<T_EOS>::simulationData &data);
         void ion_rec_rates_empirical(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
+        void ion_rec_rates_nlevel(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
         void get_collisional_source_terms(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
         void get_ion_rec_source_terms(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
+        void two_fluid_read_rates(data_two_fluid_source &plasma_source);
 
     };
 }
