@@ -38,6 +38,22 @@ option(DEBUG_COMPILE "Compile with -O0 (debug compile mode)" OFF)
 #Allow rank inconsistency in queries for whole code events (terminate, output)
 option(ALLOW_RANK_INCONSISTENCY "Allow rank inconsistency in queries for whole code events (terminate, output)" OFF)
 
+##################################
+# Prefer imported NetCDF targets when available
+if(TARGET NetCDF::NetCDF_C)
+  set(NETCDF_LINK_TARGET NetCDF::NetCDF_C)
+elseif(TARGET NetCDF::NetCDF)
+  set(NETCDF_LINK_TARGET NetCDF::NetCDF)
+endif()
+# Fallback find for library/include if variables are empty
+if(NOT NetCDF_INCLUDE_DIRS)
+  find_path(NetCDF_INCLUDE_DIRS netcdf.h)
+endif()
+if(NOT NetCDF_LIBRARIES)
+  find_library(NetCDF_LIBRARIES netcdf)
+endif()
+##################################
+
 if (TIMER_SUPPORT)
   message(STATUS "Enabling timer support")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_TIMER")
@@ -204,6 +220,14 @@ target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include/boundaryCon
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include")
 target_link_libraries(sams PRIVATE ${HDF5_LIBRARIES})
 target_link_libraries(sams PRIVATE stdc++)
+
+####################################
+if(NETCDF_LINK_TARGET)
+  target_link_libraries(sams PRIVATE ${NETCDF_LINK_TARGET})
+else()
+  target_link_libraries(sams PRIVATE ${NetCDF_LIBRARIES})
+endif()
+####################################
 
 if (KOKKOS_CUDA OR KOKKOS_HIP OR KOKKOS_SYCL OR KOKKOS_OPENMP)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_KOKKOS")
