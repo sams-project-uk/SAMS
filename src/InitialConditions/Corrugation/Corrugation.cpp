@@ -31,15 +31,15 @@ namespace examples{
         void Corrugation<T_EOS>::controlVariables(LARE::LARE3D<T_EOS>::simulationData &data)
         {
 
-            data.t_end = 0.2; // End time of the simulation
+            data.t_end = 0.5; // End time of the simulation
             data.dt_snapshots = data.t_end/10;
 
-            data.nx = 256;
-            data.ny = 64;
+            data.nx = 1024;
+            data.ny = 256;
             data.nz = 2;
 
             data.x_min = -2.0;
-            data.x_max = 2.0;
+            data.x_max = 2.1;
             data.y_min = 0.0;
             data.y_max = 1.0;
             data.z_min = 0.0;
@@ -68,7 +68,7 @@ namespace examples{
             data.eta0 = 2.e-10;
 
             // Remap kinetic energy correction
-            data.rke = false;
+            data.rke = true;
         }
 
         /**
@@ -125,6 +125,7 @@ namespace examples{
             pw::portableArray<SAMS::T_dataType, 3> rho;
             pw::portableArray<SAMS::T_dataType, 3> energy_electron, energy_ion;
             pw::portableArray<SAMS::T_dataType, 3> bx, by, bz;
+            pw::portableArray<SAMS::T_dataType, 3> vx, vy, vz;
             pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
 
             bool singleTemperature = false;
@@ -147,6 +148,10 @@ namespace examples{
             varRegistry.fillPPArray("by", by);
             varRegistry.fillPPArray("bz", bz);
             
+            varRegistry.fillPPArray("vx", vx);
+            varRegistry.fillPPArray("vy", vy);
+            varRegistry.fillPPArray("vz", vz);
+            
             SAMS::T_dataType beta=0.1;
             SAMS::T_dataType mach=2.0;
 	        SAMS::T_dataType rcom=(data.gas_gamma+1.0)*mach*mach/(2.0+(data.gas_gamma-1.0)*mach*mach);
@@ -154,8 +159,10 @@ namespace examples{
 
             SAMS::T_dataType rho_L=rcom;
             SAMS::T_dataType P_L=rpres/data.gas_gamma;
+            SAMS::T_dataType vx_L =-mach/rcom;
             SAMS::T_dataType rho_R=1.0;
             SAMS::T_dataType P_R=1.0/data.gas_gamma;
+            SAMS::T_dataType vx_R =-mach;
 
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
@@ -164,20 +171,22 @@ namespace examples{
                     if (xc(ix) < 0.0)
                     {
                         rho(ix, iy, iz) = rho_L;
+                        vx(ix, iy, iz) = vx_L;
                         bx(ix, iy, iz) = std::sqrt(2.0/data.gas_gamma/beta);
                         pressure = P_L;
                     }
                     else
                     {
                         rho(ix, iy, iz) = rho_R;
+                        vx(ix, iy, iz) = vx_R;
                         bx(ix, iy, iz) = std::sqrt(2.0/data.gas_gamma/beta);
                         pressure = P_R;
                     }
                     
                     //Add a perturbation
-                    if ((xc(ix) > 1.0) && (xc(ix) > 2.0))
+                    if ((xc(ix) > 1.0) && (xc(ix) < 2.0))
                     {
-                        rho(ix, iy, iz) += std::sin(std::numbers::pi*yc(iy))*std::sin(std::numbers::pi*xc(ix));
+                        rho(ix, iy, iz) += -0.1*(0.5*(2.0*std::sin(2*std::numbers::pi*yc(iy)-std::numbers::pi*0.5))+0.5)*0.5*(std::sin(2.0*std::numbers::pi*(xc(ix)-0.25))+1);
                     }
                     
                     //Specific internal energy
