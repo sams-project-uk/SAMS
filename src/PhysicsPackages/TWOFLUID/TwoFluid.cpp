@@ -30,7 +30,7 @@ namespace TWOFLUID
     struct two_fluid_properties
     {
         bool collisions=true;
-        bool ion_rec_empirical=false;
+        bool ion_rec_empirical=true;
         bool ion_rec_nlevel=false;
     };
     
@@ -40,7 +40,7 @@ namespace TWOFLUID
     */
     template<typename T_EOS>
     void PIP<T_EOS>::defaultValues(data_two_fluid_source & data){
-        data.alpha0=1000.0;
+        data.alpha0=1.0;
         //data.alpha0_NF = 1000.0; //This isn't needed anymore
     }
 
@@ -215,7 +215,7 @@ namespace TWOFLUID
         void PIP<T_EOS>::ion_rec_rates_empirical(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
 
             //Much of this should go elsewhere
-            SAMS::T_dataType  T0=6000.0;//data.T_reference; //Reference temperature
+            SAMS::T_dataType  T0=10000.0;//data.T_reference; //Reference temperature
             SAMS::T_dataType  n0=1.0e16;//data.ne_reference; //Reference electron number density
             SAMS::T_dataType  t_ir=1.0e-5; //Reference recombination timescale (relative to collisional timescale)
 

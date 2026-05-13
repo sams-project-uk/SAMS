@@ -145,6 +145,8 @@ namespace SAMS
         FULL_CALL_X(initialConditions); //Set initial conditions
         FULL_CALL_X(setBoundaryConditions); //Set boundary conditions
         FULL_CALL_X(defaultVariables); //Set default variable values
+        
+        FULL_CALL_X(initialiseSource);
 
         FULL_CALL_X(beforeStartOfTimestep); //Actions to perform just prior to timestep (i.e. before core solver)
         FULL_CALL_X(startOfTimestep); //Actions to perform at the start of each timestep
@@ -559,6 +561,7 @@ namespace SAMS
             defaultVariables(); //Set default variable values
             initialConditions(); //Set initial conditions
             setBoundaryConditions(); //Attach boundary conditions
+            initialiseSource();
             writeOutput(); //Write initial output
         }
 

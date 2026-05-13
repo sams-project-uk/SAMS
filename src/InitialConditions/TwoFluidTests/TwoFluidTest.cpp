@@ -31,15 +31,15 @@ namespace examples
         void TwoFluidTest::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral)
         {
 
-            data.t_end = 0.2;
+            data.t_end = 0.01;
             data.dt_snapshots = data.t_end / 10;
 
-            data.nx = 512;
+            data.nx = 4096;
             data.ny = 2;
             data.nz = 2;
 
-            data.x_min = -0.5;
-            data.x_max = 1.5;
+            data.x_min = -1.0;
+            data.x_max = 1.0;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;
@@ -277,7 +277,18 @@ namespace examples
                 
                 //TWOFLUID::PIP::get_equilibrium_ion_fraction(data.T_reference,LARE::T_dataType xi_n);
                 
-                LARE::T_dataType xi_n=0.9;
+                //Much of this should go elsewhere
+                LARE::T_dataType T0=10000.0;//data.T_reference; //Reference temperature
+                LARE::T_dataType n0=1.0e16;//data.ne_reference; //Reference electron number density
+
+                LARE::T_dataType Te_0=T0/1.1604e4; //Calculate electron temperature in eV
+                LARE::T_dataType rec_fac=2.6e-19*(n0)/std::sqrt(Te_0);  //reference recombination rate (n0 converted to m^-3)
+
+                //initial equilibrium fractions
+                LARE::T_dataType ioneq=(2.6e-19/std::sqrt(Te_0))/(2.91e-14/(0.232+13.6/Te_0)*std::pow(13.6/Te_0,0.39)*std::exp(-13.6/Te_0));
+                
+                //LARE::T_dataType xi_n=0.9;
+                LARE::T_dataType xi_n=ioneq/(ioneq+1.0);
                 LARE::T_dataType xi_p=1.0-xi_n;
                 LARE::T_dataType f_p_p=2.0*xi_p/(xi_n+2.0*xi_p);
                 LARE::T_dataType f_p_n=xi_n/(xi_n+2.0*xi_p);
@@ -289,7 +300,7 @@ namespace examples
                     {
                         SAMS::T_dataType pressure;
                         SAMS::T_dataType pressure_n;
-                        if (xc(ix) < 0.5)
+                        if (xc(ix) < 0.0)
                         {
                             rho(ix, iy, iz) = 1.0*(1.0-xi_n);
                             pressure = 1.0*f_p_p;

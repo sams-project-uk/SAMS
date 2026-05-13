@@ -83,6 +83,13 @@ namespace TWOFLUID
             void defaultValues(data_two_fluid_source & plasma_source);
             void allocate(data_two_fluid_source &plasma_source,SAMS::harness &harness);
             void registerVariables(SAMS::harness &harness);
+            
+            void initialiseSource(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                printf("Getting IC for two_fluid rates \n");
+                get_ac(data,dataNeutral,plasma_source);
+                get_two_fluid_source(data,dataNeutral,plasma_source);
+            }
+            
             void getVariables(data_two_fluid_source &plasma_source,SAMS::harness &harness){
                 allocate(plasma_source, harness);
             }
@@ -100,7 +107,7 @@ namespace TWOFLUID
                 set_dt_collisional(data,dataNeutral,plasma_source);
                 //printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
                 //set_dt(data);
-                //timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
+                timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
             };
             void getTimestep(SAMS::timeState &timeData, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral){
                 //data.dt = timeData.dt;
