@@ -31,8 +31,8 @@ namespace examples{
         void Corrugation<T_EOS>::controlVariables(LARE::LARE3D<T_EOS>::simulationData &data)
         {
 
-            data.t_end = 4.0; // End time of the simulation
-            data.dt_snapshots = data.t_end/50;
+            data.t_end = 0.5; // End time of the simulation
+            data.dt_snapshots = data.t_end/10;
 
             data.nx = 1024;
             data.ny = 256;
