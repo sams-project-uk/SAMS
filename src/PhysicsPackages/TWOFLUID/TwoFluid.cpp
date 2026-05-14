@@ -484,6 +484,10 @@ namespace TWOFLUID
     template<typename T_EOS>
  void PIP<T_EOS>::get_ion_rec_source_terms(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){	
 
+    LARE::T_dataType T0=10000.0;//data.T_reference; //Reference temperature
+    LARE::T_dataType Te_0=T0/1.1604e4;
+    LARE::T_dataType kb_ev=8.617333e-5; //Kb in eV/K
+    
     using Range = portableWrapper::Range;
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
     
@@ -618,11 +622,11 @@ namespace TWOFLUID
                                                    +(plasma_source.gm_rec(ix,iy,iz)*data.energy_ion(ix,iy,iz)*data.rho(ix,iy,iz)/dataNeutral.rho(ix,iy,iz)-plasma_source.gm_ion(ix,iy,iz)*dataNeutral.energy(ix,iy,iz))/(data.gas_gamma-1.0); //Is this electron or ion energy (or mean energy)? is the half needed?
         
         //Work out how much energy is spent/gained by IR processes
-        //if(data.ion_rec_empirical){ 
-        //    SAMS::T_dataType  ionisation_energy=(plasma_source.gm_rec(ix,iy,iz)-
-        //                          plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/(data.gas_gamma-1.0)/data.rho(ix,iy,iz))*
-        //                          13.6/kb_si/data.T_reference;     
-        //    //plasma_ir_source.source_electron_energy(ix,iy,iz)+=ionisation_energy; 
+        //if (two_fluid_flags.ion_rec_empirical) { 
+            LARE::T_dataType ionisation_energy=(-plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/data.rho(ix,iy,iz))*
+                                  13.6/kb_ev/T0/data.gas_gamma;
+            //printf("ionisation energy, rho = %f %f \n",ionisation_energy, dataNeutral.rho(ix,iy,iz));
+            plasma_source.source_energy(ix,iy,iz)+=ionisation_energy; 
         //}
         
     }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
