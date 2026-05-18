@@ -152,6 +152,7 @@ namespace SAMS
         FULL_CALL_X(startOfTimestep); //Actions to perform at the start of each timestep
         FULL_CALL_X(halfTimestep); //Actions to perform at half timestep
         FULL_CALL_X(endOfTimestep); //Actions to perform at end of timestep
+        FULL_CALL_X(afterEndOfTimestep); //Actions to perform at after end of timestep
         CALL_X(calculateTimestep); //Set the timestep for simulations
         CALL_X(getTimestep);
         /**
@@ -578,6 +579,7 @@ namespace SAMS
                 tData.step++;
                 tData.time += tData.dt;
                 endOfTimestep(); //End of timestep (remap for LARE3D)
+                afterEndOfTimestep();
                 if (queryOutput()){
                     writeOutput(); //If ANY package says to output, do so
                 }                    
