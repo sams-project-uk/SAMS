@@ -48,6 +48,7 @@ namespace TWOFLUID
         
         LARE::volumeArray gm_ion; //ionisation rate
         LARE::volumeArray gm_rec; //recombination rate
+        LARE::volumeArray ion_loss; //ionisation loss term
         
         LARE::volumeArray ac; //coupling coeficient
         LARE::T_dataType two_fluid_timestep; //timestep
@@ -60,6 +61,17 @@ namespace TWOFLUID
         std::string data_path = "./data/atomic_rates_2.nc";
         LARE::hostLineArray grid_logT;
         LARE::hostVolumeArray hydrogen_excitation_rate;
+        
+        //Physical parameters
+        SAMS::T_dataType  T0=10000.0;//data.T_reference; //Reference temperature
+        SAMS::T_dataType  n0=1.0e16;//data.ne_reference; //Reference electron number density
+        SAMS::T_dataType  t_ir=1.0e-5; //Reference recombination timescale (relative to collisional timescale)
+        SAMS::T_dataType kb_ev=8.617333e-5; //Kb in eV/K
+       
+        //Coupling physics
+        bool collisions=true;
+        bool ion_rec_empirical=true;
+        bool ion_rec_nlevel=false;
     };
  
     using idealGas = LARE::idealGas;
@@ -94,20 +106,24 @@ namespace TWOFLUID
                 allocate(plasma_source, harness);
             }
             void beforeStartOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                get_ac(data,dataNeutral,plasma_source); //These might not be needed
+                get_two_fluid_source(data,dataNeutral,plasma_source);
                 apply_two_fluid_source(data,dataNeutral,plasma_source);
             };
 
-            void endOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
-              apply_two_fluid_source(data,dataNeutral,plasma_source); 
+            void afterEndOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                get_ac(data,dataNeutral,plasma_source);
+                get_two_fluid_source(data,dataNeutral,plasma_source);
+                apply_two_fluid_source(data,dataNeutral,plasma_source); 
             };
 
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 get_ac(data,dataNeutral,plasma_source);
                 get_two_fluid_source(data,dataNeutral,plasma_source);
                 set_dt_collisional(data,dataNeutral,plasma_source);
-                //printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
+                printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
                 //set_dt(data);
-                timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
+                timeData.dt = plasma_source.two_fluid_timestep<timeData.dt ? plasma_source.two_fluid_timestep : timeData.dt;
             };
             void getTimestep(SAMS::timeState &timeData, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral){
                 //data.dt = timeData.dt;

@@ -31,15 +31,15 @@ namespace examples
         void TwoFluidTest::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral)
         {
 
-            data.t_end = 0.01;
+            data.t_end = 5.0;
             data.dt_snapshots = data.t_end / 10;
 
-            data.nx = 4096;
+            data.nx = 512;
             data.ny = 2;
             data.nz = 2;
 
-            data.x_min = -1.0;
-            data.x_max = 1.0;
+            data.x_min = -10.5;
+            data.x_max = 10.5;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;
@@ -164,7 +164,7 @@ namespace examples
                     {
                         SAMS::T_dataType pressure;
                         SAMS::T_dataType pressure_n;
-                        if (xc(ix) < 0.5)
+                        if (xc(ix) < 0.0)
                         {
                             rho(ix, iy, iz) = 1.0;
                             pressure = 1.0;
@@ -222,7 +222,7 @@ namespace examples
                     {
                         SAMS::T_dataType pressure;
                         SAMS::T_dataType pressure_n;
-                        if (xc(ix) < 0.5)
+                        if (xc(ix) < 0.0)
                         {
                             rho(ix, iy, iz) = 1.0*(1.0-xi_n);
                             pressure = 1.0*f_p_p;
@@ -326,6 +326,76 @@ namespace examples
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));
             }
             //////////////////////////////////////////////////////////////////////////////
+            if (problem =="sedov"){
+                // Brio & Wu Shock tube
+                printf("Sedov-Taylor Expansion \n");
+                
+                pw::portableArray<SAMS::T_dataType, 3> rho;
+                pw::portableArray<SAMS::T_dataType, 3> bx,by,bz;
+                pw::portableArray<SAMS::T_dataType, 3> energy;
+                pw::portableArray<SAMS::T_dataType, 3> rho_n;
+                pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
+                pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
+
+                auto &axisRegistry = harnessRef.axisRegistry;
+                axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
+                axisRegistry.fillPPLocalAxis("Y", yc, SAMS::staggerType::CENTRED);
+                axisRegistry.fillPPLocalAxis("Z", zc, SAMS::staggerType::CENTRED);
+
+                auto &varRegistry = harnessRef.variableRegistry;
+                varRegistry.fillPPArray("rho", rho);
+                varRegistry.fillPPArray("energy_ion", energy);
+                varRegistry.fillPPArray("LARENF/rho", rho_n);
+                varRegistry.fillPPArray("LARENF/energy", energy_neutral);
+                
+                //if empirical should go here
+                
+                //TWOFLUID::PIP::get_equilibrium_ion_fraction(data.T_reference,LARE::T_dataType xi_n);
+                
+                //Much of this should go elsewhere
+                LARE::T_dataType T0=10000.0;//data.T_reference; //Reference temperature
+                LARE::T_dataType n0=1.0e16;//data.ne_reference; //Reference electron number density
+
+                LARE::T_dataType Te_0=T0/1.1604e4; //Calculate electron temperature in eV
+                LARE::T_dataType rec_fac=2.6e-19*(n0)/std::sqrt(Te_0);  //reference recombination rate (n0 converted to m^-3)
+
+                //initial equilibrium fractions
+                LARE::T_dataType ioneq=(2.6e-19/std::sqrt(Te_0))/(2.91e-14/(0.232+13.6/Te_0)*std::pow(13.6/Te_0,0.39)*std::exp(-13.6/Te_0));
+                
+                //LARE::T_dataType xi_n=0.9;
+                LARE::T_dataType xi_n=ioneq/(ioneq+1.0);
+                LARE::T_dataType xi_p=1.0-xi_n;
+                LARE::T_dataType f_p_p=2.0*xi_p/(xi_n+2.0*xi_p);
+                LARE::T_dataType f_p_n=xi_n/(xi_n+2.0*xi_p);
+                
+                printf("neutral fraction=%f \n",xi_n);
+                
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
+                    {
+                        SAMS::T_dataType pressure;
+                        SAMS::T_dataType pressure_n;
+                        if ((xc(ix) > -0.1) and (xc(ix) < 0.1))
+                        {
+                            rho(ix, iy, iz) = 1.0*(1.0-xi_n);
+                            pressure = 2.0*f_p_p;
+                            rho_n(ix, iy, iz) = 1.0*xi_n;
+                            pressure_n = 1.0*f_p_n;
+                        }
+                        else
+                        {
+                            rho(ix, iy, iz) = 1.0*(1.0-xi_n);
+                            pressure = 1.0*f_p_p;
+                            rho_n(ix, iy, iz) = 1.0*xi_n;
+                            pressure_n = 1.0*f_p_n;
+                        }
+                        //Specific internal energy
+                        //energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
+                        energy(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
+                        energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
+                    },
+                    rho.getRange(0), rho.getRange(1), rho.getRange(2));
+            }
         }
 
        /**
