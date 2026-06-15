@@ -215,6 +215,7 @@ target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditio
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditions/EmeryWindTunnel")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditions/KarmanVortex")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditions/Corrugation")
+target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditions/BlastWave3D")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include/harness")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include/runner")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include/boundaryConditions")
