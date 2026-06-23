@@ -42,7 +42,10 @@ namespace examples
 
         inline static constexpr auto nameType = SAMS::constexprName("EmeryWindTunnel") + T_EOS::name;        
 
+        bool singleTemperature = false;
+
     public:
+
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */

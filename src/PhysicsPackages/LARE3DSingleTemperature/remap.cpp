@@ -12,7 +12,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#include "shared_data.h"
+#include "LARE3DSingleTemperature/shared_data.h"
 
 namespace LARE
 {
@@ -20,10 +20,20 @@ namespace LARE
     namespace pw = portableWrapper;
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data)
+    void LARE3DST<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data)
     {
         using Range = pw::Range;
         int case_test;
+        pw::portableArrayManager remapManager;
+
+        // We can allocate everything other than flux here
+        remapManager.allocate(remap_data.rho1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.cv2, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.cvc1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.db1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.rho_v, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        remapManager.allocate(remap_data.rho_v1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+        // Flux is one element larger in the direction of remap, so it is allocated in each remap function
 
         if (data.rke)
         {
@@ -92,6 +102,11 @@ namespace LARE
         data.y(ix, iy, iz) = data.yb(iy);
         data.z(ix, iy, iz) = data.zb(iz); }, Range(-2, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
+        remapManager.deallocate(remap_data.rho1);
+        remapManager.deallocate(remap_data.cv2);
+        remapManager.deallocate(remap_data.cvc1);
+        remapManager.deallocate(remap_data.db1);
+        remapManager.deallocate(remap_data.rho_v);
+        remapManager.deallocate(remap_data.rho_v1);
     }
-    #include "./instantiate.h"
 }
