@@ -97,7 +97,12 @@ namespace examples
             attachBoundaryConditions("by", harness);
             attachBoundaryConditions("bz", harness);
             attachBoundaryConditions("energy_ion", harness);
-            attachBoundaryConditions("energy_electron", harness);
+            try {
+                attachBoundaryConditions("energy_electron", harness);
+            }
+            catch (const std::exception &e) {
+                //Not in two temperature mode
+            } 
             attachBoundaryConditions("rho", harness);
             attachBoundaryConditions("vx", harness);
             attachBoundaryConditions("vy", harness);
@@ -119,6 +124,8 @@ namespace examples
             pw::portableArray<SAMS::T_dataType, 3> rho;
             pw::portableArray<SAMS::T_dataType, 3> energy_electron;
             pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
+            
+            bool singleTemperature = false;
 
             auto &axisRegistry = harnessRef.axisRegistry;
             axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
@@ -127,7 +134,13 @@ namespace examples
 
             auto &varRegistry = harnessRef.variableRegistry;
             varRegistry.fillPPArray("rho", rho);
-            varRegistry.fillPPArray("energy_electron", energy_electron);
+            try {
+                varRegistry.fillPPArray("energy_electron", energy_electron);
+            }
+            catch (const std::exception &e) {
+                singleTemperature = true;
+                varRegistry.fillPPArray("energy_ion", energy_electron);
+            }   
 
             pw::applyKernel(
                 LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
