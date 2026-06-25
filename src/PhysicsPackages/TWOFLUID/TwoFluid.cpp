@@ -316,9 +316,15 @@ namespace TWOFLUID
                 }
 
                 //Get ionisation and recomination rates
-            	//plasma_source.gm_rec(ix,iy,iz)=numberDensity_electron/std::sqrt(temperature_electron)*t_ir/f_p*std::sqrt(tfac);
-            	//plasma_source.gm_ion(ix,iy,iz)=2.91e-14*(n0*1.0e6)*numberDensity_electron*std::exp(-13.6/Te_0/temperature_electron*tfac)*std::pow(13.6/Te_0/temperature_electron*tfac,0.39);
-            	//plasma_source.gm_ion(ix,iy,iz)=plasma_source.gm_ion(ix,iy,iz)/(0.232+13.6/Te_0/temperature_electron*tfac)/rec_fac/f_p *t_ir;    
+                plasma_source.gm_rec(ix,iy,iz)=0.0;
+                plasma_source.gm_ion(ix,iy,iz)=0.0;
+            	for (LARE::T_indexType lower_level = 1; lower_level < nLevels; ++lower_level) {
+            	    plasma_source.gm_rec(ix,iy,iz)+=plasma_source.level_rates(ix,iy,iz,nLevels,lower_level);
+            	    plasma_source.gm_ion(ix,iy,iz)+=plasma_source.level_rates(ix,iy,iz,lower_level,nLevels)*plasma_source.level_populations(ix,iy,iz,lower_level);
+            	}
+            	//plasma_source.gm_rec(ix,iy,iz)=plasma_source.gm_rec(ix,iy,iz)
+            	plasma_source.gm_ion(ix,iy,iz)=plasma_source.gm_ion(ix,iy,iz)/dataNeutral.rho(ix,iy,iz); //Need to normalise the ionisation rate 
+            	//THIS ALL NEEDS CHECKING
             	
             	//printf("%f %f %f %f %f \n",f_p,data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0)*data.rho(ix,iy,iz), temperature_electron,plasma_source.gm_rec(ix,iy,iz),plasma_source.gm_ion(ix,iy,iz));    
             }, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
