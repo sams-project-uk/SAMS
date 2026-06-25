@@ -572,7 +572,8 @@ namespace SAMS
                 if (step%10 == 0){
                     SAMS::cout << "Starting timestep " << step << " at time " << std::get<timeState>(runnerData).time <<  ", dt = " << std::get<timeState>(runnerData).dt << std::endl;
                 }
-                beforeStartOfTimestep();
+                beforeStartOfTimestep(); //Set timestep value
+                calculateTimestep(); //Set timestep value
                 startOfTimestep(); //Start of timestep (predictor)
                 halfTimestep(); //Half timestep (correction)
                 auto& tData = std::get<timeState>(runnerData);
