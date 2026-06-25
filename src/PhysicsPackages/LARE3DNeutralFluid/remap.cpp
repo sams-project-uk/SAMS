@@ -20,7 +20,7 @@ namespace LARE
     namespace pw = portableWrapper;
 
     template<typename T_EOS>
-    void LARE3DNF<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data, const domainData & core_data)
+    void LARE3DNF<T_EOS>::eulerian_remap(simulationData &data, remapData &remap_data, const domainData & core_data, const SAMS::timeState &ts)
     {
         using Range = pw::Range;
         int case_test;
@@ -44,7 +44,8 @@ namespace LARE
         remap_data.zpass = 1.0;
 
 
-        case_test = data.step % 6;
+        //case_test = data.step % 6;
+        case_test = ts.step % 6;
 
         // Strang ordering
         switch (case_test)

@@ -78,7 +78,6 @@ namespace LARE
         volumeArray byl = data.by;
         volumeArray bzl = data.bz;
         volumeArray cvl = data.cv;
-        volumeArray energy_el = data.energy_electron;
         volumeArray energy_il = data.energy_ion;
 
         //Auto here to engage the template engine  to allow constexpr if statements to work properly in the kernel
@@ -93,17 +92,15 @@ namespace LARE
 
             if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>)
             {
-                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz)));
                 d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)));
             } else if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>)
             {
-                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
                 d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
             } else
             {
                 static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS pressure interface");
             }
-            d.pressure(ix, iy, iz) = d.p_e(ix, iy, iz) + d.p_i(ix, iy, iz);
+            d.pressure(ix, iy, iz) = d.p_i(ix, iy, iz);
         },
                         data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
 
