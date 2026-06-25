@@ -421,13 +421,16 @@ namespace LARE
             copy_domain(core_data, lareData);
         }
 
+        void beforeStartOfTimestep(simulationData &data, const domainData & core_data){
+            lagrangian_prepare(data, core_data);
+        }
         /**
          * Physics timestep functions
          * This is the predictor step of the LARE3D timestep
          * @param data LARE3D simulation data
          */
-        void startOfTimestep(simulationData &data, const domainData & core_data, SAMS::controlFunctions &controlFns){
-            lagrangian_step(data, core_data, controlFns);
+        void startOfTimestep(simulationData &data, const domainData & core_data){
+            lagrangian_step(data, core_data);
         }
 
         /**
@@ -543,11 +546,15 @@ namespace LARE
         void z_mom_flux(simulationData &data, remapData &remap_data, const domainData & core_data);
 
         /**
+         * First part of Lagrangian step for the LARE3D
+         */
+        void lagrangian_prepare(simulationData &data, const domainData & core_data);
+        /**
          * Lagrangian step for the LARE3D
          * @param data Simulation data struct
          * This function performs a Lagrangian step for the LARE3D
          */
-        void lagrangian_step(simulationData &data, const domainData & core_data, SAMS::controlFunctions &controlFns);
+        void lagrangian_step(simulationData &data, const domainData & core_data);
 
         /**
          * Core remap control function
