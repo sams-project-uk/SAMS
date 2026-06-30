@@ -477,16 +477,19 @@ namespace TWOFLUID
        //printf("T_n %f \n", temperature_neutral);
        //printf("gm %f \n", data.gas_gamma);
        //printf("gm %f \n", plasma_source.source_energy(ix,iy,iz));
-    plasma_source.source_energy(ix,iy,iz)=plasma_source.ac(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)*(0.5*(\
-                        (vx_n_centre*vx_n_centre-vx_centre*vx_centre)+\
-                        (vy_n_centre*vy_n_centre-vy_centre*vy_centre)+\
-                        (vz_n_centre*vz_n_centre-vz_centre*vz_centre))\
+       
+       SAMS::T_dataType dvx = vx_n_centre - vx_centre;
+       SAMS::T_dataType dvy = vy_n_centre - vy_centre;
+       SAMS::T_dataType dvz = vz_n_centre - vz_centre;
+
+       SAMS::T_dataType vd2 = dvx*dvx + dvy*dvy + dvz*dvz;
+       
+    plasma_source.source_energy(ix,iy,iz)=plasma_source.ac(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)*(\
+                        0.5*vd2 \
                         + 3.0/data.gas_gamma/2.0*(temperature_neutral-temperature_ion));
         //printf("getting neutral energy source terms \n");
-        plasma_source.source_energy_n(ix,iy,iz)=-plasma_source.ac(ix,iy,iz)*data.rho(ix,iy,iz)*(0.5*(\
-                        (vx_n_centre*vx_n_centre-vx_centre*vx_centre)+\
-                        (vy_n_centre*vy_n_centre-vy_centre*vy_centre)+\
-                        (vz_n_centre*vz_n_centre-vz_centre*vz_centre))\
+        plasma_source.source_energy_n(ix,iy,iz)=-plasma_source.ac(ix,iy,iz)*data.rho(ix,iy,iz)*(\
+                        0.5*vd2 \
                         + 3.0/data.gas_gamma/2.0*(temperature_neutral-temperature_ion));  
                                    
         //printf("%i,%i,%i \n",ix,iy,iz);
