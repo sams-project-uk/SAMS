@@ -460,6 +460,8 @@ namespace LARE
          * @param data LARE3D simulation data
          */
         void calculateTimestep(SAMS::timeState &timeData, simulationData &data, const domainData & core_data){
+            set_dt(data,core_data);
+            timeData.dt = data.dt<timeData.dt ? data.dt : timeData.dt;
             //timeData.dt = 1e-5;
         };
         /*{

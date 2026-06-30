@@ -149,6 +149,7 @@ namespace SAMS
         FULL_CALL_X(initialiseSource);
 
         FULL_CALL_X(beforeStartOfTimestep); //Actions to perform just prior to timestep (i.e. before core solver)
+        FULL_CALL_X(applySourceTermsStart); //
         FULL_CALL_X(startOfTimestep); //Actions to perform at the start of each timestep
         FULL_CALL_X(halfTimestep); //Actions to perform at half timestep
         FULL_CALL_X(endOfTimestep); //Actions to perform at end of timestep
@@ -574,6 +575,7 @@ namespace SAMS
                 }
                 beforeStartOfTimestep(); //Set timestep value
                 calculateTimestep(); //Set timestep value
+                applySourceTermsStart(); //Apply source terms
                 startOfTimestep(); //Start of timestep (predictor)
                 halfTimestep(); //Half timestep (correction)
                 auto& tData = std::get<timeState>(runnerData);

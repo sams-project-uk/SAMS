@@ -130,13 +130,22 @@ namespace LARE
         {
             if (data.xbc_min == BCType::BC_OTHER)
             {
-                pw::assign(
-                    data.by(-1, pw::Range(), pw::Range()),
-                    data.by(2, pw::Range(), pw::Range()));
-                pw::assign(
-                    data.by(0, pw::Range(), pw::Range()),
-                    data.by(1, pw::Range(), pw::Range()));
+                pw::applyKernel(
+                    LAMBDA(T_indexType iy, T_indexType iz) {
+                        data.by(-1, iy, iz) = -data.by(2, iy, iz);
+                        data.by(0,  iy, iz) = -data.by(1, iy, iz);
+                    },
+                    pw::Range(-1, data.ny + 1),
+                    pw::Range(-1, data.nz + 1)
+                );
+//                pw::assign(
+//                    data.by(-1, pw::Range(), pw::Range()),
+//                    -data.by(2, pw::Range(), pw::Range()));
+//                pw::assign(
+//                    data.by(0, pw::Range(), pw::Range()),
+//                    -data.by(1, pw::Range(), pw::Range()));
             }
+            
         }
         //Upper X BC
         if (dimension == 0 && edge == SAMS::domain::edges::upper)
@@ -582,9 +591,20 @@ namespace LARE
         {
             if (data.xbc_min == BCType::BC_OTHER)
             {
-                pw::assign(
-                    data.vx(pw::Range(-2,0), pw::Range(), pw::Range()),
-                    0.0);
+                pw::applyKernel(
+                    LAMBDA(T_indexType iy, T_indexType iz) {
+                        data.vx(-1, iy, iz) = -data.vx(2, iy, iz);
+                        data.vx(0,  iy, iz) = -data.vx(1, iy, iz);
+                    },
+                    pw::Range(-1, data.ny + 1),
+                    pw::Range(-1, data.nz + 1)
+                );
+//                pw::assign(
+//                    data.vx(-2, pw::Range(), pw::Range()),
+//                    -data.vx(2, pw::Range(), pw::Range()));
+//                pw::assign(
+//                    data.vx(-1, pw::Range(), pw::Range()),
+//                    -data.vx(1, pw::Range(), pw::Range()));
             }
         }
         //Upper X BC
@@ -666,9 +686,20 @@ namespace LARE
         {
             if (data.xbc_min == BCType::BC_OTHER)
             {
-                pw::assign(
-                    data.vx1(pw::Range(-2,0), pw::Range(), pw::Range()),
-                    0.0);
+                pw::applyKernel(
+                    LAMBDA(T_indexType iy, T_indexType iz) {
+                        data.vx1(-1, iy, iz) = -data.vx1(2, iy, iz);
+                        data.vx1(0,  iy, iz) = -data.vx1(1, iy, iz);
+                    },
+                    pw::Range(-1, data.ny + 1),
+                    pw::Range(-1, data.nz + 1)
+                );
+//                pw::assign(
+//                    data.vx1(-2, pw::Range(), pw::Range()),
+//                    -data.vx1(2, pw::Range(), pw::Range()));
+//                pw::assign(
+//                    data.vx1(-1, pw::Range(), pw::Range()),
+//                    -data.vx1(1, pw::Range(), pw::Range()));
             }
         }
         //Upper X BC
@@ -752,8 +783,12 @@ namespace LARE
             if (data.xbc_min == BCType::BC_OTHER)
             {
                 pw::assign(
-                    data.vy(pw::Range(-2,0), pw::Range(), pw::Range()),
-                    0.0);
+                    data.vy(-2, pw::Range(), pw::Range()),
+                    data.vy(2, pw::Range(), pw::Range()));
+                pw::assign(
+                    data.vy(-1, pw::Range(), pw::Range()),
+                    data.vy(1, pw::Range(), pw::Range()));
+                
             }
         }
         //Upper X BC

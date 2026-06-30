@@ -126,7 +126,6 @@ namespace LARE
     template<typename T_EOS>
     void LARE3DNF<T_EOS>::lagrangian_step(simulationData &data, const domainData & core_data)
     {   
-
         this->predictor_step(data, core_data);
     }
 

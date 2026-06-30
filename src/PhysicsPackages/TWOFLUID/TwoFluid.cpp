@@ -33,7 +33,7 @@ namespace TWOFLUID
     */
     template<typename T_EOS>
     void PIP<T_EOS>::defaultValues(data_two_fluid_source & data){
-        data.alpha0=10.0;
+        data.alpha0=1.0;
     }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,6 +126,17 @@ namespace TWOFLUID
         //if (two_fluid_flags.ion_rec_nlevel){        
         ////    ion_rec_rates_nlevel(data,dataNeutral);
         //}
+        
+        pw::assign(plasma_source.source_mass, 0.0);
+        pw::assign(plasma_source.source_mass_n, 0.0);
+        pw::assign(plasma_source.source_energy, 0.0);
+        pw::assign(plasma_source.source_energy_n, 0.0);
+        pw::assign(plasma_source.source_v_x, 0.0);
+        pw::assign(plasma_source.source_v_x_n, 0.0);
+        pw::assign(plasma_source.source_v_y, 0.0);
+        pw::assign(plasma_source.source_v_y_n, 0.0);
+        pw::assign(plasma_source.source_v_z, 0.0);
+        pw::assign(plasma_source.source_v_z_n, 0.0);
         
         //Calculate the source terms for the two-fluid interactions
         get_collisional_source_terms(data,dataNeutral,plasma_source);
@@ -375,14 +386,16 @@ namespace TWOFLUID
         
                 
         //Apply the velocity exchange terms
-        plasma_source.source_v_x(ix,iy,iz)=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)-data.vx(ix,iy,iz));
-        plasma_source.source_v_x_n(ix,iy,iz)=-ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vx(ix,iy,iz)-data.vx(ix,iy,iz));
+        plasma_source.source_v_x(ix,iy,iz)=ac_vertex*rho_neutral_vertex*(dataNeutral.vx(ix,iy,iz)-data.vx(ix,iy,iz));
+        plasma_source.source_v_x_n(ix,iy,iz)=-ac_vertex*rho_plasma_vertex*(dataNeutral.vx(ix,iy,iz)-data.vx(ix,iy,iz));
         
-        plasma_source.source_v_y(ix,iy,iz)=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vy(ix,iy,iz)-data.vy(ix,iy,iz));
-        plasma_source.source_v_y_n(ix,iy,iz)=-ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vy(ix,iy,iz)-data.vy(ix,iy,iz));
+        //printf("v_n %f %f \n", plasma_source.source_v_x(ix,iy,iz),plasma_source.source_v_x_n(ix,iy,iz));
         
-        plasma_source.source_v_z(ix,iy,iz)=ac_vertex*dataNeutral.rho(ix,iy,iz)*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
-        plasma_source.source_v_z_n(ix,iy,iz)=-ac_vertex*data.rho(ix,iy,iz)*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
+        plasma_source.source_v_y(ix,iy,iz)=ac_vertex*rho_neutral_vertex*(dataNeutral.vy(ix,iy,iz)-data.vy(ix,iy,iz));
+        plasma_source.source_v_y_n(ix,iy,iz)=-ac_vertex*rho_plasma_vertex*(dataNeutral.vy(ix,iy,iz)-data.vy(ix,iy,iz));
+        
+        plasma_source.source_v_z(ix,iy,iz)=ac_vertex*rho_neutral_vertex*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
+        plasma_source.source_v_z_n(ix,iy,iz)=-ac_vertex*rho_plasma_vertex*(dataNeutral.vz(ix,iy,iz)-data.vz(ix,iy,iz));
         }, Range(-1,data.nx), Range(-1,data.ny), Range(-1,data.nz));
         
         
@@ -649,17 +662,6 @@ void PIP<T_EOS>::set_dt_collisional(LARE::LARE3DST<T_EOS>::simulationData &data,
     plasma_source.two_fluid_timestep = 0.1*data.dt_multiplier * 
     portableWrapper::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         //Get Temperatures
-        //SAMS::T_dataType   temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0);
-        //SAMS::T_dataType   temperature_electron = data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
-        //SAMS::T_dataType   temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
-
-        //This needs temeprature dependence
-        //SAMS::T_dataType   ac=data.alpha0*std::sqrt(0.5*(temperature_neutral+temperature_ion));
-        
-        //SAMS::T_dataType  collisional_timestep_plasma=0.3/(plasma_source.ac(ix,iy,iz)*data.rho(ix,iy,iz));
-        //SAMS::T_dataType  collisional_timestep_neutral=0.3/(plasma_source.ac(ix,iy,iz)*dataNeutral.rho(ix,iy,iz));
-        
-        //SAMS::T_dataType  t1 = std::min(collisional_timestep_plasma,collisional_timestep_neutral);
         
         SAMS::T_dataType  t1 = std::min({1.0/std::abs(plasma_source.source_mass(ix,iy,iz)),
                                        1.0/std::abs(plasma_source.source_mass_n(ix,iy,iz)),
@@ -673,12 +675,6 @@ void PIP<T_EOS>::set_dt_collisional(LARE::LARE3DST<T_EOS>::simulationData &data,
                                        1.0/std::abs(plasma_source.source_energy_n(ix,iy,iz))
                                        });
         
-        //printf("ix,iy,iz, t1 :  %li %li %li %f %f \n",ix,iy,iz,collisional_timestep_plasma,plasma_ir_source.ac(ix,iy,iz));
-        //if (collisional_timestep_plasma < collisional_timestep_neutral){
-        //    t1=collisional_timestep_plasma;
-        //} else{
-        //    t1=collisional_timestep_neutral;
-        //}
                 return t1;
     }, LAMBDA(SAMS::T_dataType  &a, const SAMS::T_dataType  &b) {
         a=portableWrapper::min(a, b);

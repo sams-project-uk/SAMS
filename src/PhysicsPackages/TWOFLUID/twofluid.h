@@ -70,7 +70,7 @@ namespace TWOFLUID
        
         //Coupling physics
         bool collisions=true;
-        bool ion_rec_empirical=true;
+        bool ion_rec_empirical=false;
         bool ion_rec_nlevel=false;
     };
  
@@ -108,6 +108,10 @@ namespace TWOFLUID
             void beforeStartOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 get_ac(data,dataNeutral,plasma_source); //These might not be needed
                 get_two_fluid_source(data,dataNeutral,plasma_source);
+                //apply_two_fluid_source(data,dataNeutral,plasma_source);
+            };
+            
+            void applySourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 apply_two_fluid_source(data,dataNeutral,plasma_source);
             };
 
@@ -118,8 +122,8 @@ namespace TWOFLUID
             };
 
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
-                get_ac(data,dataNeutral,plasma_source);
-                get_two_fluid_source(data,dataNeutral,plasma_source);
+                //get_ac(data,dataNeutral,plasma_source);
+                //get_two_fluid_source(data,dataNeutral,plasma_source);
                 set_dt_collisional(data,dataNeutral,plasma_source);
                 printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
                 //set_dt(data);
