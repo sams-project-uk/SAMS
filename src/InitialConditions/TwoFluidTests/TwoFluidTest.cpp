@@ -38,8 +38,8 @@ namespace examples
             data.ny = 2;
             data.nz = 2;
 
-            data.x_min = -3000.5;
-            data.x_max = 3000.5;
+            data.x_min = -10000.0;
+            data.x_max = 10000.0;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;
@@ -57,12 +57,12 @@ namespace examples
             dataNeutral.visc2 = data.visc2;
 
             // Ratio of specific heat capacities
-            data.gas_gamma = 1.4;
+            data.gas_gamma = 5.0/3.0;
             // Ratio of specific heat capacities
             dataNeutral.gas_gamma = data.gas_gamma;
 
             // Average mass of an ion in proton masses
-            data.mf = 1.2;
+            data.mf = 1.0;
             
             //Run with normalised mu0
             data.mu0 = 1.0;
@@ -292,6 +292,9 @@ namespace examples
                 LARE::T_dataType xi_p=1.0-xi_n;
                 LARE::T_dataType f_p_p=2.0*xi_p/(xi_n+2.0*xi_p);
                 LARE::T_dataType f_p_n=xi_n/(xi_n+2.0*xi_p);
+
+		LARE::T_dataType beta=1.0;
+		LARE::T_dataType B0=1.0*std::sqrt(2.0*1.0/beta); //B^2=2P/beta
                 
                 printf("neutral fraction=%f \n",xi_n);
                 
@@ -304,8 +307,8 @@ namespace examples
                         {
                             rho(ix, iy, iz) = 1.0*(1.0-xi_n);
                             pressure = 1.0*f_p_p;
-                            bx(ix, iy, iz)=0.75;
-                            by(ix, iy, iz)=1.0;
+                            bx(ix, iy, iz)=B0*0.3;
+                            by(ix, iy, iz)=B0;
                             rho_n(ix, iy, iz) = 1.0*xi_n;
                             pressure_n = 1.0*f_p_n;
                         }
@@ -313,8 +316,8 @@ namespace examples
                         {
                             rho(ix, iy, iz) = 1.0*(1.0-xi_n);
                             pressure = 1.0*f_p_p;
-                            bx(ix, iy, iz)=0.75;
-                            by(ix, iy, iz)=-1.0;
+                            bx(ix, iy, iz)=B0*0.3;
+                            by(ix, iy, iz)=-B0;
                             rho_n(ix, iy, iz) = 1.0*xi_n;
                             pressure_n = 1.0*f_p_n;
                         }
