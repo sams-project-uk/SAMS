@@ -9,7 +9,7 @@
     typedef int MPI_Datatype;
     inline int MPI_DATATYPE_NULL = 0;
 
-    typedef size_t MPI_Aint;
+    typedef long MPI_Aint;
     typedef int MPI_Fint;
 
     inline int MPI_ORDER_C = 0;
