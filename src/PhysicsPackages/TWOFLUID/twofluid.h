@@ -177,7 +177,7 @@ namespace TWOFLUID
                 //get_ac(data,dataNeutral,plasma_source);
                 //get_two_fluid_source(data,dataNeutral,plasma_source);
                 set_dt_collisional(data,dataNeutral,plasma_source);
-                printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
+                //printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
                 //set_dt(data);
                 timeData.dt = plasma_source.two_fluid_timestep<timeData.dt ? plasma_source.two_fluid_timestep : timeData.dt;
                 if (timeData.time<=1.0e-6) {
