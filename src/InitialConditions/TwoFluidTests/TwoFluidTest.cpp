@@ -31,15 +31,15 @@ namespace examples
         void TwoFluidTest::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral)
         {
 
-            data.t_end = 1000.0;
+            data.t_end = 1.0;
             data.dt_snapshots = data.t_end / 100;
 
-            data.nx = 16384;
+            data.nx = 1024;
             data.ny = 2;
             data.nz = 2;
 
-            data.x_min = -10000.0;
-            data.x_max = 10000.0;
+            data.x_min = -5.0;
+            data.x_max = 5.0;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;
@@ -92,6 +92,8 @@ namespace examples
             axisReg.setDomain("X", data.nx, data.x_min, data.x_max);
             axisReg.setDomain("Y", data.ny, data.y_min, data.y_max);
             axisReg.setDomain("Z", data.nz, data.z_min, data.z_max);
+            
+            axisReg.setDomainValues("species", 7, [](COUNT_TYPE i){ return i; });
         }
 
         /**
@@ -287,8 +289,8 @@ namespace examples
                 //initial equilibrium fractions
                 LARE::T_dataType ioneq=(2.6e-19/std::sqrt(Te_0))/(2.91e-14/(0.232+13.6/Te_0)*std::pow(13.6/Te_0,0.39)*std::exp(-13.6/Te_0));
                 
-                LARE::T_dataType xi_n=0.95;
-                //LARE::T_dataType xi_n=ioneq/(ioneq+1.0);
+                //LARE::T_dataType xi_n=0.95;
+                LARE::T_dataType xi_n=ioneq/(ioneq+1.0);
                 LARE::T_dataType xi_p=1.0-xi_n;
                 LARE::T_dataType f_p_p=2.0*xi_p/(xi_n+2.0*xi_p);
                 LARE::T_dataType f_p_n=xi_n/(xi_n+2.0*xi_p);

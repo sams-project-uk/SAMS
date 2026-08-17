@@ -136,6 +136,10 @@ namespace TWOFLUID
         
         getHostVersion(data, manager, data.ion_loss, host);
         writer.writeData("ion_loss", host.data());
+        
+        //This doesnt seem to work yet so ignoring for now
+        //std::string t0 = std::to_string(data.T0);
+        //writer.setKeyValue("T0", t0.c_str());
 
     }
 
