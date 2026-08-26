@@ -519,7 +519,7 @@ namespace SAMS
             std::stringstream ss;
             ss << std::setw(5) << std::setfill('0') << outputCount;
 
-            std::string Name = "diagnostics_" + ss.str();
+            std::string Name = "SAMS_testdata/diagnostics_" + ss.str();
             writer.openFile(Name.c_str());
             registerOutputMeshes(writer);
             registerOutputVariables(writer);

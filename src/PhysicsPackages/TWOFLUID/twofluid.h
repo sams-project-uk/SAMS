@@ -40,12 +40,14 @@ namespace TWOFLUID
         LARE::volumeArray source_v_z; // velocity source term
         LARE::volumeArray source_energy; // energy source term
         LARE::volumeArray source_electron_energy; // energy source term
+        LARE::volumeArray source_kinetic_energy; // kinetic energy source term (for diagnostics only)
         
         LARE::volumeArray source_mass_n; // mass source term
         LARE::volumeArray source_v_x_n; // velocity source term
         LARE::volumeArray source_v_y_n; // velocity source term
         LARE::volumeArray source_v_z_n; // velocity source term
         LARE::volumeArray source_energy_n; // energy source term
+        LARE::volumeArray source_kinetic_energy_n; // kinetic energy source term (for diagnostics only)
         
         LARE::volumeArray gm_ion; //ionisation rate
         LARE::volumeArray gm_rec; //recombination rate
@@ -85,7 +87,7 @@ namespace TWOFLUID
        
         //Coupling physics
         bool collisions=true;
-        bool ion_rec_empirical=true;
+        bool ion_rec_empirical=false;
         bool ion_rec_nlevel=false;
         
         bool vertex_rates=false;
@@ -94,7 +96,15 @@ namespace TWOFLUID
         LARE::volumeArray gm_ion_vertex; //
         LARE::volumeArray gm_rec_vertex; // 
         
+        bool check_conservation=false;
         bool check_source=false;
+        
+        bool substepping=true;
+        int substep_iter=0;
+        int substep_max_nsteps=100; // set a maximum number of step. Not done yet
+        SAMS::T_dataType  substep_dt=1.0;
+        SAMS::T_dataType  substep_max_speedup=1000.0; //Maximum substeps. The excess decreases the timestep
+        SAMS::T_dataType  substep_time=0.0; //to make sure that the tiem is correct after the substeps
     };
     
     struct oldData
@@ -153,7 +163,7 @@ namespace TWOFLUID
             
             void getVariables(data_two_fluid_source &plasma_source,oldData &oldData, SAMS::harness &harness){
                 allocate(plasma_source, harness);
-                if (plasma_source.check_source) {allocate_conserved(oldData,harness);}
+                if (plasma_source.check_conservation) {allocate_conserved(oldData,harness);}
             }
             void beforeStartOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 get_ac(data,dataNeutral,plasma_source); //These might not be needed
@@ -161,16 +171,45 @@ namespace TWOFLUID
                 //apply_two_fluid_source(data,dataNeutral,plasma_source);
             };
             
-            void applySourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData){
-                if (plasma_source.check_source) {copyState(data, dataNeutral, oldData);};
-                apply_two_fluid_source(data,dataNeutral,plasma_source);
+            void applySourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
+                if (plasma_source.check_conservation) {copyState(data, dataNeutral, oldData);};
+                if (plasma_source.check_source) {checkSourceConservation(data,dataNeutral,plasma_source);};
+                if ((plasma_source.substepping) && (plasma_source.two_fluid_timestep<timeData.dt)){
+                    //set up the substepping for the two-fluid routines
+                    int n_substeps=std::ceil(0.5*timeData.dt/plasma_source.two_fluid_timestep);
+                    plasma_source.substep_dt=0.5*timeData.dt/n_substeps; //0.5 from strang split. Not sure if needed elsewhere
+                    printf("Beginning subcycle, n, dt, dt_plasma, dt_sub %li, %.12e, %.12e, %.12e \n",n_substeps,timeData.dt, plasma_source.two_fluid_timestep,plasma_source.substep_dt);
+                    for (int i = 0; i < n_substeps; i++) {
+                        get_ac(data,dataNeutral,plasma_source);
+                        get_two_fluid_source(data,dataNeutral,plasma_source);
+                        apply_two_fluid_source(data,dataNeutral,plasma_source);
+                    }
+                } else {
+                    //Explicit time integration
+                    plasma_source.substep_dt=0.5*data.dt;//0.5 from strang split.
+                    apply_two_fluid_source(data,dataNeutral,plasma_source);
+                }
             };
 
-            void afterEndOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData){
-                get_ac(data,dataNeutral,plasma_source);
-                get_two_fluid_source(data,dataNeutral,plasma_source);
-                apply_two_fluid_source(data,dataNeutral,plasma_source); 
-                if (plasma_source.check_source) {checkSourceConservation(data,dataNeutral,oldData);};
+            void afterEndOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
+                if ((plasma_source.substepping) && (plasma_source.two_fluid_timestep<timeData.dt)){
+                    //set up the substepping for the two-fluid routines
+                    int n_substeps=std::ceil(0.5*timeData.dt/plasma_source.two_fluid_timestep);
+                    plasma_source.substep_dt=0.5*timeData.dt/n_substeps; //0.5 from strang split. Not sure if needed elsewhere
+                    printf("Second subcycle, n, dt, dt_plasma, dt_sub %li, %.12e, %.12e, %.12e \n",n_substeps,timeData.dt, plasma_source.two_fluid_timestep,plasma_source.substep_dt);
+                    for (int i = 0; i < n_substeps; i++) {
+                        get_ac(data,dataNeutral,plasma_source);
+                        get_two_fluid_source(data,dataNeutral,plasma_source);
+                        apply_two_fluid_source(data,dataNeutral,plasma_source);
+                    }
+                } else {
+                    //Explicit time integration
+                    plasma_source.substep_dt=0.5*data.dt;//0.5 from strang split.
+                    get_ac(data,dataNeutral,plasma_source);
+                    get_two_fluid_source(data,dataNeutral,plasma_source);
+                    apply_two_fluid_source(data,dataNeutral,plasma_source);
+                }
+                if (plasma_source.check_conservation) {checkConservation(data,dataNeutral,oldData);};
             };
 
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
@@ -179,7 +218,15 @@ namespace TWOFLUID
                 set_dt_collisional(data,dataNeutral,plasma_source);
                 //printf("two_fluid timestep = %f \n",plasma_source.two_fluid_timestep);
                 //set_dt(data);
-                timeData.dt = plasma_source.two_fluid_timestep<timeData.dt ? plasma_source.two_fluid_timestep : timeData.dt;
+                if ((plasma_source.substepping) && (plasma_source.two_fluid_timestep<timeData.dt)){
+                    //set up the substepping for the two-fluid routines
+                    timeData.dt = plasma_source.two_fluid_timestep*plasma_source.substep_max_speedup<timeData.dt ? plasma_source.two_fluid_timestep*plasma_source.substep_max_speedup : timeData.dt;
+                    //int n_substeps=std::ceil(timeData.dt/plasma_source.two_fluid_timestep);
+                    //plasma_source.substep_dt=timeData.dt/n_substeps;
+                    //IS THIS ALWAYS CALCULATED AFTER THE FLUID TIMESTEP?
+                } else {
+                    timeData.dt = plasma_source.two_fluid_timestep<timeData.dt ? plasma_source.two_fluid_timestep : timeData.dt;
+                }
                 if (timeData.time<=1.0e-6) {
                     timeData.dt = 1.0e-8<timeData.dt ? 1.0e-8 : timeData.dt;
                 }
@@ -222,6 +269,10 @@ namespace TWOFLUID
         void set_reference_recombination(LARE::LARE3DST<T_EOS>::simulationData &data,data_two_fluid_source &plasma_source);
 
         void checkSourceConservation(
+                LARE::LARE3DST<T_EOS>::simulationData &data,
+                LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+                data_two_fluid_source &plasma_source);
+        void checkConservation(
                 LARE::LARE3DST<T_EOS>::simulationData &data,
                 LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
                 oldData &oldData);

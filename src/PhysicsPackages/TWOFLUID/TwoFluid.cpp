@@ -301,23 +301,23 @@ namespace TWOFLUID
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 //Note that the factor of 0.5 in these is due to Strang splitting
                 //Mass exchange terms
-                data.rho(ix,iy,iz)+=0.5*data.dt*plasma_source.source_mass(ix,iy,iz);
-                dataNeutral.rho(ix,iy,iz)+=0.5*data.dt*plasma_source.source_mass_n(ix,iy,iz);
+                data.rho(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_mass(ix,iy,iz);
+                dataNeutral.rho(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_mass_n(ix,iy,iz);
                 
                 //Apply the velocity exchange terms
-                data.vx(ix,iy,iz)       +=0.5*data.dt*plasma_source.source_v_x(ix,iy,iz);
-                dataNeutral.vx(ix,iy,iz)+=0.5*data.dt*plasma_source.source_v_x_n(ix,iy,iz);
+                data.vx(ix,iy,iz)       +=plasma_source.substep_dt*plasma_source.source_v_x(ix,iy,iz);
+                dataNeutral.vx(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_v_x_n(ix,iy,iz);
                 
-                data.vy(ix,iy,iz)       +=0.5*data.dt*plasma_source.source_v_y(ix,iy,iz);
-                dataNeutral.vy(ix,iy,iz)+=0.5*data.dt*plasma_source.source_v_y_n(ix,iy,iz);
+                data.vy(ix,iy,iz)       +=plasma_source.substep_dt*plasma_source.source_v_y(ix,iy,iz);
+                dataNeutral.vy(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_v_y_n(ix,iy,iz);
                 
-                data.vz(ix,iy,iz)       +=0.5*data.dt*plasma_source.source_v_z(ix,iy,iz);
-                dataNeutral.vz(ix,iy,iz)+=0.5*data.dt*plasma_source.source_v_z_n(ix,iy,iz);
+                data.vz(ix,iy,iz)       +=plasma_source.substep_dt*plasma_source.source_v_z(ix,iy,iz);
+                dataNeutral.vz(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_v_z_n(ix,iy,iz);
                 
                 //Energy source terms - the 3/2 here needs fixing
-                data.energy_ion(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy(ix,iy,iz);
+                data.energy_ion(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy(ix,iy,iz);
                 //data.energy_electron(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy(ix,iy,iz);
-                dataNeutral.energy(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy_n(ix,iy,iz);                 
+                dataNeutral.energy(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy_n(ix,iy,iz);                 
             }, Range(-1,data.nx), Range(-1,data.ny), Range(-1,data.nz));
         }
         
@@ -842,9 +842,9 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
         SAMS::T_dataType  v_D_x  =  data.vx(ix,iy,iz) - dataNeutral.vx(ix,iy,iz); //Drift velocity in the x-direction
         SAMS::T_dataType  v_D_y  =  data.vy(ix,iy,iz) - dataNeutral.vy(ix,iy,iz); //Drift velocity in the y-direction
         SAMS::T_dataType  v_D_z  =  data.vz(ix,iy,iz) - dataNeutral.vz(ix,iy,iz); //Drift velocity in the z-direction
-        plasma_source.source_v_x(ix,iy,iz) += -Gm_ion_vertex*rho_neutral_vertex*v_D_x/rho_plasma_vertex;
-        plasma_source.source_v_y(ix,iy,iz) += -Gm_ion_vertex*rho_neutral_vertex*v_D_y/rho_plasma_vertex;
-        plasma_source.source_v_z(ix,iy,iz) += -Gm_ion_vertex*rho_neutral_vertex*v_D_z/rho_plasma_vertex;
+        plasma_source.source_v_x(ix,iy,iz) -= Gm_ion_vertex*rho_neutral_vertex*v_D_x/rho_plasma_vertex;
+        plasma_source.source_v_y(ix,iy,iz) -= Gm_ion_vertex*rho_neutral_vertex*v_D_y/rho_plasma_vertex;
+        plasma_source.source_v_z(ix,iy,iz) -= Gm_ion_vertex*rho_neutral_vertex*v_D_z/rho_plasma_vertex;
         plasma_source.source_v_x_n(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_x/rho_neutral_vertex;
         plasma_source.source_v_y_n(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_y/rho_neutral_vertex;
         plasma_source.source_v_z_n(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_z/rho_neutral_vertex;
@@ -1357,7 +1357,7 @@ static LARE::T_dataType loglinear_interp(LARE::T_dataType v0, LARE::T_dataType v
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 template<typename T_EOS>
-void PIP<T_EOS>::checkSourceConservation(
+void PIP<T_EOS>::checkConservation(
         LARE::LARE3DST<T_EOS>::simulationData &data,
         LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
         oldData &dataOld)
@@ -1707,4 +1707,338 @@ void PIP<T_EOS>::checkSourceConservation(
 
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+template<typename T_EOS>
+void PIP<T_EOS>::checkSourceConservation(
+        LARE::LARE3DST<T_EOS>::simulationData &data,
+        LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+        data_two_fluid_source &plasma_source)
+{
+    using Range = portableWrapper::Range;
+
+    const int nx = data.nx;
+    const int ny = data.ny;
+    const int nz = data.nz;
+
+    SAMS::T_dataType total_mass_error = 0.0;
+    SAMS::T_dataType total_momentum_x_error = 0.0;
+    SAMS::T_dataType total_momentum_y_error = 0.0;
+    SAMS::T_dataType total_momentum_z_error = 0.0;
+    SAMS::T_dataType total_energy_error = 0.0;
+    SAMS::T_dataType total_expected_thermal = 0.0;
+
+    //
+    // Use simple host arrays.
+    //
+    int ncell = (nx + 1) * (ny + 1) * (nz + 1);
+
+    SAMS::T_dataType *mass_error =
+        new SAMS::T_dataType[ncell];
+
+    SAMS::T_dataType *momentum_x_error =
+        new SAMS::T_dataType[ncell];
+
+    SAMS::T_dataType *momentum_y_error =
+        new SAMS::T_dataType[ncell];
+
+    SAMS::T_dataType *momentum_z_error =
+        new SAMS::T_dataType[ncell];
+        
+    SAMS::T_dataType *thermal_source =
+        new SAMS::T_dataType[ncell];
+    
+    SAMS::T_dataType *kinetic_source =
+        new SAMS::T_dataType[ncell];
+        
+    SAMS::T_dataType *expected_thermal =
+        new SAMS::T_dataType[ncell];
+
+
+    //
+    // Calculate source conservation error at every cell.
+    //
+    portableWrapper::applyKernel(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz)
+        {
+            int index =
+                  ix
+                + (nx + 1) *
+                  (
+                      iy
+                    + (ny + 1) * iz
+                  );
+
+
+            //
+            // Mass source
+            //
+            mass_error[index] =
+                  plasma_source.source_mass(ix,iy,iz)
+                + plasma_source.source_mass_n(ix,iy,iz);
+
+            // Get rho at the vertex
+            SAMS::T_dataType rho_plasma_vertex =
+                  0.125 *
+                  (
+                      data.rho(ix  ,iy  ,iz  )
+                    + data.rho(ix+1,iy  ,iz  )
+                    + data.rho(ix  ,iy+1,iz  )
+                    + data.rho(ix+1,iy+1,iz  )
+                    + data.rho(ix  ,iy  ,iz+1)
+                    + data.rho(ix+1,iy  ,iz+1)
+                    + data.rho(ix  ,iy+1,iz+1)
+                    + data.rho(ix+1,iy+1,iz+1)
+                  );
+
+            SAMS::T_dataType rho_neutral_vertex =
+                  0.125 *
+                  (
+                      dataNeutral.rho(ix  ,iy  ,iz  )
+                    + dataNeutral.rho(ix+1,iy  ,iz  )
+                    + dataNeutral.rho(ix  ,iy+1,iz  )
+                    + dataNeutral.rho(ix+1,iy+1,iz  )
+                    + dataNeutral.rho(ix  ,iy  ,iz+1)
+                    + dataNeutral.rho(ix+1,iy  ,iz+1)
+                    + dataNeutral.rho(ix  ,iy+1,iz+1)
+                    + dataNeutral.rho(ix+1,iy+1,iz+1)
+                  );
+
+            //
+            // Momentum source
+            //
+            momentum_x_error[index] =
+                  rho_plasma_vertex
+                * plasma_source.source_v_x(ix,iy,iz)
+                +
+                  rho_neutral_vertex
+                * plasma_source.source_v_x_n(ix,iy,iz);
+
+
+            momentum_y_error[index] =
+                  rho_plasma_vertex
+                * plasma_source.source_v_y(ix,iy,iz)
+                +
+                  rho_neutral_vertex
+                * plasma_source.source_v_y_n(ix,iy,iz);
+
+
+            momentum_z_error[index] =
+                  rho_plasma_vertex
+                * plasma_source.source_v_z(ix,iy,iz)
+                +
+                  rho_neutral_vertex
+                * plasma_source.source_v_z_n(ix,iy,iz);
+    
+            //
+            // Thermal energy 
+            //
+            SAMS::T_dataType thermal_p =
+                data.rho(ix,iy,iz)
+                * plasma_source.source_energy(ix,iy,iz);
+
+            SAMS::T_dataType thermal_n =
+                dataNeutral.rho(ix,iy,iz)
+                * plasma_source.source_energy_n(ix,iy,iz);
+
+            thermal_source[index] =
+                thermal_p + thermal_n;
+                
+            //
+            // Kinetic energy
+            //
+            kinetic_source[index] =
+                data.rho(ix,iy,iz)
+                    * (
+                          data.vx(ix,iy,iz) * plasma_source.source_v_x(ix,iy,iz)
+                        + data.vy(ix,iy,iz) * plasma_source.source_v_y(ix,iy,iz)
+                        + data.vz(ix,iy,iz) * plasma_source.source_v_z(ix,iy,iz)
+                      )
+                +
+                dataNeutral.rho(ix,iy,iz)
+                    * (
+                          dataNeutral.vx(ix,iy,iz) * plasma_source.source_v_x_n(ix,iy,iz)
+                        + dataNeutral.vy(ix,iy,iz) * plasma_source.source_v_y_n(ix,iy,iz)
+                        + dataNeutral.vz(ix,iy,iz) * plasma_source.source_v_z_n(ix,iy,iz)
+                      );
+                      
+            //
+            // expected thermal energy
+            //
+            //
+            // Get cell-centred velocities
+            //
+            SAMS::T_dataType vx_centre =
+                (
+                    data.vx(ix,iy,iz)
+                  + data.vx(ix,iy-1,iz)
+                  + data.vx(ix,iy,iz-1)
+                  + data.vx(ix,iy-1,iz-1)
+                  + data.vx(ix-1,iy,iz)
+                  + data.vx(ix-1,iy-1,iz)
+                  + data.vx(ix-1,iy,iz-1)
+                  + data.vx(ix-1,iy-1,iz-1)
+                ) * 0.125;
+
+            SAMS::T_dataType vy_centre =
+                (
+                    data.vy(ix,iy,iz)
+                  + data.vy(ix,iy-1,iz)
+                  + data.vy(ix,iy,iz-1)
+                  + data.vy(ix,iy-1,iz-1)
+                  + data.vy(ix-1,iy,iz)
+                  + data.vy(ix-1,iy-1,iz)
+                  + data.vy(ix-1,iy,iz-1)
+                  + data.vy(ix-1,iy-1,iz-1)
+                ) * 0.125;
+
+            SAMS::T_dataType vz_centre =
+                (
+                    data.vz(ix,iy,iz)
+                  + data.vz(ix,iy-1,iz)
+                  + data.vz(ix,iy,iz-1)
+                  + data.vz(ix,iy-1,iz-1)
+                  + data.vz(ix-1,iy,iz)
+                  + data.vz(ix-1,iy-1,iz)
+                  + data.vz(ix-1,iy,iz-1)
+                  + data.vz(ix-1,iy-1,iz-1)
+                ) * 0.125;
+
+            SAMS::T_dataType vx_n_centre =
+                (
+                    dataNeutral.vx(ix,iy,iz)
+                  + dataNeutral.vx(ix,iy-1,iz)
+                  + dataNeutral.vx(ix,iy,iz-1)
+                  + dataNeutral.vx(ix,iy-1,iz-1)
+                  + dataNeutral.vx(ix-1,iy,iz)
+                  + dataNeutral.vx(ix-1,iy-1,iz)
+                  + dataNeutral.vx(ix-1,iy,iz-1)
+                  + dataNeutral.vx(ix-1,iy-1,iz-1)
+                ) * 0.125;
+
+            SAMS::T_dataType vy_n_centre =
+                (
+                    dataNeutral.vy(ix,iy,iz)
+                  + dataNeutral.vy(ix,iy-1,iz)
+                  + dataNeutral.vy(ix,iy,iz-1)
+                  + dataNeutral.vy(ix,iy-1,iz-1)
+                  + dataNeutral.vy(ix-1,iy,iz)
+                  + dataNeutral.vy(ix-1,iy-1,iz)
+                  + dataNeutral.vy(ix-1,iy,iz-1)
+                  + dataNeutral.vy(ix-1,iy-1,iz-1)
+                ) * 0.125;
+
+            SAMS::T_dataType vz_n_centre =
+                (
+                    dataNeutral.vz(ix,iy,iz)
+                  + dataNeutral.vz(ix,iy-1,iz)
+                  + dataNeutral.vz(ix,iy,iz-1)
+                  + dataNeutral.vz(ix,iy-1,iz-1)
+                  + dataNeutral.vz(ix-1,iy,iz)
+                  + dataNeutral.vz(ix-1,iy-1,iz)
+                  + dataNeutral.vz(ix-1,iy,iz-1)
+                  + dataNeutral.vz(ix-1,iy-1,iz-1)
+                ) * 0.125;
+
+            SAMS::T_dataType dvx = vx_n_centre - vx_centre;
+            SAMS::T_dataType dvy = vy_n_centre - vy_centre;
+            SAMS::T_dataType dvz = vz_n_centre - vz_centre;
+
+            SAMS::T_dataType vd2 = dvx*dvx + dvy*dvy + dvz*dvz;
+            
+            expected_thermal[index] =
+                plasma_source.ac(ix,iy,iz)
+                * data.rho(ix,iy,iz)
+                * dataNeutral.rho(ix,iy,iz)
+                * vd2;
+        },
+        Range(0,nx),
+        Range(0,ny),
+        Range(0,nz)
+    );
+
+
+    //
+    // Reduction.
+    //
+    for (int ix = 0; ix < nx; ix++)
+    {
+        for (int iy = 0; iy < ny; iy++)
+        {
+            for (int iz = 0; iz < nz; iz++)
+            {
+                int index =
+                      ix
+                    + (nx + 1) *
+                      (
+                          iy
+                        + (ny + 1) * iz
+                      );
+
+
+                total_mass_error +=
+                    mass_error[index];
+
+                total_momentum_x_error +=
+                    momentum_x_error[index];
+
+                total_momentum_y_error +=
+                    momentum_y_error[index];
+
+                total_momentum_z_error +=
+                    momentum_z_error[index];
+                    
+                total_expected_thermal +=
+                    expected_thermal[index];
+                    
+                total_energy_error +=
+                //    thermal_source[index]+kinetic_source[index];
+                    thermal_source[index]-expected_thermal[index];
+            }
+        }
+    }
+
+
+    printf("\nSource conservation diagnostic\n");
+    printf("--------------------------------\n");
+    if ((plasma_source.ion_rec_empirical) || (plasma_source.ion_rec_nlevel)){
+        printf("\nSource terms are complicated when ionisation is on\n");
+        printf("\nErrors are because of the missing terms from drho/dt type terms\n");
+        printf("--------------------------------\n");
+    }
+
+    printf(
+        "Mass            : %.12e\n",
+        total_mass_error
+    );
+
+    printf(
+        "Momentum x      : %.12e\n",
+        total_momentum_x_error
+    );
+
+    printf(
+        "Momentum y      : %.12e\n",
+        total_momentum_y_error
+    );
+
+    printf(
+        "Momentum z      : %.12e\n",
+        total_momentum_z_error
+    );
+    
+    printf(
+        "Energy error      : %.12e\n",
+        total_energy_error
+    );
+
+    printf("--------------------------------\n");
+
+
+    delete[] mass_error;
+    delete[] momentum_x_error;
+    delete[] momentum_y_error;
+    delete[] momentum_z_error;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////
 }

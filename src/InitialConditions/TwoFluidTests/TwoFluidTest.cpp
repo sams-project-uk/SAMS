@@ -31,15 +31,15 @@ namespace examples
         void TwoFluidTest::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral)
         {
 
-            data.t_end = 10.0;
+            data.t_end = 10000.0;
             data.dt_snapshots = data.t_end / 1000;
 
-            data.nx = 4096;
+            data.nx = 16384;
             data.ny = 2;
             data.nz = 2;
 
-            data.x_min = -1000.0;
-            data.x_max = 1000.0;
+            data.x_min = -100000.0;
+            data.x_max = 100000.0;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;
@@ -49,7 +49,7 @@ namespace examples
             // Geometry options: cartesian, cylindrical, spherical
             data.geometry = LARE::geometryType::Cartesian;
             // Shock viscosity coefficients
-            data.visc1 = 0.1;
+            data.visc1 = 0.8;
             data.visc2 = 1.0;
             // Geometry options: cartesian, cylindrical, spherical
             // Shock viscosity coefficients
@@ -295,7 +295,7 @@ namespace examples
                 LARE::T_dataType f_p_p=2.0*xi_p/(xi_n+2.0*xi_p);
                 LARE::T_dataType f_p_n=xi_n/(xi_n+2.0*xi_p);
 
-		LARE::T_dataType beta=1.0;
+		LARE::T_dataType beta=0.1;
 		LARE::T_dataType B0=1.0*std::sqrt(2.0*1.0/beta); //B^2=2P/beta
                 
                 printf("neutral fraction=%f \n",xi_n);
