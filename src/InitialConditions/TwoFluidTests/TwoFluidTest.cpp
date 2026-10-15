@@ -34,12 +34,12 @@ namespace examples
             data.t_end = 1.0;
             data.dt_snapshots = data.t_end / 10;
 
-            data.nx = 128;
+            data.nx = 1024;
             data.ny = 2;
             data.nz = 2;
 
-            data.x_min = -10.0;
-            data.x_max = 10.0;
+            data.x_min = -100.0;
+            data.x_max = 100.0;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;

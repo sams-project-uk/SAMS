@@ -29,8 +29,14 @@ namespace SAMS_PETSC {
         double time_reached = 0.0;           // internal time reached (target is dt)
         double last_dt = 0.0;                // last internal step size
         long long domain_rejects = 0;        // stages refused by the validity check
-        long long domain_bad_index = -1;     // first offending entry of the last refused stage
+        // The following describe the FIRST stage refused by the validity check in this solve:
+        long long domain_bad_index = -1;     // first offending entry
         double domain_bad_value = 0.0;
+        long long domain_bad_count = 0;      // number of checked cells that failed
+        double domain_vec_norm = 0.0;        // 2-norm of the whole vector that was checked
+        double domain_c0_min = 0.0;          // min / max of component 0 over the checked cells
+        double domain_c0_max = 0.0;
+        double domain_first_dt = 0.0;        // internal step size when it was first refused
         long long rhs_nonfinite = 0;         // right hand side evaluations containing NaN/Inf
         long long rhs_bad_index = -1;        // first non-finite entry
     };

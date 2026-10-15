@@ -90,7 +90,7 @@ namespace TWOFLUID
        
         //Coupling physics
         bool collisions=true;
-        bool ion_rec_empirical=false;
+        bool ion_rec_empirical=true;
         bool ion_rec_nlevel=false;
         
         bool vertex_rates=false;
@@ -102,7 +102,7 @@ namespace TWOFLUID
         bool check_conservation=false;
         bool check_source=false;
         
-	    bool implicit=false; // flag for using the implicit solvers from PETSc
+	    bool implicit=true; // flag for using the implicit solvers from PETSc
         SAMS::T_dataType implicit_rtol=1.0e-6;  // relative tolerance of the PETSc time stepper (command line -ts_rtol overrides)
         SAMS::T_dataType implicit_atol=1.0e-9;  // absolute tolerance of the PETSc time stepper (command line -ts_atol overrides)
         bool implicit_limit_dt=false;           // if false the explicit collisional dt limit is not applied when implicit=true
@@ -114,7 +114,7 @@ namespace TWOFLUID
         SAMS::T_dataType  substep_max_speedup=1000.0; //Maximum substeps. The excess decreases the timestep
         SAMS::T_dataType  substep_time=0.0; //to make sure that the tiem is correct after the substeps
         
-        bool debug_twofluid_steps=true; //print statements for where the code has gotten to
+        bool debug_twofluid_steps=false; //print statements for where the code has gotten to
     };
     
     struct oldData
@@ -222,10 +222,10 @@ namespace TWOFLUID
                 if (plasma_source.check_conservation) {allocate_conserved(oldData,harness);}
             }
             void beforeStartOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
-                printf("beforeStartofTimestep start \n");
+                if (plasma_source.debug_twofluid_steps) {printf("beforeStartofTimestep start \n");}
                 get_ac(data,dataNeutral,plasma_source); //These might not be needed
                 get_two_fluid_source(data,dataNeutral,plasma_source);
-                printf("beforeStartofTimestep end \n");
+                if (plasma_source.debug_twofluid_steps) {printf("beforeStartofTimestep end \n");}
                 //apply_two_fluid_source(data,dataNeutral,plasma_source);
             };
             
@@ -283,7 +283,7 @@ namespace TWOFLUID
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 //get_ac(data,dataNeutral,plasma_source);
                 //get_two_fluid_source(data,dataNeutral,plasma_source);
-                printf("calculateTimestep start \n");
+                if (plasma_source.debug_twofluid_steps) {printf("calculateTimestep start \n");}
                 if (plasma_source.implicit && !plasma_source.implicit_limit_dt) {
                     // The implicit solver is not limited by the stiff exchange timescales;
                     // the accuracy of the source step is controlled by the PETSc adaptive time stepper.
@@ -304,7 +304,7 @@ namespace TWOFLUID
                 if (timeData.time<=1.0e-6) {
                     timeData.dt = 1.0e-8<timeData.dt ? 1.0e-8 : timeData.dt;
                 }
-                printf("calculateTimestep end \n");
+                if (plasma_source.debug_twofluid_steps) {printf("calculateTimestep end \n");}
             };
             void getTimestep(SAMS::timeState &timeData, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral){
                 //data.dt = timeData.dt;

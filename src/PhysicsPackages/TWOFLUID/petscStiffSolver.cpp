@@ -62,9 +62,15 @@ struct StiffSolver::Impl {
     PetscReal dt_hint = 0.0;         // last suggested internal step, first guess of the next solve
 
     // Diagnostics, reset at the start of every solve
+    bool domain_check = true;        // -tf_domain_check 0 disables the validity check
     long long domain_rejects = 0;
     long long domain_bad_index = -1;
     double domain_bad_value = 0.0;
+    long long domain_bad_count = 0;
+    double domain_vec_norm = 0.0;
+    double domain_c0_min = 0.0;
+    double domain_c0_max = 0.0;
+    double domain_first_dt = 0.0;
     long long rhs_nonfinite = 0;
     long long rhs_bad_index = -1;
 
@@ -171,24 +177,48 @@ PetscErrorCode StiffSolver::Impl::Domain(TS ts, PetscReal, Vec U, PetscBool *acc
 
     const PetscScalar *u;
     PetscCall(VecGetArrayRead(U, &u));
-    bool ok = true;
-    for (PetscInt cell = 0; cell < s->ncells && ok; ++cell) {
+    long long bad_count = 0, first_bad_index = -1;
+    double first_bad_value = 0.0;
+    double c0_min = DBL_MAX, c0_max = -DBL_MAX;
+    for (PetscInt cell = 0; cell < s->ncells; ++cell) {
         if (!s->check_cell[cell]) continue;
         const PetscScalar *v = &u[cell * s->stride];
-        for (PetscInt k = 0; k < s->stride && ok; ++k) {
+        c0_min = std::min(c0_min, static_cast<double>(PetscRealPart(v[0])));
+        c0_max = std::max(c0_max, static_cast<double>(PetscRealPart(v[0])));
+        long long bad_index = -1;
+        double bad_value = 0.0;
+        for (PetscInt k = 0; k < s->stride && bad_index < 0; ++k) {
             if (!std::isfinite(static_cast<double>(PetscRealPart(v[k])))) {
-                ok = false;
-                s->domain_bad_index = static_cast<long long>(cell) * s->stride + k;
-                s->domain_bad_value = static_cast<double>(PetscRealPart(v[k]));
+                bad_index = static_cast<long long>(cell) * s->stride + k;
+                bad_value = static_cast<double>(PetscRealPart(v[k]));
             }
         }
         for (int comp : s->positive) {
-            if (ok && !(PetscRealPart(v[comp]) > 0.0)) {
-                ok = false;
-                s->domain_bad_index = static_cast<long long>(cell) * s->stride + comp;
-                s->domain_bad_value = static_cast<double>(PetscRealPart(v[comp]));
+            if (bad_index < 0 && !(PetscRealPart(v[comp]) > 0.0)) {
+                bad_index = static_cast<long long>(cell) * s->stride + comp;
+                bad_value = static_cast<double>(PetscRealPart(v[comp]));
             }
         }
+        if (bad_index >= 0) {
+            if (bad_count == 0) { first_bad_index = bad_index; first_bad_value = bad_value; }
+            ++bad_count;
+        }
+    }
+    const bool ok = (bad_count == 0);
+    if (!ok && s->domain_rejects == 0) {
+        // remember the first refused stage of this solve
+        double sumsq = 0.0;
+        const size_t n = static_cast<size_t>(s->ncells) * s->stride;
+        for (size_t i = 0; i < n; ++i) sumsq += static_cast<double>(PetscRealPart(u[i])) * static_cast<double>(PetscRealPart(u[i]));
+        PetscReal dt_now;
+        PetscCall(TSGetTimeStep(ts, &dt_now));
+        s->domain_bad_index = first_bad_index;
+        s->domain_bad_value = first_bad_value;
+        s->domain_bad_count = bad_count;
+        s->domain_vec_norm = std::sqrt(sumsq);
+        s->domain_c0_min = c0_min;
+        s->domain_c0_max = c0_max;
+        s->domain_first_dt = static_cast<double>(dt_now);
     }
     PetscCall(VecRestoreArrayRead(U, &u));
     if (!ok) ++s->domain_rejects;
@@ -242,7 +272,17 @@ StiffSolver::StiffSolver(std::int64_t ncells, int stride,
     SS_ABORT(TSRosWSetType(s.ts, TSROSWRA34PW2));
     SS_ABORT(TSSetRHSFunction(s.ts, nullptr, Impl::Rhs, impl));
     SS_ABORT(TSSetRHSJacobian(s.ts, s.jac, s.jac, Impl::Jac, impl));
-    SS_ABORT(TSSetFunctionDomainError(s.ts, Impl::Domain));
+    {
+        // PETSc's validity hook is OFF by default: for TSROSW the vector it receives is not
+        // guaranteed to be the stage state (it can be the stage increment, which is legitimately
+        // zero or negative), so a positivity test on it wrongly rejects every step. SAMS validates
+        // the starting state and the final solution itself instead.
+        // PETSC_OPTIONS="-tf_domain_check 1" turns it on (for experiments / diagnostics).
+        PetscBool dc = PETSC_FALSE;
+        SS_ABORT(PetscOptionsGetBool(nullptr, nullptr, "-tf_domain_check", &dc, nullptr));
+        s.domain_check = (dc == PETSC_TRUE);
+        if (s.domain_check) SS_ABORT(TSSetFunctionDomainError(s.ts, Impl::Domain));
+    }
     SS_ABORT(TSSetExactFinalTime(s.ts, TS_EXACTFINALTIME_MATCHSTEP));
     SS_ABORT(TSSetMaxSteps(s.ts, 100000000));
     SS_ABORT(TSSetErrorIfStepFails(s.ts, PETSC_FALSE)); // report failures through SolveInfo instead of a PETSc error
@@ -296,6 +336,10 @@ bool StiffSolver::solve(double *u, double dt, SolveInfo &info) {
     s.domain_rejects = 0;
     s.domain_bad_index = -1;
     s.domain_bad_value = 0.0;
+    s.domain_bad_count = 0;
+    s.domain_vec_norm = 0.0;
+    s.domain_c0_min = s.domain_c0_max = 0.0;
+    s.domain_first_dt = 0.0;
     s.rhs_nonfinite = 0;
     s.rhs_bad_index = -1;
 
@@ -324,6 +368,11 @@ bool StiffSolver::solve(double *u, double dt, SolveInfo &info) {
     info.domain_rejects = s.domain_rejects;
     info.domain_bad_index = s.domain_bad_index;
     info.domain_bad_value = s.domain_bad_value;
+    info.domain_bad_count = s.domain_bad_count;
+    info.domain_vec_norm = s.domain_vec_norm;
+    info.domain_c0_min = s.domain_c0_min;
+    info.domain_c0_max = s.domain_c0_max;
+    info.domain_first_dt = s.domain_first_dt;
     info.rhs_nonfinite = s.rhs_nonfinite;
     info.rhs_bad_index = s.rhs_bad_index;
     if (reason < 0) return false;
