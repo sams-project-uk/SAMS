@@ -4,6 +4,12 @@
 
 //////////////////////No idea which ones of these are needed
 #include <iostream>
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
+#include <vector>
+#include <cstdlib>
+#include <cstdio>
 #include <cstdint>
 #include <cassert>
 #include <string>
@@ -103,6 +109,8 @@ namespace TWOFLUID
 //        printf("before Levels \n");
 //        debug_rates(plasma_source,"before levels");
 
+if (plasma_source.ion_rec_nlevel) {
+
         varRegistry.registerVariable<LARE::T_dataType>("level_populations", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts), SAMS::dimension("species",0));
 
 //printf("after Levels \n");
@@ -110,6 +118,7 @@ namespace TWOFLUID
         
         varRegistry.registerVariable<LARE::T_dataType>("level_rates", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts), SAMS::dimension("species",0), SAMS::dimension("species",0));
 
+}
 //printf("after rates \n");
 //debug_rates(plasma_source,"after rates");        
         //////////////////////////////////////////////////////////////
@@ -191,10 +200,12 @@ namespace TWOFLUID
         varRegistry.fillPPArray("PIPSource/ion_heating", plasma_source.ion_heating);
         pw::assign(plasma_source.ion_heating, 0.0);
         
-        varRegistry.fillPPArray("level_populations", plasma_source.level_populations);
-        pw::assign(plasma_source.level_populations, 0.0);
-        varRegistry.fillPPArray("level_rates", plasma_source.level_rates);
-        pw::assign(plasma_source.level_rates, 0.0);
+        if (plasma_source.ion_rec_nlevel) {
+            varRegistry.fillPPArray("level_populations", plasma_source.level_populations);
+            pw::assign(plasma_source.level_populations, 0.0);
+            varRegistry.fillPPArray("level_rates", plasma_source.level_rates);
+            pw::assign(plasma_source.level_rates, 0.0);
+        }
         
         if (plasma_source.vertex_rates){
             varRegistry.fillPPArray("PIPSource/rho_p_ac_vertex", plasma_source.rho_p_ac_vertex);
@@ -951,10 +962,10 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
         plasma_source.source_energy_n(ix,iy,iz) +=TeIR/dataNeutral.rho(ix,iy,iz);
         
         //Work out how much energy is spent/gained by IR processes
-        if (plasma_source.ion_rec_empirical) { 
-            //printf("ionisation energy, rho = %f %f \n",ionisation_energy, dataNeutral.rho(ix,iy,iz));
-            plasma_source.source_energy(ix,iy,iz)+=(plasma_source.ion_heating(ix,iy,iz)+plasma_source.ion_loss(ix,iy,iz))/data.rho(ix,iy,iz);//factor of pho comes from denergy density being specified
-        }
+//        if (plasma_source.ion_rec_empirical) { 
+//            //printf("ionisation energy, rho = %f %f \n",ionisation_energy, dataNeutral.rho(ix,iy,iz));
+//            plasma_source.source_energy(ix,iy,iz)+=(plasma_source.ion_heating(ix,iy,iz)+plasma_source.ion_loss(ix,iy,iz))/data.rho(ix,iy,iz);//factor of pho comes from denergy density being specified
+//        }
         
     }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
 
@@ -2041,4 +2052,320 @@ void PIP<T_EOS>::checkSourceConservation(
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////////////
+// Implicit integration of the two-fluid source terms with PETSc
+//
+// All PETSc calls are in petscStiffSolver.cpp; this section only packs the SAMS arrays
+// into a plain host array and evaluates the right hand side for the solver.
+//
+// State: 10 variables per cell, cell by cell, over Range(-1,n) in each direction (the same
+// cells that apply_two_fluid_source updates):
+//     +0 rho        +1 rho_n
+//     +2 vx +3 vy +4 vz            (plasma velocity)
+//     +5 vx_n +6 vy_n +7 vz_n      (neutral velocity)
+//     +8 energy_ion +9 energy_n
+// The right hand side is exactly get_two_fluid_source, which returns d/dt of these
+// variables (the explicit scheme does u += dt*source).
+//
+// Because of the staggered grid the sources of one cell depend on the state of its
+// neighbours (8-point averages). The right hand side keeps that coupling exactly; only
+// the Jacobian is lagged (diagonal 10x10 blocks, see petscStiffSolver.cpp).
+//
+// Host memory only: the raw array is accessed inside applyKernel, which is valid for the
+// serial / OpenMP backends but not for CUDA/HIP/SYCL builds.
+/////////////////////////////////////////////////////////////////////////////////////
+
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL) || defined(KOKKOS_CUDA) || defined(USE_CUDA) || defined(USE_HIP)
+#define TWOFLUID_PETSC_DEVICE_BUILD 1
+#endif
+
+template<typename T_EOS>
+void PIP<T_EOS>::ensureStiffSolver(typename LARE::LARE3DST<T_EOS>::simulationData &data, data_two_fluid_source &plasma_source) {
+    if (this->stiff_solver) return;
+
+#ifdef TWOFLUID_PETSC_DEVICE_BUILD
+    std::fprintf(stderr, "The implicit PETSc source solver currently only supports host (serial/OpenMP) builds. Set implicit=false.\n");
+    std::abort();
+#endif
+    if (plasma_source.ion_rec_nlevel) {
+        std::fprintf(stderr, "The implicit PETSc source solver does not support ion_rec_nlevel (level populations are not part of the state vector). Use ion_rec_empirical.\n");
+        std::abort();
+    }
+
+    const std::int64_t sx = data.nx + 2, sy = data.ny + 2, sz = data.nz + 2;
+    const std::int64_t ncells = sx * sy * sz;
+
+    // Cells 0..n (inclusive) are evolved and checked for physical validity. The outermost
+    // ghost layer (index -1) is frozen during the solve and not checked.
+    std::vector<unsigned char> check(static_cast<size_t>(ncells), 0);
+    for (std::int64_t iz = 0; iz <= data.nz; ++iz) {
+        for (std::int64_t iy = 0; iy <= data.ny; ++iy) {
+            for (std::int64_t ix = 0; ix <= data.nx; ++ix) {
+                check[static_cast<size_t>(((iz + 1) * sy + (iy + 1)) * sx + (ix + 1))] = 1;
+            }
+        }
+    }
+    const std::vector<int> positive = {0, 1, 8, 9}; // rho, rho_n, energy_ion, energy_n
+
+    this->u_buf.assign(static_cast<size_t>(ncells) * petsc_stride, 0.0);
+    this->u_start_buf.assign(static_cast<size_t>(ncells) * petsc_stride, 0.0);
+
+    this->petsc_ctx.pip = this;
+    this->petsc_ctx.data = &data;
+    this->petsc_ctx.plasma_source = &plasma_source;
+
+    this->stiff_solver = std::make_shared<SAMS_PETSC::StiffSolver>(
+        ncells, petsc_stride, check, positive,
+        &PIP<T_EOS>::RHSAdapter, &this->petsc_ctx,
+        static_cast<double>(plasma_source.implicit_rtol), static_cast<double>(plasma_source.implicit_atol));
+}
+
+template<typename T_EOS>
+void PIP<T_EOS>::finalize() {
+    this->stiff_solver.reset();
+    SAMS_PETSC::finalizePETSc();
+}
+
+
+/*
+* Solve  du/dt = S(u)  over dt_solve, starting from the current state in data/dataNeutral.
+*
+* The starting state and the final solution are validated here (every value finite; rho, rho_n,
+* energy_ion, energy_n > 0 in the evolved cells 0..n). PETSc's own stage-validity hook is not used
+* by default (see petscStiffSolver.cpp).
+*/
+template<typename T_EOS>
+void PIP<T_EOS>::implicitSourceSolve(typename LARE::LARE3DST<T_EOS>::simulationData &data,
+                                     typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+                                     data_two_fluid_source &plasma_source,
+                                     SAMS::T_dataType dt_solve) {
+    // apply_two_fluid_source only applies the exchange terms when collisions are on
+    if (!plasma_source.collisions) return;
+ 
+    this->ensureStiffSolver(data, plasma_source);
+ 
+    // Refresh the callback context (the package object may have moved since the last solve)
+    this->petsc_ctx.pip           = this;
+    this->petsc_ctx.data          = &data;
+    this->petsc_ctx.dataNeutral   = &dataNeutral;
+    this->petsc_ctx.plasma_source = &plasma_source;
+    this->stiff_solver->setUser(&this->petsc_ctx);
+ 
+    // ---- helpers to validate a packed state -------------------------------------------------
+    static const char *comp_name[10] = {"rho", "rho_n", "vx", "vy", "vz", "vx_n", "vy_n", "vz_n", "energy_ion", "energy_n"};
+    static const int pos_comp[4] = {0, 1, 8, 9}; // must stay > 0
+    const std::int64_t csx = data.nx + 2, csy = data.ny + 2;
+ 
+    struct StateScan {
+        long long n_bad = 0, n_checked = 0, first_bad_cell = -1;
+        int first_bad_comp = -1;
+        double min_val[4] = {DBL_MAX, DBL_MAX, DBL_MAX, DBL_MAX}; // rho, rho_n, energy_ion, energy_n
+    };
+    auto scan_state = [&](const std::vector<double> &buf) {
+        StateScan r;
+        for (std::int64_t iz = 0; iz <= data.nz; ++iz) {
+            for (std::int64_t iy = 0; iy <= data.ny; ++iy) {
+                for (std::int64_t ix = 0; ix <= data.nx; ++ix) {
+                    const std::int64_t cell = ((iz + 1) * csy + (iy + 1)) * csx + (ix + 1);
+                    const double *v = &buf[static_cast<size_t>(cell) * petsc_stride];
+                    ++r.n_checked;
+                    int bad_comp = -1;
+                    for (int k = 0; k < petsc_stride && bad_comp < 0; ++k) {
+                        if (!std::isfinite(v[k])) bad_comp = k;
+                    }
+                    for (int q = 0; q < 4; ++q) {
+                        if (std::isfinite(v[pos_comp[q]])) r.min_val[q] = std::min(r.min_val[q], v[pos_comp[q]]);
+                        if (bad_comp < 0 && !(v[pos_comp[q]] > 0.0)) bad_comp = pos_comp[q];
+                    }
+                    if (bad_comp >= 0) {
+                        ++r.n_bad;
+                        if (r.first_bad_cell < 0) { r.first_bad_cell = cell; r.first_bad_comp = bad_comp; }
+                    }
+                }
+            }
+        }
+        return r;
+    };
+    auto report_invalid = [&](const char *which, const StateScan &r, const std::vector<double> &buf, bool show_live) {
+        const std::int64_t fx = (r.first_bad_cell % csx) - 1, fy = ((r.first_bad_cell / csx) % csy) - 1, fz = (r.first_bad_cell / (csx * csy)) - 1;
+        const double *v = &buf[static_cast<size_t>(r.first_bad_cell) * petsc_stride];
+        std::fprintf(stderr,
+            "Implicit two-fluid source solve: the %s state is not physical.\n"
+            "  invalid cells: %lld of %lld evolved cells (indices 0..n); first at (%lld,%lld,%lld), component %s\n"
+            "  minimum over evolved cells: rho = %.6e, rho_n = %.6e, energy_ion = %.6e, energy_n = %.6e\n"
+            "  state at that cell: rho=%.6e rho_n=%.6e vx=%.3e vy=%.3e vz=%.3e vx_n=%.3e vy_n=%.3e vz_n=%.3e E=%.6e E_n=%.6e\n",
+            which, r.n_bad, r.n_checked, static_cast<long long>(fx), static_cast<long long>(fy), static_cast<long long>(fz),
+            comp_name[r.first_bad_comp], r.min_val[0], r.min_val[1], r.min_val[2], r.min_val[3],
+            v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]);
+        if (show_live) {
+            std::fprintf(stderr, "  live arrays at that cell: rho=%.6e rho_n=%.6e E=%.6e E_n=%.6e\n"
+                                 "  (if the live arrays are fine but the buffer is not, the packing failed)\n",
+                static_cast<double>(data.rho(fx, fy, fz)), static_cast<double>(dataNeutral.rho(fx, fy, fz)),
+                static_cast<double>(data.energy_ion(fx, fy, fz)), static_cast<double>(dataNeutral.energy(fx, fy, fz)));
+        }
+    };
+ 
+    // ---- starting state ---------------------------------------------------------------------
+    this->PackViewsToArray(data, dataNeutral, this->u_buf.data());
+    {
+        const StateScan pre = scan_state(this->u_buf);
+        if (pre.n_bad > 0) {
+            report_invalid("STARTING", pre, this->u_buf, true);
+            std::abort();
+        }
+        static int preflight_prints = 0;
+        if (preflight_prints++ < 3) {
+            printf("Implicit solve pre-flight OK: %lld evolved cells, min rho = %.6e, rho_n = %.6e, energy_ion = %.6e, energy_n = %.6e\n",
+                   pre.n_checked, pre.min_val[0], pre.min_val[1], pre.min_val[2], pre.min_val[3]);
+        }
+    }
+ 
+    // The callback writes trial states into data/dataNeutral. Keep the starting state so a
+    // failed solve can be rolled back.
+    this->u_start_buf = this->u_buf;
+ 
+    // ---- solve ------------------------------------------------------------------------------
+    SAMS_PETSC::SolveInfo info;
+    const bool ok = this->stiff_solver->solve(this->u_buf.data(), static_cast<double>(dt_solve), info);
+    if (!ok) {
+        this->UnpackArrayToViews(this->u_start_buf.data(), data, dataNeutral); // roll back
+        auto describe = [&](long long idx, char *buf, size_t len) {
+            if (idx < 0) { std::snprintf(buf, len, "none"); return; }
+            const long long cell = idx / petsc_stride;
+            const int comp = static_cast<int>(idx % petsc_stride);
+            std::snprintf(buf, len, "cell (%lld,%lld,%lld), %s", static_cast<long long>((cell % csx) - 1),
+                          static_cast<long long>((cell / csx) % csy) - 1, static_cast<long long>(cell / (csx * csy)) - 1, comp_name[comp]);
+        };
+        char dom[160], rhs[160];
+        describe(info.domain_bad_index, dom, sizeof dom);
+        describe(info.rhs_bad_index, rhs, sizeof rhs);
+        std::fprintf(stderr,
+            "Implicit two-fluid source solve FAILED (TSConvergedReason %d).\n"
+            "  requested dt = %.6e, reached t = %.6e, last internal dt = %.6e\n"
+            "  accepted steps = %d, rejected steps = %d\n"
+            "  stages refused by the validity check = %lld\n"
+            "  first refused stage: step size %.6e, %lld bad cells, first bad entry: %s, value %.6e\n"
+            "                       checked vector: 2-norm %.6e, rho range [%.6e, %.6e]\n"
+            "  right hand side evaluations containing NaN/Inf = %lld (first: %s)\n"
+            "State rolled back to the start of the solve.\n",
+            info.reason, static_cast<double>(dt_solve), info.time_reached, info.last_dt, info.steps, info.rejected,
+            info.domain_rejects, info.domain_first_dt, info.domain_bad_count, dom, info.domain_bad_value,
+            info.domain_vec_norm, info.domain_c0_min, info.domain_c0_max, info.rhs_nonfinite, rhs);
+        std::abort();
+    }
+ 
+    // ---- final solution ---------------------------------------------------------------------
+    {
+        const StateScan post = scan_state(this->u_buf);
+        if (post.n_bad > 0) {
+            this->UnpackArrayToViews(this->u_start_buf.data(), data, dataNeutral); // roll back
+            report_invalid("FINAL", post, this->u_buf, false);
+            std::fprintf(stderr, "  (TS steps = %d, rejected = %d, dt = %.6e). The state has been rolled back to the start of the solve.\n"
+                                 "  A smaller time step or tighter tolerances (PETSC_OPTIONS=\"-ts_rtol 1e-8\") may help.\n",
+                         info.steps, info.rejected, static_cast<double>(dt_solve));
+            std::abort();
+        }
+    }
+    printf("Implicit PETSc source solve: dt = %.12e, TS steps = %d, rejected = %d\n",
+           static_cast<double>(dt_solve), info.steps, info.rejected);
+ 
+    // The live arrays hold the last stage state, so always copy the final solution back
+    this->UnpackArrayToViews(this->u_buf.data(), data, dataNeutral);
+}
+ 
+// f = F(u): write the trial state into the live arrays, evaluate the exact two-fluid
+// sources, and return them in the 10-stride layout.
+template<typename T_EOS>
+void PIP<T_EOS>::RHSAdapter(const double *u, double *f, void *user) {
+    auto *c  = static_cast<PETScCtx*>(user);
+    PIP *pip = c->pip;
+ 
+    pip->UnpackArrayToViews(u, *c->data, *c->dataNeutral);
+    pip->get_ac(*c->data, *c->dataNeutral, *c->plasma_source);
+    pip->get_two_fluid_source(*c->data, *c->dataNeutral, *c->plasma_source);
+    pip->PackSourcesToArray(*c->plasma_source, *c->data, f);
+}
+ 
+template<typename T_EOS>
+void PIP<T_EOS>::PackViewsToArray(typename LARE::LARE3DST<T_EOS>::simulationData &data,
+                                  typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+                                  double *u_raw) {
+    using Range = portableWrapper::Range;
+    const std::int64_t sx = data.nx + 2, sy = data.ny + 2;
+ 
+    portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        const std::int64_t cell = ((static_cast<std::int64_t>(iz) + 1) * sy + (iy + 1)) * sx + (ix + 1);
+        const std::int64_t idx = cell * 10;
+ 
+        u_raw[idx + 0] = data.rho(ix, iy, iz);
+        u_raw[idx + 1] = dataNeutral.rho(ix, iy, iz);
+        u_raw[idx + 2] = data.vx(ix, iy, iz);
+        u_raw[idx + 3] = data.vy(ix, iy, iz);
+        u_raw[idx + 4] = data.vz(ix, iy, iz);
+        u_raw[idx + 5] = dataNeutral.vx(ix, iy, iz);
+        u_raw[idx + 6] = dataNeutral.vy(ix, iy, iz);
+        u_raw[idx + 7] = dataNeutral.vz(ix, iy, iz);
+        u_raw[idx + 8] = data.energy_ion(ix, iy, iz);
+        u_raw[idx + 9] = dataNeutral.energy(ix, iy, iz);
+    }, Range(-1, data.nx), Range(-1, data.ny), Range(-1, data.nz));
+}
+ 
+template<typename T_EOS>
+void PIP<T_EOS>::UnpackArrayToViews(const double *u_raw,
+                                    typename LARE::LARE3DST<T_EOS>::simulationData &data,
+                                    typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral) {
+    using Range = portableWrapper::Range;
+    const std::int64_t sx = data.nx + 2, sy = data.ny + 2;
+ 
+    portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        const std::int64_t cell = ((static_cast<std::int64_t>(iz) + 1) * sy + (iy + 1)) * sx + (ix + 1);
+        const std::int64_t idx = cell * 10;
+ 
+        data.rho(ix, iy, iz)           = u_raw[idx + 0];
+        dataNeutral.rho(ix, iy, iz)    = u_raw[idx + 1];
+        data.vx(ix, iy, iz)            = u_raw[idx + 2];
+        data.vy(ix, iy, iz)            = u_raw[idx + 3];
+        data.vz(ix, iy, iz)            = u_raw[idx + 4];
+        dataNeutral.vx(ix, iy, iz)     = u_raw[idx + 5];
+        dataNeutral.vy(ix, iy, iz)     = u_raw[idx + 6];
+        dataNeutral.vz(ix, iy, iz)     = u_raw[idx + 7];
+        data.energy_ion(ix, iy, iz)    = u_raw[idx + 8];
+        dataNeutral.energy(ix, iy, iz) = u_raw[idx + 9];
+    }, Range(-1, data.nx), Range(-1, data.ny), Range(-1, data.nz));
+}
+ 
+// Copy the source-term arrays into f using the same layout as the state.
+// The outermost ghost layer (index -1) is frozen: the existing kernels only partly fill the
+// sources there (e.g. the energy sources are computed on Range(0,n)), and boundary
+// conditions refresh it anyway.
+template<typename T_EOS>
+void PIP<T_EOS>::PackSourcesToArray(data_two_fluid_source &plasma_source,
+                                    typename LARE::LARE3DST<T_EOS>::simulationData &data,
+                                    double *f_raw) {
+    using Range = portableWrapper::Range;
+    const std::int64_t sx = data.nx + 2, sy = data.ny + 2;
+ 
+    portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        const std::int64_t cell = ((static_cast<std::int64_t>(iz) + 1) * sy + (iy + 1)) * sx + (ix + 1);
+        const std::int64_t idx = cell * 10;
+        const bool frozen = (ix == -1) || (iy == -1) || (iz == -1);
+ 
+        f_raw[idx + 0] = frozen ? 0.0 : plasma_source.source_mass(ix, iy, iz);
+        f_raw[idx + 1] = frozen ? 0.0 : plasma_source.source_mass_n(ix, iy, iz);
+        f_raw[idx + 2] = frozen ? 0.0 : plasma_source.source_v_x(ix, iy, iz);
+        f_raw[idx + 3] = frozen ? 0.0 : plasma_source.source_v_y(ix, iy, iz);
+        f_raw[idx + 4] = frozen ? 0.0 : plasma_source.source_v_z(ix, iy, iz);
+        f_raw[idx + 5] = frozen ? 0.0 : plasma_source.source_v_x_n(ix, iy, iz);
+        f_raw[idx + 6] = frozen ? 0.0 : plasma_source.source_v_y_n(ix, iy, iz);
+        f_raw[idx + 7] = frozen ? 0.0 : plasma_source.source_v_z_n(ix, iy, iz);
+        f_raw[idx + 8] = frozen ? 0.0 : plasma_source.source_energy(ix, iy, iz);
+        f_raw[idx + 9] = frozen ? 0.0 : plasma_source.source_energy_n(ix, iy, iz);
+    }, Range(-1, data.nx), Range(-1, data.ny), Range(-1, data.nz));
+}
+ 
+// Explicit instantiation of PIP<idealGas> is done once, in twofluid.h (EOS_DEF). A second
+// instantiation here is a "duplicate explicit instantiation" error.
+
+
 }
