@@ -18,8 +18,10 @@ namespace examples
             varDef.addBoundaryCondition(2, periodicBC);
 
             //Mirror boundaries in X
-            std::shared_ptr<SAMS::boundaryConditions> mirrorBC = std::make_shared<SAMS::simpleMirrorBC<SAMS::T_dataType, 3>>(varDef);
-            varDef.addBoundaryCondition(0, mirrorBC);
+            //std::shared_ptr<SAMS::boundaryConditions> mirrorBC = std::make_shared<SAMS::simpleMirrorBC<SAMS::T_dataType, 3>>(varDef);
+            //varDef.addBoundaryCondition(0, mirrorBC);
+            std::shared_ptr<SAMS::boundaryConditions> freeBC = std::make_shared<SAMS::simpleZeroGradientBC<SAMS::T_dataType, 3>>(varDef);
+            varDef.addBoundaryCondition(0, freeBC);
         }
 
         /**
@@ -38,8 +40,8 @@ namespace examples
             data.ny = 2;
             data.nz = 2;
 
-            data.x_min = -100.0;
-            data.x_max = 100.0;
+            data.x_min = -150.0;
+            data.x_max = 150.0;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;

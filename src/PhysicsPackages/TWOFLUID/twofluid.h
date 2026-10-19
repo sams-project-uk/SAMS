@@ -102,12 +102,12 @@ namespace TWOFLUID
         bool check_conservation=false;
         bool check_source=false;
         
-	    bool implicit=true; // flag for using the implicit solvers from PETSc
+	bool implicit=true; // flag for using the implicit solvers from PETSc
         SAMS::T_dataType implicit_rtol=1.0e-6;  // relative tolerance of the PETSc time stepper (command line -ts_rtol overrides)
         SAMS::T_dataType implicit_atol=1.0e-9;  // absolute tolerance of the PETSc time stepper (command line -ts_atol overrides)
         bool implicit_limit_dt=false;           // if false the explicit collisional dt limit is not applied when implicit=true
 
-        bool substepping=true;
+        bool substepping=false;
         int substep_iter=0;
         int substep_max_nsteps=50; // set a maximum number of step. Not done yet
         SAMS::T_dataType  substep_dt=1.0;
