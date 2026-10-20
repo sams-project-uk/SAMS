@@ -494,13 +494,13 @@ if (plasma_source.ion_rec_nlevel) {
                     std::pow(2.0*std::numbers::pi*kb_ev*plasma_source.T0*mass_electron/h_ev,-3.0/2.0);
                     LARE::T_dataType rec_rate=sahaRatio*ion_rate;
                     
-                    printf("Reference recombination rate %G %G %G\n",rec_rate,plasma_source.n0,plasma_source.T0); 
+                    //printf("Reference recombination rate %G %G %G\n",rec_rate,plasma_source.n0,plasma_source.T0); 
                     plasma_source.ref_rec+=rec_rate;
                 };
                 plasma_source.ref_rec=plasma_source.ref_rec*plasma_source.n0; //This all needs checking
                 printf("Reference recombination rate %e \n",plasma_source.ref_rec); 
             };    
-            exit(0);
+            //exit(0);
         }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
