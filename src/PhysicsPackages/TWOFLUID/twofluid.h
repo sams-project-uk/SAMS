@@ -90,8 +90,8 @@ namespace TWOFLUID
        
         //Coupling physics
         bool collisions=true;
-        bool ion_rec_empirical=true;
-        bool ion_rec_nlevel=false;
+        bool ion_rec_empirical=false;
+        bool ion_rec_nlevel=true;
         
         bool vertex_rates=false;
         LARE::volumeArray rho_p_ac_vertex; // velocity source at vertex
@@ -106,6 +106,8 @@ namespace TWOFLUID
         SAMS::T_dataType implicit_rtol=1.0e-6;  // relative tolerance of the PETSc time stepper (command line -ts_rtol overrides)
         SAMS::T_dataType implicit_atol=1.0e-9;  // absolute tolerance of the PETSc time stepper (command line -ts_atol overrides)
         bool implicit_limit_dt=false;           // if false the explicit collisional dt limit is not applied when implicit=true
+        bool watch_state=true;                  // scan the whole state for NaN/Inf at several points of each step (cheap debugging aid)
+        int watch_interval=100;                 // print a one-line trend summary every this many timesteps (needs watch_state)
 
         bool substepping=false;
         int substep_iter=0;
@@ -179,6 +181,13 @@ namespace TWOFLUID
 	    // f = F(u): exact two-fluid sources of the trial state u
 	    static void RHSAdapter(const double *u, double *f, void *user);
 
+	    // Debugging aid: scan the whole state (ghost layer included) for NaN/Inf and keep a trend line.
+	    // `time` < 0 means "not available at this hook". Defined in TwoFluid.cpp.
+	    void watchState(LARE::LARE3DST<T_EOS>::simulationData &data,
+	                    LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+	                    data_two_fluid_source &plasma_source,
+	                    const char *label, double time, bool trail);
+
 	public:
 	    // Called by the runner at the end of the run; releases the PETSc objects
 	    void finalize();
@@ -223,6 +232,7 @@ namespace TWOFLUID
             }
             void beforeStartOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 if (plasma_source.debug_twofluid_steps) {printf("beforeStartofTimestep start \n");}
+                if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"start of step (after the previous step's hooks)",-1.0,false); }
                 get_ac(data,dataNeutral,plasma_source); //These might not be needed
                 get_two_fluid_source(data,dataNeutral,plasma_source);
                 if (plasma_source.debug_twofluid_steps) {printf("beforeStartofTimestep end \n");}
@@ -231,6 +241,7 @@ namespace TWOFLUID
             
             void applySourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
                 if (plasma_source.debug_twofluid_steps) {printf("applySourceTermsStart start \n");}
+                if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"before the first source half-step",timeData.time,false); }
                 if (plasma_source.check_conservation) {copyState(data, dataNeutral, oldData);};
                 if (plasma_source.check_source) {checkSourceConservation(data,dataNeutral,plasma_source);};
                 if (plasma_source.implicit) {
@@ -256,6 +267,7 @@ namespace TWOFLUID
             };
 
             void afterEndOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
+                if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"after the hydro step, before the second source half-step",timeData.time,false); }
                 if (plasma_source.implicit) {
                     // Implicit PETSc solve of the second Strang half step
                     plasma_source.substep_dt = 0.5 * timeData.dt; // Strang splitting factor
@@ -278,6 +290,7 @@ namespace TWOFLUID
                     apply_two_fluid_source(data,dataNeutral,plasma_source);
                 }
                 if (plasma_source.check_conservation) {checkConservation(data,dataNeutral,oldData);};
+                if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"after the second source half-step",timeData.time,true); }
             };
 
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){

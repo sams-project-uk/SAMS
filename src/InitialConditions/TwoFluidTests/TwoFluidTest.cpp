@@ -95,8 +95,8 @@ namespace examples
             axisReg.setDomain("Y", data.ny, data.y_min, data.y_max);
             axisReg.setDomain("Z", data.nz, data.z_min, data.z_max);
             
-            printf("Species array temporarily disabled for MPI compatability \n");
-            //axisReg.setDomainValues("species", 7, [](COUNT_TYPE i){ return i; });
+            //printf("Species array temporarily disabled for MPI compatability \n");
+            axisReg.setDomainValues("species", 7, [](COUNT_TYPE i){ return i; });
         }
 
         /**

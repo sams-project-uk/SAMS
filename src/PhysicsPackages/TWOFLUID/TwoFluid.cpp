@@ -6,6 +6,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cfloat>
+#include <climits>
 #include <cmath>
 #include <vector>
 #include <cstdlib>
@@ -494,13 +495,13 @@ if (plasma_source.ion_rec_nlevel) {
                     std::pow(2.0*std::numbers::pi*kb_ev*plasma_source.T0*mass_electron/h_ev,-3.0/2.0);
                     LARE::T_dataType rec_rate=sahaRatio*ion_rate;
                     
-                    printf("Reference recombination rate %G %G %G\n",rec_rate,plasma_source.n0,plasma_source.T0); 
+                    //printf("Reference recombination rate %G %G %G\n",rec_rate,plasma_source.n0,plasma_source.T0); 
                     plasma_source.ref_rec+=rec_rate;
                 };
                 plasma_source.ref_rec=plasma_source.ref_rec*plasma_source.n0; //This all needs checking
                 printf("Reference recombination rate %e \n",plasma_source.ref_rec); 
             };    
-            exit(0);
+            //exit(0);
         }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2211,6 +2212,85 @@ void PIP<T_EOS>::watchState(typename LARE::LARE3DST<T_EOS>::simulationData &data
 */
 
 /*
+* Debugging aid: scan the whole state (ghost layer included) for NaN/Inf, remember the last clean
+* check so the point where a NaN first appears can be bracketed, and optionally print a one-line
+* trend summary. Reads the arrays on the host, so it is only valid for serial/OpenMP builds.
+*/
+template<typename T_EOS>
+void PIP<T_EOS>::watchState(typename LARE::LARE3DST<T_EOS>::simulationData &data,
+                            typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+                            data_two_fluid_source &plasma_source,
+                            const char *label, double time, bool trail) {
+    static const char *comp_name[10] = {"rho", "rho_n", "vx", "vy", "vz", "vx_n", "vy_n", "vz_n", "energy_ion", "energy_n"};
+    static bool reported = false;
+    static const char *last_clean_label = "(no clean check yet)";
+    static double last_clean_time = -1.0;
+    static long trail_count = 0;
+
+    long long n_bad = 0, bad_min_x = LLONG_MAX, bad_max_x = -1, n_bad_left = 0;
+    int bx = 0, by = 0, bz = 0, bcomp = -1;
+    double bval = 0.0;
+    double vmax = 0.0, emin = DBL_MAX, emax = -DBL_MAX, rmin = DBL_MAX, rmax = -DBL_MAX, rnmin = DBL_MAX;
+    int mx = 0, my = 0, mz = 0;
+
+    for (int iz = -1; iz <= data.nz; ++iz) {
+        for (int iy = -1; iy <= data.ny; ++iy) {
+            for (int ix = -1; ix <= data.nx; ++ix) {
+                const double v[10] = {
+                    static_cast<double>(data.rho(ix, iy, iz)),        static_cast<double>(dataNeutral.rho(ix, iy, iz)),
+                    static_cast<double>(data.vx(ix, iy, iz)),         static_cast<double>(data.vy(ix, iy, iz)),
+                    static_cast<double>(data.vz(ix, iy, iz)),         static_cast<double>(dataNeutral.vx(ix, iy, iz)),
+                    static_cast<double>(dataNeutral.vy(ix, iy, iz)),  static_cast<double>(dataNeutral.vz(ix, iy, iz)),
+                    static_cast<double>(data.energy_ion(ix, iy, iz)), static_cast<double>(dataNeutral.energy(ix, iy, iz))};
+                bool finite = true;
+                for (int k = 0; k < 10; ++k) {
+                    if (!std::isfinite(v[k])) {
+                        if (finite) { // first bad component of this cell
+                            if (n_bad == 0) { bx = ix; by = iy; bz = iz; bcomp = k; bval = v[k]; }
+                            ++n_bad;
+                            bad_min_x = std::min<long long>(bad_min_x, ix);
+                            bad_max_x = std::max<long long>(bad_max_x, ix);
+                            if (ix <= data.nx / 2) ++n_bad_left;
+                        }
+                        finite = false;
+                    }
+                }
+                if (finite && ix >= 0 && iy >= 0 && iz >= 0) {
+                    const double speed = std::sqrt(v[2] * v[2] + v[3] * v[3] + v[4] * v[4]);
+                    if (speed > vmax) { vmax = speed; mx = ix; my = iy; mz = iz; }
+                    emin = std::min(emin, v[8]);  emax = std::max(emax, v[8]);
+                    rmin = std::min(rmin, v[0]);  rmax = std::max(rmax, v[0]);
+                    rnmin = std::min(rnmin, v[1]);
+                }
+            }
+        }
+    }
+
+    if (n_bad > 0) {
+        if (!reported) {
+            reported = true;
+            std::fprintf(stderr,
+                "\nNON-FINITE state first detected: %s (t = %s%.8g)\n"
+                "  %lld cells contain NaN/Inf; first at (%d,%d,%d), component %s, value %g%s\n"
+                "  x index of all bad cells: %lld to %lld; %lld in the left half of the box, %lld in the right half\n"
+                "  last clean check: %s (t = %.8g)\n"
+                "  so the NaN was created between those two points\n\n",
+                label, time < 0.0 ? "n/a " : "", time < 0.0 ? 0.0 : time, n_bad, bx, by, bz, comp_name[bcomp], bval,
+                (bx == -1 || by == -1 || bz == -1) ? " (outermost ghost layer)" : "",
+                bad_min_x, bad_max_x, n_bad_left, n_bad - n_bad_left,
+                last_clean_label, last_clean_time);
+        }
+    } else {
+        last_clean_label = label;
+        last_clean_time = time;
+        if (trail && plasma_source.watch_interval > 0 && (++trail_count % plasma_source.watch_interval) == 0) {
+            printf("watch t = %.6g: max|v_plasma| = %.4e at (%d,%d,%d); energy_ion in [%.4e, %.4e]; rho in [%.4e, %.4e]; min rho_n = %.4e\n",
+                   time, vmax, mx, my, mz, emin, emax, rmin, rmax, rnmin);
+        }
+    }
+}
+
+/*
 * Solve  du/dt = S(u)  over dt_solve, starting from the current state in data/dataNeutral.
 *
 * The starting state and the final solution are validated here (every value finite; rho, rho_n,
@@ -2243,6 +2323,7 @@ void PIP<T_EOS>::implicitSourceSolve(typename LARE::LARE3DST<T_EOS>::simulationD
         long long n_bad = 0, n_checked = 0, first_bad_cell = -1;
         int first_bad_comp = -1;
         double min_val[4] = {DBL_MAX, DBL_MAX, DBL_MAX, DBL_MAX}; // rho, rho_n, energy_ion, energy_n
+        long long min_bad_x = LLONG_MAX, max_bad_x = -1, n_bad_left = 0; // where the bad cells are (x index)
     };
     auto scan_state = [&](const std::vector<double> &buf) {
         StateScan r;
@@ -2263,6 +2344,9 @@ void PIP<T_EOS>::implicitSourceSolve(typename LARE::LARE3DST<T_EOS>::simulationD
                     if (bad_comp >= 0) {
                         ++r.n_bad;
                         if (r.first_bad_cell < 0) { r.first_bad_cell = cell; r.first_bad_comp = bad_comp; }
+                        r.min_bad_x = std::min<long long>(r.min_bad_x, ix);
+                        r.max_bad_x = std::max<long long>(r.max_bad_x, ix);
+                        if (ix <= data.nx / 2) ++r.n_bad_left;
                     }
                 }
             }
@@ -2280,6 +2364,9 @@ void PIP<T_EOS>::implicitSourceSolve(typename LARE::LARE3DST<T_EOS>::simulationD
             which, r.n_bad, r.n_checked, static_cast<long long>(fx), static_cast<long long>(fy), static_cast<long long>(fz),
             comp_name[r.first_bad_comp], r.min_val[0], r.min_val[1], r.min_val[2], r.min_val[3],
             v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]);
+        std::fprintf(stderr, "  all %lld invalid cells: x index from %lld to %lld; %lld in the left half of the box, %lld in the right half\n"
+                             "  (the first one above is just the first in scan order, which starts at x = 0)\n",
+                     r.n_bad, r.min_bad_x, r.max_bad_x, r.n_bad_left, r.n_bad - r.n_bad_left);
         if (show_live) {
             std::fprintf(stderr, "  live arrays at that cell: rho=%.6e rho_n=%.6e E=%.6e E_n=%.6e\n"
                                  "  (if the live arrays are fine but the buffer is not, the packing failed)\n",
