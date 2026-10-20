@@ -106,6 +106,8 @@ namespace TWOFLUID
         SAMS::T_dataType implicit_rtol=1.0e-6;  // relative tolerance of the PETSc time stepper (command line -ts_rtol overrides)
         SAMS::T_dataType implicit_atol=1.0e-9;  // absolute tolerance of the PETSc time stepper (command line -ts_atol overrides)
         bool implicit_limit_dt=false;           // if false the explicit collisional dt limit is not applied when implicit=true
+        bool watch_state=true;                  // scan the whole state for NaN/Inf at several points of each step (cheap debugging aid)
+        int watch_interval=100;                 // print a one-line trend summary every this many timesteps (needs watch_state)
 
         bool substepping=false;
         int substep_iter=0;
@@ -230,6 +232,7 @@ namespace TWOFLUID
             }
             void beforeStartOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 if (plasma_source.debug_twofluid_steps) {printf("beforeStartofTimestep start \n");}
+                if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"start of step (after the previous step's hooks)",-1.0,false); }
                 get_ac(data,dataNeutral,plasma_source); //These might not be needed
                 get_two_fluid_source(data,dataNeutral,plasma_source);
                 if (plasma_source.debug_twofluid_steps) {printf("beforeStartofTimestep end \n");}
@@ -238,6 +241,7 @@ namespace TWOFLUID
             
             void applySourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
                 if (plasma_source.debug_twofluid_steps) {printf("applySourceTermsStart start \n");}
+                if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"before the first source half-step",timeData.time,false); }
                 if (plasma_source.check_conservation) {copyState(data, dataNeutral, oldData);};
                 if (plasma_source.check_source) {checkSourceConservation(data,dataNeutral,plasma_source);};
                 if (plasma_source.implicit) {
