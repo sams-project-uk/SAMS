@@ -10,6 +10,9 @@
 #include "welcome.h"
 #include <tuple>
 #include <sstream>
+#include <chrono>
+#include <ctime>
+#include <cstdio>
 
 namespace SAMS
 {
@@ -99,6 +102,13 @@ namespace SAMS
             bool timeSimulation = false;
             std::string name = "";
         };
+
+        /** Real (wall clock) time, used to record how long the run takes between snapshots.
+         *  Started when the runner is constructed (the start of the program), so the first
+         *  snapshot also includes the set up time. steady_clock is monotonic, so it is not
+         *  affected by changes to the system clock. */
+        std::chrono::steady_clock::time_point wallStart = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point wallLast = wallStart; //Time of the previous snapshot
 
         std::map<std::string, internalPackageInfo> simulationInfoMap;
         std::array<bool, sizeof...(Packages)> simulationActiveFlags; //Active isn't in the map for performance reasons
@@ -507,6 +517,47 @@ namespace SAMS
             callCore_initialize();
         }
 
+        /**
+         * Record the simulation time and the real (wall clock) time in a snapshot file, so that
+         * the time taken between snapshots can be recovered later. Called once per file, straight
+         * after the file is opened. Writers that do not support metadata ignore these calls.
+         *   time, iteration                       simulation time and step number
+         *   wallclock_elapsed_s                   real seconds since the program started
+         *   wallclock_since_previous_snapshot_s   real seconds since the previous snapshot was started
+         *                                         (includes the time spent writing that snapshot)
+         *   wallclock_utc                         calendar time of the snapshot (UTC, ISO 8601)
+         *   snapshot_index                        number of the snapshot (matches the file name)
+         */
+        template<typename W>
+        void writeSnapshotMetadata(W &writer, SAMS::T_sizeType snapshotIndex){
+            const auto &tData = std::get<timeState>(runnerData);
+            writer.setTime(static_cast<double>(tData.time), static_cast<size_t>(tData.step));
+
+            const auto now = std::chrono::steady_clock::now();
+            const double sinceStart = std::chrono::duration<double>(now - wallStart).count();
+            const double sinceLast  = std::chrono::duration<double>(now - wallLast).count();
+            wallLast = now;
+
+            char buf[64];
+            std::snprintf(buf, sizeof buf, "%.6f", sinceStart);
+            writer.setKeyValue("wallclock_elapsed_s", buf);
+            std::snprintf(buf, sizeof buf, "%.6f", sinceLast);
+            writer.setKeyValue("wallclock_since_previous_snapshot_s", buf);
+
+            const std::time_t calendarNow = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+            std::tm utc{};
+    #if defined(_WIN32)
+            gmtime_s(&utc, &calendarNow);
+    #else
+            gmtime_r(&calendarNow, &utc);
+    #endif
+            std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &utc);
+            writer.setKeyValue("wallclock_utc", buf);
+
+            std::snprintf(buf, sizeof buf, "%zu", static_cast<size_t>(snapshotIndex));
+            writer.setKeyValue("snapshot_index", buf);
+        }
+
         void writeOutput(){
             static SAMS::T_sizeType outputCount = 0;
             //Create writer
@@ -521,6 +572,7 @@ namespace SAMS
 
             std::string Name = "SAMS_testdata/diagnostics_" + ss.str();
             writer.openFile(Name.c_str());
+            writeSnapshotMetadata(writer, outputCount); //Simulation time + real (wall clock) time of this snapshot
             registerOutputMeshes(writer);
             registerOutputVariables(writer);
             writeOutputMeshes(writer);
