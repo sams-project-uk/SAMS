@@ -168,7 +168,7 @@ class writer {
 	//Implementation for setting a job name, completely optional and a writer must not require it
 	HASMEMBER(setJobName);
 	//Implementation for setting a key-value pair in the global scope.
-	HASMEMBER(setKeyValue);
+	HASMEMBER(setKeyValueImpl);
 	//Implementation for setting a key-value pair on a specific mesh
 	HASMEMBER(setMeshKeyValue);
 	//Implementation for setting a key-value pair on a specific dataset
@@ -526,8 +526,8 @@ class writer {
 	 */
 	void setKeyValue(const char* key, const char* value){
 		if (verbose && !supportsKeyValue) std::cout << "Warning: Writer does not support key-value pairs, ignoring setKeyValue call\n";
-		if constexpr (has_setKeyValue<T_core, decltype(key), decltype(value)>) {
-			static_cast<T_core*>(this)->setKeyValue(key, value);
+		if constexpr (has_setKeyValueImpl<T_core, decltype(key), decltype(value)>) {
+			static_cast<T_core*>(this)->setKeyValueImpl(key, value);
 		}
 	}
 

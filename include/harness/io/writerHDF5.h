@@ -60,6 +60,43 @@ class HDF5File : public writer<HDF5File> {
     }
   }
 
+  //Global (file level) metadata is stored as attributes on the root group of the file
+  const static bool supportsKeyValue_impl = true;
+
+  //Write a scalar attribute on the root group
+  void writeRootAttribute(const char* attrName, hid_t type, const void* value){
+    hid_t space = H5Screate(H5S_SCALAR);
+    if (space < 0) {
+      throw std::runtime_error("Could not create dataspace for file attribute " + std::string(attrName));
+    }
+    hid_t attr = H5Acreate(fileHandle, attrName, type, space, H5P_DEFAULT, H5P_DEFAULT);
+    if (attr < 0) {
+      H5Sclose(space);
+      throw std::runtime_error("Could not create file attribute " + std::string(attrName));
+    }
+    const herr_t status = H5Awrite(attr, type, value);
+    H5Aclose(attr);
+    H5Sclose(space);
+    if (status < 0) {
+      throw std::runtime_error("Could not write file attribute " + std::string(attrName));
+    }
+  }
+
+  //Simulation time and iteration of this file, stored as the attributes "time" and "iteration"
+  void setTimeImpl(double time, size_t iteration){
+    writeRootAttribute("time", H5T_NATIVE_DOUBLE, &time);
+    const unsigned long long iter = static_cast<unsigned long long>(iteration);
+    writeRootAttribute("iteration", H5T_NATIVE_ULLONG, &iter);
+  }
+
+  //Free-form key/value metadata, stored as variable-length string attributes
+  void setKeyValueImpl(const char* key, const char* value){
+    hid_t strType = H5Tcopy(H5T_C_S1);
+    H5Tset_size(strType, H5T_VARIABLE);
+    writeRootAttribute(key, strType, &value);
+    H5Tclose(strType);
+  }
+
   /*
   None of these functions are needed for HDF5, but they are here to satisfy the interface
   */
