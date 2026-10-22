@@ -959,24 +959,32 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
                         0.5*vd2\
                         /dataNeutral.rho(ix,iy,iz);
         
-        //Pressure 
-        SAMS::T_dataType  pr_p=data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*data.rho(ix,iy,iz); //Note that this is electron+ion pressure hence the factor of 0.5 in the TeIR formula
-        SAMS::T_dataType  pr_n=dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0)*dataNeutral.rho(ix,iy,iz);
-        
-        //work done on the neutrals through ionisation/recombiation
-        //SAMS::T_dataType  Hn=0.5*(plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz)/dataNeutral.rho(ix,iy,iz)*(vp2-2.0*vpvn)+
-        //                          plasma_source.gm_ion(ix,iy,iz)*vn2);
-        //SAMS::T_dataType  Hp=0.5*(plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)/data.rho(ix,iy,iz)*(vn2-2.0*vpvn)+
-        //                          plasma_source.gm_rec(ix,iy,iz)*vp2);
-                                  
-        //Thermal equalisation from IR
-        SAMS::T_dataType  TeIR=(plasma_source.gm_ion(ix,iy,iz)*pr_n-0.5*plasma_source.gm_rec(ix,iy,iz)*pr_p)/(data.gas_gamma-1.0);
-        
-        
-        //Corrected energy source terms
-        plasma_source.source_energy(ix,iy,iz) +=TeIR/data.rho(ix,iy,iz);
-        plasma_source.source_energy_n(ix,iy,iz) +=TeIR/dataNeutral.rho(ix,iy,iz);
-        
+        // Thermal energy exchanged by ionisation/recombination (Snow & Hillier 2021, eqs. 3 and 7),
+        // written for the SPECIFIC internal energy eps that SAMS evolves (P = (gamma-1) rho eps).
+        //
+        // The paper's terms are rates of change of internal energy DENSITY rho*eps. Since
+        //     d(rho eps)/dt = rho deps/dt + eps drho/dt,
+        // the specific energy changes by  deps/dt = [d(rho eps)/dt - eps drho/dt] / rho.
+        // The second ("dilution") term accounts for the mass gained or lost by each species:
+        //   - ionisation moves mass from neutrals to plasma carrying the neutral specific energy eps_n,
+        //     so the plasma relaxes towards eps_n and the neutral specific energy is unchanged;
+        //   - recombination removes plasma mass but only the proton half of its thermal energy (the
+        //     electron's thermal energy stays in the plasma), so the plasma specific energy rises and
+        //     the neutrals relax towards eps_p/2.
+        // The two terms sum to zero in internal energy density (a pure transfer between species), and
+        // both vanish in ionisation equilibrium (Gamma_ion rho_n = Gamma_rec rho_p with T_n = T_p).
+        //
+        // This replaces the earlier TeIR form, which added (Gamma_ion P_n - Gamma_rec P_p/2)/(gamma-1)
+        // with the same sign to both species and omitted the dilution terms, so total energy was not
+        // conserved away from ionisation equilibrium.
+        const SAMS::T_dataType eps_p = data.energy_ion(ix,iy,iz);
+        const SAMS::T_dataType eps_n = dataNeutral.energy(ix,iy,iz);
+        const SAMS::T_dataType ion_flux = plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz); // mass rate neutral -> plasma
+        const SAMS::T_dataType rec_flux = plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);        // mass rate plasma -> neutral
+
+        plasma_source.source_energy(ix,iy,iz)   += (ion_flux*(eps_n - eps_p) + 0.5*rec_flux*eps_p)/data.rho(ix,iy,iz);
+        plasma_source.source_energy_n(ix,iy,iz) += rec_flux*(0.5*eps_p - eps_n)/dataNeutral.rho(ix,iy,iz);
+
         //Work out how much energy is spent/gained by IR processes
 //        if (plasma_source.ion_rec_empirical) { 
 //            //printf("ionisation energy, rho = %f %f \n",ionisation_energy, dataNeutral.rho(ix,iy,iz));
