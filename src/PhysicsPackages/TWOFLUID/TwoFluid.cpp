@@ -355,12 +355,16 @@ if (plasma_source.ion_rec_nlevel) {
      template<typename T_EOS>
         void PIP<T_EOS>::get_ac(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
 
+            // alpha_c = alpha0*sqrt((T_p+T_n)/(2*T_norm)) (Snow & Hillier 2021, eq. 11), so alpha_c(t=0) = alpha0
+            const SAMS::T_dataType inv_T_norm = plasma_source.alpha_T_normalised ? 1.0/plasma_source.T_norm : 1.0;
+            const SAMS::T_dataType alpha_eff = plasma_source.alpha0*std::sqrt(inv_T_norm); // for the vertex form below
+
             using Range = portableWrapper::Range;
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 //Get Temperatures
                 SAMS::T_dataType  temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5;
                 SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
-                plasma_source.ac(ix,iy,iz)=plasma_source.alpha0*std::sqrt(0.5*(temperature_neutral+temperature_ion));
+                plasma_source.ac(ix,iy,iz)=plasma_source.alpha0*std::sqrt(0.5*(temperature_neutral+temperature_ion)*inv_T_norm);
             	}, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
             	
         	if (plasma_source.vertex_rates){
@@ -369,7 +373,7 @@ if (plasma_source.ion_rec_nlevel) {
                     //Get Temperatures
                     //SAMS::T_dataType  temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5;
                     //SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
-                    plasma_source.rho_p_ac_vertex(ix,iy,iz)=0.125*plasma_source.alpha0*(
+                    plasma_source.rho_p_ac_vertex(ix,iy,iz)=0.125*alpha_eff*(
                     data.rho(ix,iy,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5))+
                     data.rho(ix+1,iy,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz)*(data.gas_gamma-1.0)*0.5))+
                     data.rho(ix,iy+1,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy+1,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
@@ -379,7 +383,7 @@ if (plasma_source.ion_rec_nlevel) {
                     data.rho(ix,iy+1,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy+1,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))+
                     data.rho(ix+1,iy+1,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))
                     );
-                    plasma_source.rho_n_ac_vertex(ix,iy,iz)=0.125*plasma_source.alpha0*(
+                    plasma_source.rho_n_ac_vertex(ix,iy,iz)=0.125*alpha_eff*(
                     dataNeutral.rho(ix,iy,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5))+
                     dataNeutral.rho(ix+1,iy,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz)*(data.gas_gamma-1.0)*0.5))+
                     dataNeutral.rho(ix,iy+1,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy+1,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
@@ -405,19 +409,15 @@ if (plasma_source.ion_rec_nlevel) {
             SAMS::T_dataType T0=plasma_source.T0; //Reference temperature
             SAMS::T_dataType n0=plasma_source.n0;//data.ne_reference; //Reference electron number density
             SAMS::T_dataType t_ir=plasma_source.t_ir; //Reference recombination timescale (relative to collisional timescale)
-            SAMS::T_dataType kb_ev=plasma_source.kb_ev; //Kb in eV/K
-
             SAMS::T_dataType  Te_0=T0/1.1604e4; //Calculate electron temperature in eV
             SAMS::T_dataType  rec_fac=2.6e-19*(n0*1.0e6)/std::sqrt(Te_0);  //reference recombination rate (n0 converted to m^-3)
 
-            //initial equilibrium fractions
-            SAMS::T_dataType  ioneq=(2.6e-19/std::sqrt(Te_0))/(2.91e-14/(0.232+13.6/Te_0)*std::pow(13.6/Te_0,0.39)*std::exp(-13.6/Te_0));
-            SAMS::T_dataType  f_n=ioneq/(ioneq+1.0);
-            SAMS::T_dataType  f_p=1.0-f_n;
-            SAMS::T_dataType  f_p_p=2.0*f_p/(f_n+2.0*f_p);
-            
-            SAMS::T_dataType  tfac=0.5*data.gas_gamma*f_p_p/f_p; //Normalisation assumes bulk sound speed normalisation
-            
+            // Normalisation, computed once in setNormalisation(): equilibrium ion fraction at T0 (xi_p0 in
+            // the paper) and the simulation temperature that corresponds to T0 (T_f in the paper)
+            const SAMS::T_dataType  f_p=plasma_source.xi_p0;
+            const SAMS::T_dataType  tfac=plasma_source.T_norm;
+            const SAMS::T_dataType  phi_hat=plasma_source.phi_hat; // 13.6 eV in simulation units
+
 
             using Range = portableWrapper::Range;
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -430,8 +430,8 @@ if (plasma_source.ion_rec_nlevel) {
             	plasma_source.gm_rec(ix,iy,iz)=numberDensity_electron/std::sqrt(temperature_electron)*t_ir/f_p*std::sqrt(tfac);
             	plasma_source.gm_ion(ix,iy,iz)=2.91e-14*(n0*1.0e6)*numberDensity_electron*std::exp(-13.6/Te_0/temperature_electron*tfac)*std::pow(13.6/Te_0/temperature_electron*tfac,0.39);
             	plasma_source.gm_ion(ix,iy,iz)=plasma_source.gm_ion(ix,iy,iz)/(0.232+13.6/Te_0/temperature_electron*tfac)/rec_fac/f_p *t_ir;    
-                plasma_source.ion_loss(ix,iy,iz)=(-plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz))*
-                                  13.6/kb_ev/T0/data.gas_gamma;  	
+                // Ionisation potential loss phi_I = Gamma_ion rho_n phi_hat (eq. 17), energy density rate
+                plasma_source.ion_loss(ix,iy,iz)=-plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)*phi_hat;
             	//printf("%f %f %f %f %f \n",f_p,data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*data.rho(ix,iy,iz), temperature_electron,plasma_source.gm_rec(ix,iy,iz),plasma_source.gm_ion(ix,iy,iz));    
             }, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
             
@@ -817,10 +817,6 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
     template<typename T_EOS>
  void PIP<T_EOS>::get_ion_rec_source_terms(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){	
 
-    LARE::T_dataType T0=10000.0;//data.T_reference; //Reference temperature
-    LARE::T_dataType Te_0=T0/1.1604e4;
-    LARE::T_dataType kb_ev=8.617333e-5; //Kb in eV/K
-    
     using Range = portableWrapper::Range;
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
     
@@ -2099,6 +2095,100 @@ void PIP<T_EOS>::checkSourceConservation(
 // Host memory only: the raw array is accessed inside applyKernel, which is valid for the
 // serial / OpenMP backends but not for CUDA/HIP/SYCL builds.
 /////////////////////////////////////////////////////////////////////////////////////
+
+/*
+* Normalisation shared by the rates, the ionisation potential and the collisional coefficient
+* (Snow & Hillier 2021, eq. 11 and Appendix A). See the notes on P_ref / rho_ref in twofluid.h.
+*
+*   xi_n0, xi_p0 : equilibrium neutral and ion fractions at T0 (eq. A.5)
+*   T_norm       : simulation temperature of that equilibrium state, with T_p = gamma P_p/(2 rho_p) and
+*                  T_n = gamma P_n/rho_n:  T_norm = gamma P_ref / ((xi_n0 + 2 xi_p0) rho_ref).
+*                  This is T_f in eqs. 12-14 (the paper's eq. A.4 has an extra factor xi_p0, which
+*                  would contradict its statement that T_p/T_f = 1 at t = 0, and is not used here).
+*   phi_hat      : 13.6 eV in simulation units. One particle at T0 has k_B T0 / m = T_norm/gamma in
+*                  simulation units, so phi_hat = 13.6 T_norm / (gamma k_B T0), with k_B in eV/K. This
+*                  reduces to the paper's 13.6/(gamma k_B T0) (sound-speed units) and 13.6 beta/(2 k_B T0)
+*                  (Alfven units) up to the factor (xi_n0 + 2 xi_p0) that the paper drops.
+*
+* The values are then checked against the actual initial state, so a mismatch between this
+* normalisation and the initial conditions (different P/rho, or an IC built with a different T0)
+* is reported at start-up rather than showing up as a run that does not start in equilibrium.
+*/
+template<typename T_EOS>
+void PIP<T_EOS>::setNormalisation(typename LARE::LARE3DST<T_EOS>::simulationData &data,
+                                  typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+                                  data_two_fluid_source &ps) {
+    using Range = portableWrapper::Range;
+    const SAMS::T_dataType g = data.gas_gamma;
+
+    // Equilibrium ionisation at T0 from the empirical rates (Voronov 1997, Smirnov 2003)
+    const SAMS::T_dataType Te_0 = ps.T0/1.1604e4; // eV
+    const SAMS::T_dataType ioneq = (2.6e-19/std::sqrt(Te_0)) /
+        (2.91e-14/(0.232+13.6/Te_0)*std::pow(13.6/Te_0,0.39)*std::exp(-13.6/Te_0)); // = Gamma_rec/Gamma_ion
+    ps.xi_n0 = ioneq/(ioneq+1.0);
+    ps.xi_p0 = 1.0 - ps.xi_n0;
+    ps.T_norm = g*ps.P_ref/((ps.xi_n0 + 2.0*ps.xi_p0)*ps.rho_ref);
+    ps.phi_hat = 13.6*ps.T_norm/(g*ps.kb_ev*ps.T0);
+
+    // Initial state over the interior cells: temperature range of each species and the mean ion fraction
+    auto minOp = LAMBDA(SAMS::T_dataType &a, const SAMS::T_dataType &b) { a = portableWrapper::min(a, b); };
+    auto maxOp = LAMBDA(SAMS::T_dataType &a, const SAMS::T_dataType &b) { a = portableWrapper::max(a, b); };
+    auto sumOp = LAMBDA(SAMS::T_dataType &a, const SAMS::T_dataType &b) { a += b; };
+    const Range rx(1, data.nx), ry(1, data.ny), rz(1, data.nz);
+    auto Tp = LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        return 0.5*g*(g-1.0)*data.energy_ion(ix,iy,iz);
+    };
+    auto Tn = LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        return g*(g-1.0)*dataNeutral.energy(ix,iy,iz);
+    };
+    const SAMS::T_dataType big = data.largest_number;
+    const SAMS::T_dataType Tp_min = portableWrapper::applyReduction(Tp, minOp,  big, rx, ry, rz);
+    const SAMS::T_dataType Tp_max = portableWrapper::applyReduction(Tp, maxOp, -big, rx, ry, rz);
+    const SAMS::T_dataType Tn_min = portableWrapper::applyReduction(Tn, minOp,  big, rx, ry, rz);
+    const SAMS::T_dataType Tn_max = portableWrapper::applyReduction(Tn, maxOp, -big, rx, ry, rz);
+    const SAMS::T_dataType m_p = portableWrapper::applyReduction(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) { return data.rho(ix,iy,iz); }, sumOp, 0.0, rx, ry, rz);
+    const SAMS::T_dataType m_n = portableWrapper::applyReduction(
+        LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) { return dataNeutral.rho(ix,iy,iz); }, sumOp, 0.0, rx, ry, rz);
+    const SAMS::T_dataType xi_p_ic = m_p/(m_p + m_n);
+
+    printf("Normalisation (set once at initialisation)\n");
+    printf("  T0                     : %g K, equilibrium xi_n0 = %.6f, xi_p0 = %.6e\n",
+           static_cast<double>(ps.T0), static_cast<double>(ps.xi_n0), static_cast<double>(ps.xi_p0));
+    printf("  reference state        : P_ref = %g, rho_ref = %g\n",
+           static_cast<double>(ps.P_ref), static_cast<double>(ps.rho_ref));
+    printf("  T_norm (T at T0)       : %.6f\n", static_cast<double>(ps.T_norm));
+    printf("  phi_hat (13.6 eV)      : %.6f\n", static_cast<double>(ps.phi_hat));
+    printf("  alpha_c                : %s\n", ps.alpha_T_normalised
+           ? "alpha0*sqrt((T_p+T_n)/(2 T_norm))  (eq. 11, alpha_c(t=0) = alpha0)"
+           : "alpha0*sqrt((T_p+T_n)/2)  (NOT normalised: alpha_T_normalised = false)");
+    printf("  initial state          : T_p in [%.6f, %.6f], T_n in [%.6f, %.6f], mean xi_p = %.6e\n",
+           static_cast<double>(Tp_min), static_cast<double>(Tp_max),
+           static_cast<double>(Tn_min), static_cast<double>(Tn_max), static_cast<double>(xi_p_ic));
+
+    // Consistency checks against the initial state
+    const SAMS::T_dataType tol = 1.0e-3;
+    auto rel = [](SAMS::T_dataType a, SAMS::T_dataType b) { return std::abs(a - b)/std::abs(b); };
+    const bool uniform_T = rel(Tp_max, Tp_min) < tol && rel(Tn_max, Tn_min) < tol;
+    if (uniform_T && (rel(Tp_min, ps.T_norm) > tol || rel(Tn_min, ps.T_norm) > tol)) {
+        printf("  WARNING: the initial temperature is uniform but differs from T_norm by %.2f%% (plasma) and %.2f%%\n"
+               "           (neutrals). The rates, phi_hat and alpha_c assume T = T_norm corresponds to T0, so check\n"
+               "           P_ref and rho_ref against the initial conditions.\n",
+               100.0*rel(Tp_min, ps.T_norm), 100.0*rel(Tn_min, ps.T_norm));
+    } else if (!uniform_T) {
+        printf("  note: the initial temperature is not uniform; T_norm is taken from P_ref and rho_ref, so make sure\n"
+               "        they describe the state that T0 refers to.\n");
+    }
+    if ((ps.ion_rec_empirical || ps.ion_rec_nlevel) && rel(xi_p_ic, ps.xi_p0) > tol) {
+        printf("  WARNING: the initial ion fraction (%.6e) differs from the equilibrium value at T0 = %g K (%.6e)\n"
+               "           by %.1f%%. The run will not start in ionisation equilibrium. Check that the initial\n"
+               "           conditions were built with the same T0 as plasma_source.T0.\n",
+               static_cast<double>(xi_p_ic), static_cast<double>(ps.T0), static_cast<double>(ps.xi_p0),
+               100.0*rel(xi_p_ic, ps.xi_p0));
+    }
+    printf("=====================================================\n");
+    std::fflush(stdout);
+}
 
 /*
 * Start-up record of the run configuration. Everything that selects the physics or the solver
