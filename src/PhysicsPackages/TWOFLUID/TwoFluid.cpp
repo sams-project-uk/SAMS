@@ -963,10 +963,10 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
         plasma_source.source_energy_n(ix,iy,iz) +=TeIR/dataNeutral.rho(ix,iy,iz);
         
         //Work out how much energy is spent/gained by IR processes
-//        if (plasma_source.ion_rec_empirical) { 
-//            //printf("ionisation energy, rho = %f %f \n",ionisation_energy, dataNeutral.rho(ix,iy,iz));
-//            plasma_source.source_energy(ix,iy,iz)+=(plasma_source.ion_heating(ix,iy,iz)+plasma_source.ion_loss(ix,iy,iz))/data.rho(ix,iy,iz);//factor of pho comes from denergy density being specified
-//        }
+        if (plasma_source.ion_rec_empirical) { 
+            //printf("ionisation energy, rho = %f %f \n",ionisation_energy, dataNeutral.rho(ix,iy,iz));
+            plasma_source.source_energy(ix,iy,iz)+=(plasma_source.ion_heating(ix,iy,iz)+plasma_source.ion_loss(ix,iy,iz))/data.rho(ix,iy,iz);//factor of pho comes from denergy density being specified
+        }
         
     }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
 
