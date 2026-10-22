@@ -28,6 +28,21 @@
 
 #include <netcdf.h>
 
+// Generated at build time by cmake/gitInfo.cmake (git commit, branch, uncommitted changes).
+// Falls back to "unknown" if the header is absent, e.g. when built outside CMake.
+#if __has_include("sams_git_info.h")
+#include "sams_git_info.h"
+#endif
+#ifndef SAMS_GIT_HASH
+#define SAMS_GIT_HASH "unknown"
+#endif
+#ifndef SAMS_GIT_BRANCH
+#define SAMS_GIT_BRANCH "unknown"
+#endif
+#ifndef SAMS_GIT_DIRTY
+#define SAMS_GIT_DIRTY "unknown"
+#endif
+
 namespace TWOFLUID
 {
     namespace pw = portableWrapper;
@@ -2077,6 +2092,95 @@ void PIP<T_EOS>::checkSourceConservation(
 // serial / OpenMP backends but not for CUDA/HIP/SYCL builds.
 /////////////////////////////////////////////////////////////////////////////////////
 
+/*
+* Start-up record of the run configuration. Everything that selects the physics or the solver
+* is printed here, so a log file alone identifies the run that produced it.
+* Add new data_two_fluid_source flags to this list when they are introduced.
+*/
+template<typename T_EOS>
+void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationData &data,
+                                    typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+                                    data_two_fluid_source &ps) {
+    auto onoff = [](bool b) { return b ? "on" : "off"; };
+    const char *petsc_env = std::getenv("PETSC_OPTIONS");
+
+    printf("=====================================================\n");
+    printf("Two-fluid (PIP) run configuration\n");
+    printf("=====================================================\n");
+    printf("Build\n");
+    printf("  git commit             : %s (branch %s)%s\n", SAMS_GIT_HASH, SAMS_GIT_BRANCH,
+           std::string(SAMS_GIT_DIRTY) == "yes" ? "  ** UNCOMMITTED CHANGES **" : "");
+    printf("  PETSc                  : %s\n", SAMS_PETSC::petscVersion().c_str());
+    printf("Grid and time\n");
+    printf("  cells (local)          : nx = %lld, ny = %lld, nz = %lld\n",
+           static_cast<long long>(data.nx), static_cast<long long>(data.ny), static_cast<long long>(data.nz));
+    printf("  domain                 : x [%g, %g], y [%g, %g], z [%g, %g]\n",
+           static_cast<double>(data.x_min), static_cast<double>(data.x_max),
+           static_cast<double>(data.y_min), static_cast<double>(data.y_max),
+           static_cast<double>(data.z_min), static_cast<double>(data.z_max));
+    printf("  t_end                  : %g (snapshots every %g)\n",
+           static_cast<double>(data.t_end), static_cast<double>(data.dt_snapshots));
+    printf("  dt_multiplier          : %g\n", static_cast<double>(data.dt_multiplier));
+    printf("Fluids\n");
+    printf("  gas_gamma              : plasma %g, neutral %g\n",
+           static_cast<double>(data.gas_gamma), static_cast<double>(dataNeutral.gas_gamma));
+    printf("  shock viscosity        : visc1 = %g, visc2 = %g\n",
+           static_cast<double>(data.visc1), static_cast<double>(data.visc2));
+    printf("  resistive MHD          : %s (eta_background = %g, eta0 = %g, j_max = %g)\n",
+           onoff(data.resistiveMHD), static_cast<double>(data.eta_background),
+           static_cast<double>(data.eta0), static_cast<double>(data.j_max));
+    printf("Two-fluid coupling\n");
+    printf("  collisions             : %s (alpha0 = %g)\n", onoff(ps.collisions), static_cast<double>(ps.alpha0));
+    printf("  vertex_rates           : %s\n", onoff(ps.vertex_rates));
+    printf("  ion_rec_empirical      : %s\n", onoff(ps.ion_rec_empirical));
+    printf("  ion_rec_nlevel         : %s\n", onoff(ps.ion_rec_nlevel));
+    if (ps.ion_rec_nlevel) {
+        printf("  atomic rates file      : %s\n", ps.data_path.c_str());
+    }
+    printf("  T0 = %g K, n0 = %g, t_ir = %g\n",
+           static_cast<double>(ps.T0), static_cast<double>(ps.n0), static_cast<double>(ps.t_ir));
+    printf("Source-term time integration\n");
+    if (ps.implicit) {
+        printf("  method                 : IMPLICIT (PETSc), Strang split\n");
+        printf("  implicit_rtol / atol   : %.3e / %.3e (PETSC_OPTIONS may override; see solver line at first step)\n",
+               static_cast<double>(ps.implicit_rtol), static_cast<double>(ps.implicit_atol));
+        printf("  implicit_limit_dt      : %s (%s)\n", onoff(ps.implicit_limit_dt),
+               ps.implicit_limit_dt ? "dt also limited by the collisional timescale" : "dt set by the hydro CFL only");
+    } else if (ps.substepping) {
+        printf("  method                 : explicit with substepping, Strang split (max speed-up %g)\n",
+               static_cast<double>(ps.substep_max_speedup));
+    } else {
+        printf("  method                 : explicit, Strang split, dt limited by the collisional timescale\n");
+    }
+    printf("  PETSC_OPTIONS          : %s\n", petsc_env ? petsc_env : "(not set)");
+    printf("Diagnostics\n");
+    printf("  check_conservation     : %s\n", onoff(ps.check_conservation));
+    printf("  check_source           : %s\n", onoff(ps.check_source));
+    printf("  watch_state            : %s (trend line every %d steps)\n", onoff(ps.watch_state), ps.watch_interval);
+    printf("  debug_twofluid_steps   : %s\n", onoff(ps.debug_twofluid_steps));
+
+    // Combinations that are legal to compile but almost certainly not what was intended
+    int n_warn = 0;
+    auto warn = [&](const char *msg) {
+        if (n_warn++ == 0) printf("Configuration warnings\n");
+        printf("  WARNING: %s\n", msg);
+    };
+    if (ps.ion_rec_empirical && ps.ion_rec_nlevel)
+        warn("ion_rec_empirical and ion_rec_nlevel are both on; both sets of ionisation/recombination sources are computed.");
+    if (ps.implicit && ps.ion_rec_nlevel)
+        warn("implicit=true does not support ion_rec_nlevel; the run will abort at the first source solve.");
+    if (ps.implicit && !ps.collisions)
+        warn("implicit=true with collisions=false: the implicit solve is skipped entirely.");
+    if (ps.implicit && ps.substepping)
+        warn("implicit=true and substepping=true: substepping is ignored when implicit is on.");
+    if (!ps.implicit && petsc_env)
+        warn("PETSC_OPTIONS is set but implicit=false, so it has no effect.");
+    if (std::string(SAMS_GIT_DIRTY) == "yes")
+        warn("the build contains uncommitted changes; the git commit above does not fully identify the code.");
+    printf("=====================================================\n");
+    std::fflush(stdout);
+}
+
 #if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL) || defined(KOKKOS_CUDA) || defined(USE_CUDA) || defined(USE_HIP)
 #define TWOFLUID_PETSC_DEVICE_BUILD 1
 #endif
@@ -2120,6 +2224,13 @@ void PIP<T_EOS>::ensureStiffSolver(typename LARE::LARE3DST<T_EOS>::simulationDat
         ncells, petsc_stride, check, positive,
         &PIP<T_EOS>::RHSAdapter, &this->petsc_ctx,
         static_cast<double>(plasma_source.implicit_rtol), static_cast<double>(plasma_source.implicit_atol));
+
+    // What PETSc is actually using, after any PETSC_OPTIONS / petscrc overrides
+    printf("=====================================================\n"
+           "PETSc implicit source solver created (settings in effect):\n%s"
+           "=====================================================\n",
+           this->stiff_solver->describe().c_str());
+    std::fflush(stdout);
 }
 
 template<typename T_EOS>

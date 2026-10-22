@@ -249,6 +249,17 @@ if(NATIVE_HIP)
 endif()
 
 add_executable(sams ${SAMS_SOURCES})
+
+# Git commit / branch / uncommitted-changes stamp, refreshed at every build and printed in the
+# start-up configuration block (TwoFluid.cpp). Only files that include sams_git_info.h are rebuilt,
+# and only when the stamp actually changes.
+add_custom_target(sams_git_info
+  COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${CMAKE_BINARY_DIR}/generated/sams_git_info.h
+          -P ${CMAKE_SOURCE_DIR}/cmake/gitInfo.cmake
+  BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/sams_git_info.h
+  COMMENT "Updating git version stamp")
+add_dependencies(sams sams_git_info)
+target_include_directories(sams PRIVATE ${CMAKE_BINARY_DIR}/generated)
 message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
   
 
