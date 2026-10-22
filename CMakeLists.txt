@@ -232,6 +232,11 @@ find_package(HDF5 REQUIRED COMPONENTS CXX)
 #Recursively gather all .cpp source files in src/
 file(GLOB_RECURSE SAMS_SOURCES src/*.cpp)
 
+# Work-in-progress sources that are not ready to compile. They are listed here explicitly so a
+# re-configure (which re-runs the glob above) does not silently pull them into the build.
+# Remove an entry once the file compiles.
+list(FILTER SAMS_SOURCES EXCLUDE REGEX ".*/TWOFLUID/levelRemap\\.cpp$")
+
 if(NATIVE_CUDA)
   message(STATUS "Configuring for native CUDA compilation")
   foreach(src_file IN LISTS SAMS_SOURCES)
