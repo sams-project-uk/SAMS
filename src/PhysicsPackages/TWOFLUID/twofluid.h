@@ -188,6 +188,12 @@ namespace TWOFLUID
 	                    data_two_fluid_source &plasma_source,
 	                    const char *label, double time, bool trail);
 
+	    // Print the build and run configuration (all two-fluid flags and parameters) once at start-up,
+	    // so every log records exactly which physics and solver settings produced it. Defined in TwoFluid.cpp.
+	    void printConfiguration(LARE::LARE3DST<T_EOS>::simulationData &data,
+	                            LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+	                            data_two_fluid_source &plasma_source);
+
 	public:
 	    // Called by the runner at the end of the run; releases the PETSc objects
 	    void finalize();
@@ -219,6 +225,7 @@ namespace TWOFLUID
             }
             
             void initialiseSource(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
+                printConfiguration(data,dataNeutral,plasma_source);
                 printf("Getting IC for two_fluid rates \n");
                 get_ac(data,dataNeutral,plasma_source);
                 if (plasma_source.ion_rec_nlevel) {set_reference_recombination(data,plasma_source);}

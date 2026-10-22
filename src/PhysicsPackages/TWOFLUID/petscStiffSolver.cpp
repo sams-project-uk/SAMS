@@ -2,13 +2,23 @@
  * PETSc Rosenbrock-W integration of cell-wise stiff source terms.
  * See petscStiffSolver.h. This file must not include any SAMS header (see the note there).
  *
- * Right hand side : supplied by the caller (exact, may couple neighbouring cells).
- * Jacobian        : only the stride x stride diagonal block of each cell, built by finite
+ * Problem         : du/dt = S(u), supplied to PETSc in IMPLICIT form, G(t,u,u') = u' - S(u) = 0,
+ *                   through TSSetIFunction / TSSetIJacobian.
+ *                   This matters: PETSc's TSROSW is an IMEX scheme. Anything given through
+ *                   TSSetRHSFunction is integrated EXPLICITLY, and only the IFunction part is
+ *                   treated linearly implicitly. Supplying the stiff sources as an RHS function
+ *                   therefore gives an explicit method with error control, whose step size is
+ *                   pinned at the explicit stability limit (~1/rate).
+ * Source          : supplied by the caller (exact, may couple neighbouring cells).
+ * Jacobian        : dS/du, only the stride x stride diagonal block of each cell, built by finite
  *                   differences. All cells are perturbed together (stride evaluations), so
  *                   each block is the Jacobian for a locally uniform state, i.e. couplings
  *                   to neighbouring cells are lagged. TSROSW with a W-method (RA34PW2)
  *                   tolerates an approximate Jacobian, and the linear system is exactly
- *                   block diagonal.
+ *                   block diagonal. The IJacobian handed to PETSc is shift*I - dS/du.
+ *                   The finite-difference blocks are cached per state, so a rejected step that
+ *                   is retried from the same state with a new step size (new shift) does not
+ *                   rebuild them.
  */
 
 #include "petscStiffSolver.h"
@@ -74,8 +84,14 @@ struct StiffSolver::Impl {
     long long rhs_nonfinite = 0;
     long long rhs_bad_index = -1;
 
+    // Cache key of the finite-difference blocks (the state vector they were built from)
+    std::vector<PetscScalar> blocks_u; // copy of the state the blocks were built from
+    bool blocks_valid = false;
+
     static PetscErrorCode Rhs(TS, PetscReal, Vec U, Vec F, void *ctx);
-    static PetscErrorCode Jac(TS ts, PetscReal t, Vec U, Mat A, Mat P, void *ctx);
+    static PetscErrorCode BuildBlocks(TS ts, PetscReal t, Vec U, Impl *s);
+    static PetscErrorCode IFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void *ctx);
+    static PetscErrorCode IJacobian(TS ts, PetscReal t, Vec U, Vec Udot, PetscReal shift, Mat A, Mat P, void *ctx);
     static PetscErrorCode Domain(TS ts, PetscReal, Vec U, PetscBool *accept);
 };
 
@@ -103,14 +119,22 @@ PetscErrorCode StiffSolver::Impl::Rhs(TS, PetscReal, Vec U, Vec F, void *ctx) {
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-// Block diagonal finite difference Jacobian: (1 + stride) evaluations of F.
-PetscErrorCode StiffSolver::Impl::Jac(TS ts, PetscReal t, Vec U, Mat A, Mat P, void *ctx) {
+// Finite-difference blocks of dS/du at U, (1 + stride) evaluations of S. Cached per state.
+PetscErrorCode StiffSolver::Impl::BuildBlocks(TS ts, PetscReal t, Vec U, Impl *s) {
     PetscFunctionBeginUser;
-    auto *s = static_cast<Impl *>(ctx);
     const PetscInt bs = s->stride;
     const PetscInt nc = s->ncells;
+    const size_t n = static_cast<size_t>(nc) * bs;
+    {
+        const PetscScalar *uc;
+        PetscCall(VecGetArrayRead(U, &uc));
+        const bool same = s->blocks_valid && std::equal(uc, uc + n, s->blocks_u.begin());
+        if (!same) s->blocks_u.assign(uc, uc + n);
+        PetscCall(VecRestoreArrayRead(U, &uc));
+        if (same) PetscFunctionReturn(PETSC_SUCCESS);
+    }
 
-    PetscCall(Rhs(ts, t, U, s->f_base, ctx));
+    PetscCall(Rhs(ts, t, U, s->f_base, s));
 
     // Perturbation size: sqrt(eps) * max(|u|, 1e-3 * max over cells |u_k|), per entry
     std::vector<PetscReal> vmax(bs);
@@ -138,7 +162,7 @@ PetscErrorCode StiffSolver::Impl::Jac(TS ts, PetscReal t, Vec U, Mat A, Mat P, v
         for (PetscInt cell = 0; cell < nc; ++cell) w[cell * bs + k] += h[cell * bs + k];
         PetscCall(VecRestoreArray(s->u_work, &w));
 
-        PetscCall(Rhs(ts, t, s->u_work, s->f_pert, ctx));
+        PetscCall(Rhs(ts, t, s->u_work, s->f_pert, s));
 
         const PetscScalar *f0, *fp;
         PetscCall(VecGetArrayRead(s->f_base, &f0));
@@ -155,14 +179,42 @@ PetscErrorCode StiffSolver::Impl::Jac(TS ts, PetscReal t, Vec U, Mat A, Mat P, v
     }
     PetscCall(VecRestoreArray(s->h_pert, &h));
 
+
+    s->blocks_valid = true;
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+// G(t, U, U') = U' - S(U)
+PetscErrorCode StiffSolver::Impl::IFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void *ctx) {
+    PetscFunctionBeginUser;
+    PetscCall(Rhs(ts, t, U, F, ctx));   // F = S(U)
+    PetscCall(VecAYPX(F, -1.0, Udot));  // F = Udot - S(U)
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+// dG/dU + shift * dG/dU' = shift*I - dS/dU, block diagonal
+PetscErrorCode StiffSolver::Impl::IJacobian(TS ts, PetscReal t, Vec U, Vec, PetscReal shift, Mat A, Mat P, void *ctx) {
+    PetscFunctionBeginUser;
+    auto *s = static_cast<Impl *>(ctx);
+    const PetscInt bs = s->stride;
+    const PetscInt nc = s->ncells;
+    PetscCall(BuildBlocks(ts, t, U, s));
+
+    std::vector<PetscScalar> blk(static_cast<size_t>(bs) * bs);
     for (PetscInt cell = 0; cell < nc; ++cell) {
-        PetscCall(MatSetValuesBlocked(A, 1, &cell, 1, &cell,
-                                      &s->blocks[static_cast<size_t>(cell) * bs * bs], INSERT_VALUES));
+        const PetscScalar *J = &s->blocks[static_cast<size_t>(cell) * bs * bs];
+        for (PetscInt i = 0; i < bs; ++i) {
+            for (PetscInt k = 0; k < bs; ++k) {
+                blk[i * bs + k] = (i == k ? shift : 0.0) - J[i * bs + k]; // row-oriented
+            }
+        }
+        PetscCall(MatSetValuesBlocked(P, 1, &cell, 1, &cell, blk.data(), INSERT_VALUES));
     }
-    PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
-    PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
-    if (P != A) {
-        PetscCall(MatCopy(A, P, SAME_NONZERO_PATTERN));
+    PetscCall(MatAssemblyBegin(P, MAT_FINAL_ASSEMBLY));
+    PetscCall(MatAssemblyEnd(P, MAT_FINAL_ASSEMBLY));
+    if (A != P) { // e.g. -snes_mf_operator: A is matrix-free, P is our block matrix
+        PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
+        PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
     }
     PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -172,7 +224,7 @@ PetscErrorCode StiffSolver::Impl::Jac(TS ts, PetscReal t, Vec U, Mat A, Mat P, v
 PetscErrorCode StiffSolver::Impl::Domain(TS ts, PetscReal, Vec U, PetscBool *accept) {
     PetscFunctionBeginUser;
     void *ctx;
-    PetscCall(TSGetRHSFunction(ts, nullptr, nullptr, &ctx));
+    PetscCall(TSGetApplicationContext(ts, &ctx));
     auto *s = static_cast<Impl *>(ctx);
 
     const PetscScalar *u;
@@ -270,8 +322,11 @@ StiffSolver::StiffSolver(std::int64_t ncells, int stride,
     SS_ABORT(TSSetProblemType(s.ts, TS_NONLINEAR));
     SS_ABORT(TSSetType(s.ts, TSROSW));
     SS_ABORT(TSRosWSetType(s.ts, TSROSWRA34PW2));
-    SS_ABORT(TSSetRHSFunction(s.ts, nullptr, Impl::Rhs, impl));
-    SS_ABORT(TSSetRHSJacobian(s.ts, s.jac, s.jac, Impl::Jac, impl));
+    SS_ABORT(TSSetApplicationContext(s.ts, impl));
+    // Stiff sources in the IMPLICIT slot (see the note at the top of this file): an RHS function
+    // would be integrated explicitly by TSROSW.
+    SS_ABORT(TSSetIFunction(s.ts, nullptr, Impl::IFunction, impl));
+    SS_ABORT(TSSetIJacobian(s.ts, s.jac, s.jac, Impl::IJacobian, impl));
     {
         // PETSc's validity hook is OFF by default: for TSROSW the vector it receives is not
         // guaranteed to be the stage state (it can be the stage increment, which is legitimately
@@ -342,6 +397,7 @@ bool StiffSolver::solve(double *u, double dt, SolveInfo &info) {
     s.domain_first_dt = 0.0;
     s.rhs_nonfinite = 0;
     s.rhs_bad_index = -1;
+    s.blocks_valid = false;
 
     // The source terms do not depend explicitly on time, so solve on t = [0, dt]
     SS_ABORT(TSSetStepNumber(s.ts, 0));
@@ -382,6 +438,67 @@ bool StiffSolver::solve(double *u, double dt, SolveInfo &info) {
     std::copy(a, a + n, u);
     SS_ABORT(VecRestoreArray(s.u_sol, &a));
     return true;
+}
+
+std::string StiffSolver::describe() const {
+    const Impl &s = *impl;
+    TSType ts_type = nullptr;
+    SS_ABORT(TSGetType(s.ts, &ts_type));
+
+    // Rosenbrock-W scheme name: only meaningful when the stepper is still TSROSW
+    // (PETSC_OPTIONS="-ts_type ..." can replace it)
+    const char *rosw_type = "n/a";
+    PetscBool is_rosw = PETSC_FALSE;
+    SS_ABORT(PetscObjectTypeCompare(reinterpret_cast<PetscObject>(s.ts), TSROSW, &is_rosw));
+    TSRosWType rt = nullptr;
+    if (is_rosw) {
+        SS_ABORT(TSRosWGetType(s.ts, &rt));
+        if (rt) rosw_type = rt;
+    }
+
+    PetscReal atol = 0.0, rtol = 0.0;
+    SS_ABORT(TSGetTolerances(s.ts, &atol, nullptr, &rtol, nullptr));
+
+    TSAdapt adapt;
+    TSAdaptType adapt_type = nullptr;
+    SS_ABORT(TSGetAdapt(s.ts, &adapt));
+    SS_ABORT(TSAdaptGetType(adapt, &adapt_type));
+
+    SNES snes;
+    KSP ksp;
+    PC pc;
+    KSPType ksp_type = nullptr;
+    PCType pc_type = nullptr;
+    SS_ABORT(TSGetSNES(s.ts, &snes));
+    SS_ABORT(SNESGetKSP(snes, &ksp));
+    SS_ABORT(KSPGetType(ksp, &ksp_type));
+    SS_ABORT(KSPGetPC(ksp, &pc));
+    SS_ABORT(PCGetType(pc, &pc_type));
+
+    PetscInt max_steps = 0;
+    SS_ABORT(TSGetMaxSteps(s.ts, &max_steps));
+
+    char buf[1024];
+    std::snprintf(buf, sizeof buf,
+        "  PETSc time stepper     : %s (scheme %s)\n"
+        "  PETSc tolerances       : rtol = %.3e, atol = %.3e\n"
+        "  PETSc step adaptor     : %s, max internal steps %lld\n"
+        "  PETSc linear solver    : KSP %s, PC %s\n"
+        "  Jacobian               : block diagonal %lldx%lld, finite differences, %lld cells\n"
+        "  Stage domain check     : %s\n",
+        ts_type ? ts_type : "?", rosw_type,
+        static_cast<double>(rtol), static_cast<double>(atol),
+        adapt_type ? adapt_type : "?", static_cast<long long>(max_steps),
+        ksp_type ? ksp_type : "?", pc_type ? pc_type : "?",
+        static_cast<long long>(s.stride), static_cast<long long>(s.stride), static_cast<long long>(s.ncells),
+        s.domain_check ? "on (-tf_domain_check 1)" : "off");
+    return std::string(buf);
+}
+
+std::string petscVersion() {
+    char buf[256] = {0};
+    if (PetscGetVersion(buf, sizeof buf) != PETSC_SUCCESS) return "unknown";
+    return std::string(buf);
 }
 
 void finalizePETSc() {

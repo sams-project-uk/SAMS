@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace SAMS_PETSC {
@@ -67,10 +68,18 @@ namespace SAMS_PETSC {
         // Advance u in place over [0, dt]. Returns false if the solve failed (u is then untouched).
         bool solve(double *u, double dt, SolveInfo &info);
 
+        // Multi-line summary of the settings PETSc is actually using (after PETSC_OPTIONS /
+        // petscrc overrides): time stepper, scheme, tolerances, step adaptor, linear solver.
+        std::string describe() const;
+
     private:
         struct Impl;
         Impl *impl;
     };
+
+    // PETSc version string, e.g. "PETSc Release Version 3.20.5, ...". Safe to call before PETSc
+    // is initialised (it only reads compile-time information).
+    std::string petscVersion();
 
     // Call once at the end of the run, after all StiffSolver objects are destroyed.
     void finalizePETSc();

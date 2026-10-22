@@ -232,6 +232,11 @@ find_package(HDF5 REQUIRED COMPONENTS CXX)
 #Recursively gather all .cpp source files in src/
 file(GLOB_RECURSE SAMS_SOURCES src/*.cpp)
 
+# Work-in-progress sources that are not ready to compile. They are listed here explicitly so a
+# re-configure (which re-runs the glob above) does not silently pull them into the build.
+# Remove an entry once the file compiles.
+list(FILTER SAMS_SOURCES EXCLUDE REGEX ".*/TWOFLUID/levelRemap\\.cpp$")
+
 if(NATIVE_CUDA)
   message(STATUS "Configuring for native CUDA compilation")
   foreach(src_file IN LISTS SAMS_SOURCES)
@@ -249,6 +254,17 @@ if(NATIVE_HIP)
 endif()
 
 add_executable(sams ${SAMS_SOURCES})
+
+# Git commit / branch / uncommitted-changes stamp, refreshed at every build and printed in the
+# start-up configuration block (TwoFluid.cpp). Only files that include sams_git_info.h are rebuilt,
+# and only when the stamp actually changes.
+add_custom_target(sams_git_info
+  COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${CMAKE_BINARY_DIR}/generated/sams_git_info.h
+          -P ${CMAKE_SOURCE_DIR}/cmake/gitInfo.cmake
+  BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/sams_git_info.h
+  COMMENT "Updating git version stamp")
+add_dependencies(sams sams_git_info)
+target_include_directories(sams PRIVATE ${CMAKE_BINARY_DIR}/generated)
 message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
   
 
