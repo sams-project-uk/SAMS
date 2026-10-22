@@ -90,8 +90,8 @@ namespace TWOFLUID
        
         //Coupling physics
         bool collisions=true;
-        bool ion_rec_empirical=false;
-        bool ion_rec_nlevel=true;
+        bool ion_rec_empirical=true;
+        bool ion_rec_nlevel=false;
         
         bool vertex_rates=false;
         LARE::volumeArray rho_p_ac_vertex; // velocity source at vertex
