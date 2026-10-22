@@ -88,6 +88,27 @@ namespace TWOFLUID
         SAMS::T_dataType  t_ir=1.0e-5; //Reference recombination timescale (relative to collisional timescale)
         SAMS::T_dataType kb_ev=8.617333e-5; //Kb in eV/K
        
+        // Normalisation (Snow & Hillier 2021, eq. 11 and Appendix A). The simulation temperature
+        // T_norm is the one that corresponds to T0 Kelvin, i.e. the temperature of the initial
+        // equilibrium state. It is computed ONCE, in setNormalisation() at initialisation, and used
+        // everywhere a dimensional conversion is needed: the empirical rates (T_f in the paper), the
+        // ionisation potential phi_hat and the collisional coefficient alpha_c.
+        //   P_ref, rho_ref : total (plasma + neutral) pressure and density of the initial equilibrium
+        //                    state in simulation units. The TwoFluidTest problems use 1 and 1.
+        //                    (A sound-speed normalisation gamma*P/rho = 1 would be P_ref = 1/gamma;
+        //                    the paper's Alfven normalisation is P_ref = beta/2.)
+        //   alpha_T_normalised : alpha_c = alpha0*sqrt((T_p+T_n)/(2*T_norm)) as in eq. 11, so that
+        //                    alpha_c(t=0) = alpha0. false restores the old alpha0*sqrt((T_p+T_n)/2),
+        //                    for comparison with runs made before this change.
+        SAMS::T_dataType P_ref=1.0;
+        SAMS::T_dataType rho_ref=1.0;
+        bool alpha_T_normalised=true;
+        // Derived in setNormalisation(); do not set by hand
+        SAMS::T_dataType xi_n0=0.0;   // equilibrium neutral fraction at T0
+        SAMS::T_dataType xi_p0=0.0;   // equilibrium ion fraction at T0
+        SAMS::T_dataType T_norm=0.0;  // simulation temperature corresponding to T0
+        SAMS::T_dataType phi_hat=0.0; // normalised ionisation potential, 13.6 eV in simulation units
+
         //Coupling physics
         bool collisions=true;
         bool ion_rec_empirical=true;
@@ -188,6 +209,12 @@ namespace TWOFLUID
 	                    data_two_fluid_source &plasma_source,
 	                    const char *label, double time, bool trail);
 
+	    // Compute xi_n0, xi_p0, T_norm and phi_hat from T0, P_ref and rho_ref, print them, and check
+	    // them against the actual initial state. Called once from initialiseSource. Defined in TwoFluid.cpp.
+	    void setNormalisation(LARE::LARE3DST<T_EOS>::simulationData &data,
+	                          LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+	                          data_two_fluid_source &plasma_source);
+
 	    // Print the build and run configuration (all two-fluid flags and parameters) once at start-up,
 	    // so every log records exactly which physics and solver settings produced it. Defined in TwoFluid.cpp.
 	    void printConfiguration(LARE::LARE3DST<T_EOS>::simulationData &data,
@@ -226,6 +253,7 @@ namespace TWOFLUID
             
             void initialiseSource(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 printConfiguration(data,dataNeutral,plasma_source);
+                setNormalisation(data,dataNeutral,plasma_source); // must precede get_ac and the rates
                 printf("Getting IC for two_fluid rates \n");
                 get_ac(data,dataNeutral,plasma_source);
                 if (plasma_source.ion_rec_nlevel) {set_reference_recombination(data,plasma_source);}
