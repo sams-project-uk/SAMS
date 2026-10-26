@@ -33,15 +33,15 @@ namespace examples
         void TwoFluidTest::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral)
         {
 
-            data.t_end = 1000.0;
+            data.t_end = 100.0;
             data.dt_snapshots = data.t_end / 1000;
 
-            data.nx = 32000;
+            data.nx = 4096;
             data.ny = 2;
             data.nz = 2;
 
-            data.x_min = -150000.0;
-            data.x_max = 150000.0;
+            data.x_min = -3000.0;
+            data.x_max = 3000.0;
             data.y_min = 0.0;
             data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
             data.z_min = 0.0;
@@ -95,8 +95,8 @@ namespace examples
             axisReg.setDomain("Y", data.ny, data.y_min, data.y_max);
             axisReg.setDomain("Z", data.nz, data.z_min, data.z_max);
             
-            //printf("Species array temporarily disabled for MPI compatability \n");
-            axisReg.setDomainValues("species", 7, [](COUNT_TYPE i){ return i; });
+            printf("Species array temporarily disabled for MPI compatability \n");
+            //axisReg.setDomainValues("species", 7, [](COUNT_TYPE i){ return i; });
         }
 
         /**
