@@ -30,7 +30,8 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void TwoFluidTest::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral)
+        void TwoFluidTest::controlVariables(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+                                            TWOFLUID::data_two_fluid_source &plasma_source)
         {
 
             data.t_end = 100.0;
@@ -79,7 +80,39 @@ namespace examples
             data.rke = false;
             // Remap kinetic energy correction
             dataNeutral.rke = data.rke;
- 
+
+            if (problem == "snow_hillier_2021") {
+                // Run length and grid
+                data.t_end = sh21.t_end;
+                data.dt_snapshots = data.t_end / 10;
+                data.nx = sh21.nx;
+                data.x_min = -sh21.x_half;
+                data.x_max = sh21.x_half;
+                data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
+                data.z_max = (data.x_max - data.x_min) * data.nz / data.nx;
+
+                // The two-fluid parameters that define this problem. They are set here, rather than in
+                // twofluid.h, so that the initial state and the source terms cannot disagree: the
+                // equilibrium in initialConditions is built from the same T0, and setNormalisation()
+                // derives T_norm and phi_hat from the same reference state. Solver choices (implicit,
+                // tolerances, diagnostics) are left to twofluid.h.
+                plasma_source.T0 = sh21.T0;
+                plasma_source.t_ir = sh21.tau_IR;
+                plasma_source.alpha0 = sh21.alpha0;
+                plasma_source.rho_ref = sh21.rho_t;
+                plasma_source.P_ref = 0.5 * sh21.beta * sh21.B0 * sh21.B0;
+                plasma_source.collisions = true;
+                plasma_source.ion_rec_empirical = true;
+                plasma_source.ion_rec_nlevel = false;
+                plasma_source.ionisation_potential = sh21.ionisation_potential;
+
+                printf("Snow & Hillier (2021) slow-mode shock: setting T0 = %g K, t_ir = %g, alpha0 = %g,\n"
+                       "  rho_ref = %g, P_ref = %g, collisions and empirical rates on, n-level rates off, %s model\n",
+                       static_cast<double>(plasma_source.T0), static_cast<double>(plasma_source.t_ir),
+                       static_cast<double>(plasma_source.alpha0), static_cast<double>(plasma_source.rho_ref),
+                       static_cast<double>(plasma_source.P_ref),
+                       plasma_source.ionisation_potential ? "IRIP" : "IR");
+            }
         }
 
         /**
@@ -330,6 +363,63 @@ namespace examples
                         //energy_electron(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz))/2.0;
                         energy(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz));
                         energy_neutral(ix, iy, iz) = pressure_n / ((dataNeutral.gas_gamma - 1.0) * rho_n(ix, iy, iz));
+                    },
+                    rho.getRange(0), rho.getRange(1), rho.getRange(2));
+            }
+            //////////////////////////////////////////////////////////////////////////////
+            if (problem == "snow_hillier_2021"){
+                // Snow & Hillier (2021), A&A 645, A81, eqs. 79-84: a current sheet at x = 0 in a uniform
+                // partially ionised plasma in thermal and ionisation equilibrium at T0
+                printf("Snow & Hillier (2021) reconnection-driven slow-mode shock\n");
+
+                pw::portableArray<SAMS::T_dataType, 3> rho;
+                pw::portableArray<SAMS::T_dataType, 3> bx,by,bz;
+                pw::portableArray<SAMS::T_dataType, 3> energy;
+                pw::portableArray<SAMS::T_dataType, 3> rho_n;
+                pw::portableArray<SAMS::T_dataType, 3> energy_neutral;
+                pw::portableArray<SAMS::T_dataType, 1> xc, yc, zc;
+
+                auto &axisRegistry = harnessRef.axisRegistry;
+                axisRegistry.fillPPLocalAxis("X", xc, SAMS::staggerType::CENTRED);
+                axisRegistry.fillPPLocalAxis("Y", yc, SAMS::staggerType::CENTRED);
+                axisRegistry.fillPPLocalAxis("Z", zc, SAMS::staggerType::CENTRED);
+
+                auto &varRegistry = harnessRef.variableRegistry;
+                varRegistry.fillPPArray("rho", rho);
+                varRegistry.fillPPArray("bx", bx);
+                varRegistry.fillPPArray("by", by);
+                varRegistry.fillPPArray("bz", bz);
+                varRegistry.fillPPArray("energy_ion", energy);
+                varRegistry.fillPPArray("LARENF/rho", rho_n);
+                varRegistry.fillPPArray("LARENF/energy", energy_neutral);
+
+                // Equilibrium composition at T0, from the same formula setNormalisation() uses
+                SAMS::T_dataType xi_n;
+                TWOFLUID::PIP<T_EOS>::get_equilibrium_ion_fraction(sh21.T0, xi_n);
+                const SAMS::T_dataType xi_i = 1.0 - xi_n;
+                const SAMS::T_dataType P_t = 0.5 * sh21.beta * sh21.B0 * sh21.B0;   // eqs. 83-84
+                const SAMS::T_dataType P_p = 2.0*xi_i/(xi_n + 2.0*xi_i) * P_t;
+                const SAMS::T_dataType P_n = xi_n/(xi_n + 2.0*xi_i) * P_t;
+                const SAMS::T_dataType rho_p0 = xi_i * sh21.rho_t;                  // eq. 82
+                const SAMS::T_dataType rho_n0 = xi_n * sh21.rho_t;                  // eq. 81
+                const SAMS::T_dataType e_p = P_p / ((data.gas_gamma - 1.0) * rho_p0);        // specific energies
+                const SAMS::T_dataType e_n = P_n / ((dataNeutral.gas_gamma - 1.0) * rho_n0);
+                const SAMS::T_dataType Bx = sh21.Bx, B0 = sh21.B0;
+
+                printf("  xi_n = %.6f, P_t = %g, T = %.6f, plasma beta = %g, B_x = %g, B_y = -/+%g for x >/< 0\n",
+                       static_cast<double>(xi_n), static_cast<double>(P_t),
+                       static_cast<double>(dataNeutral.gas_gamma*P_n/rho_n0),
+                       static_cast<double>(sh21.beta), static_cast<double>(Bx), static_cast<double>(B0));
+
+                pw::applyKernel(
+                    LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz)
+                    {
+                        rho(ix, iy, iz) = rho_p0;
+                        rho_n(ix, iy, iz) = rho_n0;
+                        energy(ix, iy, iz) = e_p;
+                        energy_neutral(ix, iy, iz) = e_n;
+                        bx(ix, iy, iz) = Bx;
+                        by(ix, iy, iz) = (xc(ix) > 0.0) ? -B0 : B0;    // eq. 80
                     },
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));
             }

@@ -376,7 +376,9 @@ namespace TWOFLUID
             
             void plasma_source_allocate(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source);
             
-            void get_equilibrium_ion_fraction(T_dataType T0,T_dataType &xi_n);
+            // Equilibrium neutral fraction at temperature T0 [K] from the empirical rates (eq. A.5).
+            // Static so that initial conditions can build an equilibrium state with the same formula.
+            static void get_equilibrium_ion_fraction(T_dataType T0,T_dataType &xi_n);
             
             template<typename T_writer>
             void writeOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &data);

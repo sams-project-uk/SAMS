@@ -2164,10 +2164,7 @@ void PIP<T_EOS>::setNormalisation(typename LARE::LARE3DST<T_EOS>::simulationData
     const SAMS::T_dataType g = data.gas_gamma;
 
     // Equilibrium ionisation at T0 from the empirical rates (Voronov 1997, Smirnov 2003)
-    const SAMS::T_dataType Te_0 = ps.T0/1.1604e4; // eV
-    const SAMS::T_dataType ioneq = (2.6e-19/std::sqrt(Te_0)) /
-        (2.91e-14/(0.232+13.6/Te_0)*std::pow(13.6/Te_0,0.39)*std::exp(-13.6/Te_0)); // = Gamma_rec/Gamma_ion
-    ps.xi_n0 = ioneq/(ioneq+1.0);
+    get_equilibrium_ion_fraction(ps.T0, ps.xi_n0);
     ps.xi_p0 = 1.0 - ps.xi_n0;
     ps.T_norm = g*ps.P_ref/((ps.xi_n0 + 2.0*ps.xi_p0)*ps.rho_ref);
     ps.phi_hat = 13.6*ps.T_norm/(g*ps.kb_ev*ps.T0);
