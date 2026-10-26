@@ -478,6 +478,22 @@ if (plasma_source.ion_rec_nlevel) {
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 plasma_source.ion_heating(ix,iy,iz)=-plasma_source.ion_loss(ix,iy,iz);
             }, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));        
+
+            if (plasma_source.ionisation_potential) {
+                // In the uniform equilibrium state Gamma_ion = t_ir*xi_p0/xi_n0 and rho_n = xi_n0*rho_ref,
+                // so A_heat = t_ir*xi_p0*rho_ref*phi_hat
+                auto minOp = LAMBDA(SAMS::T_dataType &a, const SAMS::T_dataType &b) { a = portableWrapper::min(a, b); };
+                auto maxOp = LAMBDA(SAMS::T_dataType &a, const SAMS::T_dataType &b) { a = portableWrapper::max(a, b); };
+                auto heat = LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) { return plasma_source.ion_heating(ix,iy,iz); };
+                const SAMS::T_dataType hmin = portableWrapper::applyReduction(heat, minOp,  data.largest_number,
+                                                  Range(1,data.nx), Range(1,data.ny), Range(1,data.nz));
+                const SAMS::T_dataType hmax = portableWrapper::applyReduction(heat, maxOp, -data.largest_number,
+                                                  Range(1,data.nx), Range(1,data.ny), Range(1,data.nz));
+                printf("Ionisation potential on: A_heat in [%.6e, %.6e], expected %.6e for the uniform equilibrium state\n",
+                       static_cast<double>(hmin), static_cast<double>(hmax),
+                       static_cast<double>(plasma_source.t_ir*plasma_source.xi_p0*plasma_source.rho_ref*plasma_source.phi_hat));
+                std::fflush(stdout);
+            }
         }
         
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -817,6 +833,8 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
     template<typename T_EOS>
  void PIP<T_EOS>::get_ion_rec_source_terms(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){	
 
+    const bool ion_potential_on = plasma_source.ionisation_potential && plasma_source.ion_rec_empirical;
+
     using Range = portableWrapper::Range;
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
     
@@ -981,10 +999,12 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
         plasma_source.source_energy(ix,iy,iz)   += (ion_flux*(eps_n - eps_p) + 0.5*rec_flux*eps_p)/data.rho(ix,iy,iz);
         plasma_source.source_energy_n(ix,iy,iz) += rec_flux*(0.5*eps_p - eps_n)/dataNeutral.rho(ix,iy,iz);
 
-        //Work out how much energy is spent/gained by IR processes
-        if (plasma_source.ion_rec_empirical) { 
-            //printf("ionisation energy, rho = %f %f \n",ionisation_energy, dataNeutral.rho(ix,iy,iz));
-            plasma_source.source_energy(ix,iy,iz)+=(plasma_source.ion_heating(ix,iy,iz)+plasma_source.ion_loss(ix,iy,iz))/data.rho(ix,iy,iz);//factor of pho comes from denergy density being specified
+        // Ionisation potential and arbitrary heating (eq. 7: -phi_I + A_heat in the plasma energy
+        // equation). ion_loss = -phi_I and ion_heating = A_heat are energy DENSITY rates and do not
+        // change the plasma mass, so the specific energy changes by their sum divided by rho_p.
+        if (ion_potential_on) {
+            plasma_source.source_energy(ix,iy,iz) +=
+                (plasma_source.ion_heating(ix,iy,iz) + plasma_source.ion_loss(ix,iy,iz))/data.rho(ix,iy,iz);
         }
         
     }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
@@ -1757,6 +1777,11 @@ void PIP<T_EOS>::checkSourceConservation(
     SAMS::T_dataType total_momentum_z_error = 0.0;
     SAMS::T_dataType total_energy_error = 0.0;
     SAMS::T_dataType total_expected_thermal = 0.0;
+    SAMS::T_dataType max_energy_error = 0.0;   // largest per-cell |error|: sums can hide cancelling errors
+    SAMS::T_dataType energy_scale = 0.0;       // sum of the magnitudes of the terms, for a relative error
+
+    const bool ion_rec_on = plasma_source.ion_rec_empirical || plasma_source.ion_rec_nlevel;
+    const bool ion_potential_on = plasma_source.ionisation_potential && plasma_source.ion_rec_empirical;
 
     //
     // Use simple host arrays.
@@ -1871,8 +1896,12 @@ void PIP<T_EOS>::checkSourceConservation(
                 dataNeutral.rho(ix,iy,iz)
                 * plasma_source.source_energy_n(ix,iy,iz);
 
+            // Rate of change of the total internal energy DENSITY: sum over species of
+            // d(rho eps)/dt = rho deps/dt + eps drho/dt. The mass sources are equal and opposite,
+            // so the eps drho/dt terms combine into (eps_p - eps_n) * drho_p/dt.
             thermal_source[index] =
-                thermal_p + thermal_n;
+                thermal_p + thermal_n
+                + (data.energy_ion(ix,iy,iz) - dataNeutral.energy(ix,iy,iz)) * plasma_source.source_mass(ix,iy,iz);
                 
             //
             // Kinetic energy
@@ -1976,11 +2005,21 @@ void PIP<T_EOS>::checkSourceConservation(
 
             SAMS::T_dataType vd2 = dvx*dvx + dvy*dvy + dvz*dvz;
             
+            // Expected internal energy gain: frictional heating from collisions, kinetic energy of the drift
+            // converted to heat by ionisation and recombination, and (IRIP) A_heat - phi_I. Everything else
+            // the source terms do to the internal energy is a transfer between species and must cancel.
             expected_thermal[index] =
                 plasma_source.ac(ix,iy,iz)
                 * data.rho(ix,iy,iz)
                 * dataNeutral.rho(ix,iy,iz)
                 * vd2;
+            if (ion_rec_on) {
+                expected_thermal[index] += 0.5*vd2*(plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)
+                                                  + plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz));
+            }
+            if (ion_potential_on) {
+                expected_thermal[index] += plasma_source.ion_heating(ix,iy,iz) + plasma_source.ion_loss(ix,iy,iz);
+            }
         },
         Range(0,nx),
         Range(0,ny),
@@ -2021,9 +2060,10 @@ void PIP<T_EOS>::checkSourceConservation(
                 total_expected_thermal +=
                     expected_thermal[index];
                     
-                total_energy_error +=
-                //    thermal_source[index]+kinetic_source[index];
-                    thermal_source[index]-expected_thermal[index];
+                const SAMS::T_dataType e_err = thermal_source[index]-expected_thermal[index];
+                total_energy_error += e_err;
+                max_energy_error = std::max(max_energy_error, std::abs(e_err));
+                energy_scale += std::abs(thermal_source[index]) + std::abs(expected_thermal[index]);
             }
         }
     }
@@ -2031,11 +2071,9 @@ void PIP<T_EOS>::checkSourceConservation(
 
     printf("\nSource conservation diagnostic\n");
     printf("--------------------------------\n");
-    if ((plasma_source.ion_rec_empirical) || (plasma_source.ion_rec_nlevel)){
-        printf("\nSource terms are complicated when ionisation is on\n");
-        printf("\nErrors are because of the missing terms from drho/dt type terms\n");
-        printf("--------------------------------\n");
-    }
+    printf("Energy budget includes: collisions%s%s\n",
+           ion_rec_on ? ", ionisation/recombination" : "",
+           ion_potential_on ? ", ionisation potential and heating" : "");
 
     printf(
         "Mass            : %.12e\n",
@@ -2058,8 +2096,9 @@ void PIP<T_EOS>::checkSourceConservation(
     );
     
     printf(
-        "Energy error      : %.12e\n",
-        total_energy_error
+        "Energy error    : %.12e (sum), max per cell %.3e, relative %.3e\n",
+        total_energy_error, max_energy_error,
+        energy_scale > 0.0 ? max_energy_error*static_cast<SAMS::T_dataType>(ncell)/energy_scale : 0.0
     );
 
     printf("--------------------------------\n");
@@ -2069,6 +2108,9 @@ void PIP<T_EOS>::checkSourceConservation(
     delete[] momentum_x_error;
     delete[] momentum_y_error;
     delete[] momentum_z_error;
+    delete[] thermal_source;
+    delete[] kinetic_source;
+    delete[] expected_thermal;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -2231,6 +2273,8 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
     printf("  collisions             : %s (alpha0 = %g)\n", onoff(ps.collisions), static_cast<double>(ps.alpha0));
     printf("  vertex_rates           : %s\n", onoff(ps.vertex_rates));
     printf("  ion_rec_empirical      : %s\n", onoff(ps.ion_rec_empirical));
+    printf("  ionisation_potential   : %s%s\n", onoff(ps.ionisation_potential),
+           ps.ion_rec_empirical ? (ps.ionisation_potential ? "  (IRIP model)" : "  (IR model)") : "");
     printf("  ion_rec_nlevel         : %s\n", onoff(ps.ion_rec_nlevel));
     if (ps.ion_rec_nlevel) {
         printf("  atomic rates file      : %s\n", ps.data_path.c_str());
@@ -2265,6 +2309,8 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
     };
     if (ps.ion_rec_empirical && ps.ion_rec_nlevel)
         warn("ion_rec_empirical and ion_rec_nlevel are both on; both sets of ionisation/recombination sources are computed.");
+    if (ps.ionisation_potential && !ps.ion_rec_empirical)
+        warn("ionisation_potential=true has no effect: it is only implemented for ion_rec_empirical.");
     if (ps.implicit && ps.ion_rec_nlevel)
         warn("implicit=true does not support ion_rec_nlevel; the run will abort at the first source solve.");
     if (ps.implicit && !ps.collisions)

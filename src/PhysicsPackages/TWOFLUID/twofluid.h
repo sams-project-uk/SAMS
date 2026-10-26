@@ -112,7 +112,12 @@ namespace TWOFLUID
         //Coupling physics
         bool collisions=true;
         bool ion_rec_empirical=true;
+        // Ionisation potential phi_I and the constant heating A_heat that balances it at t = 0
+        // (Snow & Hillier 2021, eqs. 7, 17, 18). With ion_rec_empirical: false gives the paper's IR
+        // model, true its IRIP model. Only implemented for the empirical rates.
+        bool ionisation_potential=false;
         bool ion_rec_nlevel=false;
+
         
         bool vertex_rates=false;
         LARE::volumeArray rho_p_ac_vertex; // velocity source at vertex
@@ -257,8 +262,12 @@ namespace TWOFLUID
                 printf("Getting IC for two_fluid rates \n");
                 get_ac(data,dataNeutral,plasma_source);
                 if (plasma_source.ion_rec_nlevel) {set_reference_recombination(data,plasma_source);}
+                if (plasma_source.ion_rec_empirical) {
+                    // A_heat = phi_I at t = 0 (eq. 18): the rates (and hence ion_loss) must exist first
+                    ion_rec_rates_empirical(data,dataNeutral,plasma_source);
+                    set_bc_heating(data,plasma_source);
+                }
                 get_two_fluid_source(data,dataNeutral,plasma_source);
-                if (plasma_source.ion_rec_empirical) {set_bc_heating(data,plasma_source);}
             }
             
             void getVariables(data_two_fluid_source &plasma_source,oldData &oldData, SAMS::harness &harness){
