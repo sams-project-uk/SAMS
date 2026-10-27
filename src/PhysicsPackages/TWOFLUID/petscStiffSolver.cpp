@@ -93,6 +93,12 @@ struct StiffSolver::Impl {
     static PetscErrorCode IFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void *ctx);
     static PetscErrorCode IJacobian(TS ts, PetscReal t, Vec U, Vec Udot, PetscReal shift, Mat A, Mat P, void *ctx);
     static PetscErrorCode Domain(TS ts, PetscReal, Vec U, PetscBool *accept);
+    static PetscErrorCode CheckStage(TSAdapt adapt, TS ts, PetscReal t, Vec Y, PetscBool *accept);
+
+    // Set by IFunction when the source at a stage state is not finite; read and cleared by
+    // CheckStage, which PETSc calls after every stage (see TSStep_RosW / TSAdaptCheckStage).
+    bool stage_nonfinite = false;
+    long long stage_rejects = 0;
 };
 
 // F(U) through the caller's callback
@@ -133,6 +139,7 @@ PetscErrorCode StiffSolver::Impl::BuildBlocks(TS ts, PetscReal t, Vec U, Impl *s
         PetscCall(VecRestoreArrayRead(U, &uc));
         if (same) PetscFunctionReturn(PETSC_SUCCESS);
     }
+    const long long nonfinite_before = s->rhs_nonfinite;
 
     PetscCall(Rhs(ts, t, U, s->f_base, s));
 
@@ -180,15 +187,62 @@ PetscErrorCode StiffSolver::Impl::BuildBlocks(TS ts, PetscReal t, Vec U, Impl *s
     PetscCall(VecRestoreArray(s->h_pert, &h));
 
 
-    s->blocks_valid = true;
+    // Never cache blocks built from a non-finite evaluation: every retry from this state would reuse
+    // them and fail again. The stage built with them is rejected by CheckStage (its values are NaN).
+    s->blocks_valid = (s->rhs_nonfinite == nonfinite_before);
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 // G(t, U, U') = U' - S(U)
 PetscErrorCode StiffSolver::Impl::IFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void *ctx) {
     PetscFunctionBeginUser;
+    auto *s = static_cast<Impl *>(ctx);
+    const long long before = s->rhs_nonfinite;
     PetscCall(Rhs(ts, t, U, F, ctx));   // F = S(U)
+    // A non-finite source (e.g. a trial stage with a negative temperature, where the rates take
+    // square roots and powers of T) must not reach PETSc's error estimate, which raises a
+    // floating-point error on NaN. Flag it so CheckStage rejects the stage and PETSc retries the
+    // step with a smaller internal step. F itself is zeroed so no NaN propagates in the meantime.
+    if (s->rhs_nonfinite != before) {
+        s->stage_nonfinite = true;
+        PetscCall(VecZeroEntries(F));
+    }
     PetscCall(VecAYPX(F, -1.0, Udot));  // F = Udot - S(U)
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+// Called by PETSc after each stage (TSAdaptCheckStage). Y is the stage increment, not the state.
+// Rejecting here makes PETSc shrink the internal step (by scale_solve_failed, 0.25) and retry,
+// without touching the accepted solution.
+PetscErrorCode StiffSolver::Impl::CheckStage(TSAdapt, TS ts, PetscReal, Vec Y, PetscBool *accept) {
+    PetscFunctionBeginUser;
+    void *ctx;
+    PetscCall(TSGetApplicationContext(ts, &ctx));
+    auto *s = static_cast<Impl *>(ctx);
+    bool ok = !s->stage_nonfinite;
+    if (ok) {
+        const PetscScalar *y;
+        PetscInt n;
+        PetscCall(VecGetLocalSize(Y, &n));
+        PetscCall(VecGetArrayRead(Y, &y));
+        for (PetscInt i = 0; i < n; ++i) {
+            if (!std::isfinite(static_cast<double>(y[i]))) { ok = false; break; }
+        }
+        PetscCall(VecRestoreArrayRead(Y, &y));
+    }
+    s->stage_nonfinite = false;
+    if (!ok) {
+        ++s->stage_rejects;
+        // TSStep_RosW sets the SNES Jacobian lag to -2 (build once, then reuse) at the first stage and
+        // restores it only after the LAST stage. When a stage is rejected part-way through a step that
+        // restore never happens, so every retry would reuse the Jacobian built for the old (larger)
+        // step size, with the wrong shift, and fail. Restoring the default lag here makes the retry
+        // rebuild it (the finite-difference blocks themselves are cached, so this is cheap).
+        SNES snes;
+        PetscCall(TSGetSNES(ts, &snes));
+        PetscCall(SNESSetLagJacobian(snes, 1));
+    }
+    *accept = ok ? PETSC_TRUE : PETSC_FALSE;
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -357,6 +411,13 @@ StiffSolver::StiffSolver(std::int64_t ncells, int stride,
 
     // Options from PETSC_OPTIONS / a petscrc file override everything set above
     SS_ABORT(TSSetFromOptions(s.ts));
+    {
+        // Reject stages with non-finite sources or stage values (see CheckStage). After TSSetFromOptions, so
+        // a -ts_adapt_type option cannot replace the adaptor it is attached to.
+        TSAdapt adapt;
+        SS_ABORT(TSGetAdapt(s.ts, &adapt));
+        SS_ABORT(TSAdaptSetCheckStage(adapt, Impl::CheckStage));
+    }
 }
 
 StiffSolver::~StiffSolver() {
@@ -398,6 +459,8 @@ bool StiffSolver::solve(double *u, double dt, SolveInfo &info) {
     s.rhs_nonfinite = 0;
     s.rhs_bad_index = -1;
     s.blocks_valid = false;
+    s.stage_nonfinite = false;
+    s.stage_rejects = 0;
 
     // The source terms do not depend explicitly on time, so solve on t = [0, dt]
     SS_ABORT(TSSetStepNumber(s.ts, 0));
@@ -406,7 +469,20 @@ bool StiffSolver::solve(double *u, double dt, SolveInfo &info) {
     const PetscReal dt0 = (s.dt_hint > 0.0 && s.dt_hint < dt) ? s.dt_hint : static_cast<PetscReal>(dt);
     SS_ABORT(TSSetTimeStep(s.ts, dt0));
 
-    SS_ABORT(TSSolve(s.ts, s.u_sol));
+    // A PETSc error inside TSSolve (for example a NaN that still reaches the error estimate) is
+    // returned as a failed solve rather than aborting the process, so the caller can roll back and
+    // retry with smaller steps. The error handler is swapped so PETSc does not print the traceback.
+    PetscCallAbort(PETSC_COMM_SELF, PetscPushErrorHandler(PetscReturnErrorHandler, nullptr));
+    const PetscErrorCode solve_err = TSSolve(s.ts, s.u_sol);
+    PetscCallAbort(PETSC_COMM_SELF, PetscPopErrorHandler());
+    info.stage_rejects = s.stage_rejects;
+    info.rhs_nonfinite = s.rhs_nonfinite;
+    info.rhs_bad_index = s.rhs_bad_index;
+    if (solve_err != PETSC_SUCCESS) {
+        info.petsc_error = static_cast<int>(solve_err);
+        info.reason = -1000;
+        return false;
+    }
 
     TSConvergedReason reason;
     PetscInt steps, rejects;

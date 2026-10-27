@@ -2647,10 +2647,38 @@ void PIP<T_EOS>::implicitSourceSolve(typename LARE::LARE3DST<T_EOS>::simulationD
     this->u_start_buf = this->u_buf;
  
     // ---- solve ------------------------------------------------------------------------------
+    // Normally one solve over dt_solve. If it fails (PETSc could not complete it, or the final state
+    // is invalid), roll back and retry as 2, 4, ... max_sub sequential sub-solves of dt_solve/n_sub;
+    // only if every attempt fails is the run stopped with the diagnostics of the last attempt.
+    // (Inside each solve, PETSc already rejects and retries stages whose sources are NaN/Inf.)
+    const int max_sub = 64;
     SAMS_PETSC::SolveInfo info;
-    const bool ok = this->stiff_solver->solve(this->u_buf.data(), static_cast<double>(dt_solve), info);
-    if (!ok) {
+    bool ok = false;
+    bool final_invalid = false;  // the last failure was an invalid final state (not a failed solve)
+    StateScan post{};
+    int n_sub = 1, total_steps = 0, total_rejected = 0;
+    long long total_stage_rejects = 0;
+    for (n_sub = 1; n_sub <= max_sub; n_sub *= 2) {
+        this->u_buf = this->u_start_buf;
+        total_steps = 0; total_rejected = 0; total_stage_rejects = 0;
+        ok = true; final_invalid = false;
+        for (int k = 0; k < n_sub && ok; ++k) {
+            ok = this->stiff_solver->solve(this->u_buf.data(), static_cast<double>(dt_solve)/n_sub, info);
+            total_steps += info.steps; total_rejected += info.rejected; total_stage_rejects += info.stage_rejects;
+            if (ok) {
+                post = scan_state(this->u_buf);
+                if (post.n_bad > 0) { ok = false; final_invalid = true; }
+            }
+        }
+        if (ok) break;
         this->UnpackArrayToViews(this->u_start_buf.data(), data, dataNeutral); // roll back
+        if (n_sub < max_sub) {
+            std::fprintf(stderr, "Implicit source solve %s with %d sub-solve(s) (TSConvergedReason %d%s); retrying with %d\n",
+                         final_invalid ? "gave an invalid state" : "failed", n_sub, info.reason,
+                         info.petsc_error ? ", PETSc error" : "", 2*n_sub);
+        }
+    }
+    if (!ok && !final_invalid) {
         auto describe = [&](long long idx, char *buf, size_t len) {
             if (idx < 0) { std::snprintf(buf, len, "none"); return; }
             const long long cell = idx / petsc_stride;
@@ -2662,7 +2690,7 @@ void PIP<T_EOS>::implicitSourceSolve(typename LARE::LARE3DST<T_EOS>::simulationD
         describe(info.domain_bad_index, dom, sizeof dom);
         describe(info.rhs_bad_index, rhs, sizeof rhs);
         std::fprintf(stderr,
-            "Implicit two-fluid source solve FAILED (TSConvergedReason %d).\n"
+            "Implicit two-fluid source solve FAILED (TSConvergedReason %d, PETSc error %d), even with %d sub-solves.\n"
             "  requested dt = %.6e, reached t = %.6e, last internal dt = %.6e\n"
             "  accepted steps = %d, rejected steps = %d\n"
             "  stages refused by the validity check = %lld\n"
@@ -2670,26 +2698,25 @@ void PIP<T_EOS>::implicitSourceSolve(typename LARE::LARE3DST<T_EOS>::simulationD
             "                       checked vector: 2-norm %.6e, rho range [%.6e, %.6e]\n"
             "  right hand side evaluations containing NaN/Inf = %lld (first: %s)\n"
             "State rolled back to the start of the solve.\n",
-            info.reason, static_cast<double>(dt_solve), info.time_reached, info.last_dt, info.steps, info.rejected,
+            info.reason, info.petsc_error, max_sub, static_cast<double>(dt_solve)/max_sub, info.time_reached, info.last_dt, info.steps, info.rejected,
             info.domain_rejects, info.domain_first_dt, info.domain_bad_count, dom, info.domain_bad_value,
             info.domain_vec_norm, info.domain_c0_min, info.domain_c0_max, info.rhs_nonfinite, rhs);
         std::abort();
     }
- 
-    // ---- final solution ---------------------------------------------------------------------
-    {
-        const StateScan post = scan_state(this->u_buf);
-        if (post.n_bad > 0) {
-            this->UnpackArrayToViews(this->u_start_buf.data(), data, dataNeutral); // roll back
-            report_invalid("FINAL", post, this->u_buf, false);
-            std::fprintf(stderr, "  (TS steps = %d, rejected = %d, dt = %.6e). The state has been rolled back to the start of the solve.\n"
-                                 "  A smaller time step or tighter tolerances (PETSC_OPTIONS=\"-ts_rtol 1e-8\") may help.\n",
-                         info.steps, info.rejected, static_cast<double>(dt_solve));
-            std::abort();
-        }
+    if (!ok) {
+        report_invalid("FINAL", post, this->u_buf, false);
+        std::fprintf(stderr, "  (even with %d sub-solves of dt = %.6e). The state has been rolled back to the start of the solve.\n"
+                             "  A smaller time step or tighter tolerances (PETSC_OPTIONS=\"-ts_rtol 1e-8\") may help.\n",
+                     max_sub, static_cast<double>(dt_solve)/max_sub);
+        std::abort();
     }
-    printf("Implicit PETSc source solve: dt = %.12e, TS steps = %d, rejected = %d\n",
-           static_cast<double>(dt_solve), info.steps, info.rejected);
+    printf("Implicit PETSc source solve: dt = %.12e, TS steps = %d, rejected = %d%s",
+           static_cast<double>(dt_solve), total_steps, total_rejected, n_sub > 1 ? "" : "\n");
+    if (n_sub > 1) printf(" (as %d sub-solves)\n", n_sub);
+    if (total_stage_rejects > 0) {
+        printf("  %lld stage(s) with non-finite sources were rejected and retried with smaller internal steps\n",
+               total_stage_rejects);
+    }
  
     // The live arrays hold the last stage state, so always copy the final solution back
     this->UnpackArrayToViews(this->u_buf.data(), data, dataNeutral);

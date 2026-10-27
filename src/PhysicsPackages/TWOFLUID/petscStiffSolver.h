@@ -40,6 +40,9 @@ namespace SAMS_PETSC {
         double domain_first_dt = 0.0;        // internal step size when it was first refused
         long long rhs_nonfinite = 0;         // right hand side evaluations containing NaN/Inf
         long long rhs_bad_index = -1;        // first non-finite entry
+        long long stage_rejects = 0;         // stages rejected (and retried with a smaller internal step)
+                                             // because the source or the stage values were NaN/Inf
+        int petsc_error = 0;                 // non-zero: TSSolve raised this PETSc error (solve failed)
     };
 
     class StiffSolver {
