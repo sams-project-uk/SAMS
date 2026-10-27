@@ -425,6 +425,20 @@ namespace LARE
             lagrangian_prepare(data, core_data);
         }
         /**
+         * Called after the first two-fluid source half-step of the Strang splitting and before the
+         * Lagrangian step. beforeStartOfTimestep prepared the pressure, the cell-centred field, the vertex
+         * density and the shock viscosity from the state BEFORE the source step (the time-step
+         * calculation needs them). The source step changes density, energy and velocity, so the
+         * Lagrangian step must not use those values: without this, the predictor evaluates
+         * e - p_old dV / rho_new + q_old dt / (2 rho_new), which goes badly wrong where ionisation or
+         * recombination changes a density by a large factor within the step (e.g. negative neutral
+         * energy where ionisation has removed the neutrals). lagrangian_prepare only assigns from the
+         * current state, so calling it a second time is safe.
+         */
+        void afterSourceTermsStart(simulationData &data, const domainData & core_data){
+            lagrangian_prepare(data, core_data);
+        }
+        /**
          * Physics timestep functions
          * This is the predictor step of the LARE3D timestep
          * @param data LARE3D simulation data

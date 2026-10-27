@@ -27,6 +27,9 @@
 #include "axisRegistry.h"
 
 #include <netcdf.h>
+#include <functional>
+#include <cstring>
+#include <string>
 
 // Generated at build time by cmake/gitInfo.cmake (git commit, branch, uncommitted changes).
 // Falls back to "unknown" if the header is absent, e.g. when built outside CMake.
@@ -325,27 +328,27 @@ if (plasma_source.ion_rec_nlevel) {
         
         if (plasma_source.collisions){
             using Range = portableWrapper::Range;
+            // Cell-centred quantities (densities, specific energies): interior cells 1..n
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                //Note that the factor of 0.5 in these is due to Strang splitting
                 //Mass exchange terms
                 data.rho(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_mass(ix,iy,iz);
                 dataNeutral.rho(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_mass_n(ix,iy,iz);
-                
-                //Apply the velocity exchange terms
+                //Energy source terms
+                data.energy_ion(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy(ix,iy,iz);
+                dataNeutral.energy(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy_n(ix,iy,iz);
+            }, Range(1,data.nx), Range(1,data.ny), Range(1,data.nz));
+            // Vertex-centred velocities: vertices 0..n (LARE's own update range)
+            portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 data.vx(ix,iy,iz)       +=plasma_source.substep_dt*plasma_source.source_v_x(ix,iy,iz);
                 dataNeutral.vx(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_v_x_n(ix,iy,iz);
-                
                 data.vy(ix,iy,iz)       +=plasma_source.substep_dt*plasma_source.source_v_y(ix,iy,iz);
                 dataNeutral.vy(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_v_y_n(ix,iy,iz);
-                
                 data.vz(ix,iy,iz)       +=plasma_source.substep_dt*plasma_source.source_v_z(ix,iy,iz);
                 dataNeutral.vz(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_v_z_n(ix,iy,iz);
-                
-                //Energy source terms - the 3/2 here needs fixing
-                data.energy_ion(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy(ix,iy,iz);
-                //data.energy_electron(ix,iy,iz)+=0.5*data.dt*plasma_source.source_energy(ix,iy,iz);
-                dataNeutral.energy(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy_n(ix,iy,iz);                 
-            }, Range(-1,data.nx), Range(-1,data.ny), Range(-1,data.nz));
+            }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+            portableWrapper::fence();
+            // Ghost cells follow the interior (also between explicit sub-steps, whose sources use them)
+            refreshSourceGhosts();
         }
         
     };
@@ -2230,6 +2233,70 @@ void PIP<T_EOS>::setNormalisation(typename LARE::LARE3DST<T_EOS>::simulationData
 }
 
 /*
+* Mirror-symmetry check about x = 0 (see data_two_fluid_source::symmetry_check).
+* Cell-centred x index ix (1..nx) mirrors nx+1-ix; vertex-centred (0..nx) mirrors nx-ix. Under the
+* mirror, densities, energies, pressures, viscous heating, v_y, v_z and B_x are even; v_x and B_y odd.
+* The problem is uniform in y and z, so one row (iy = iz = 1) is checked. Host-side loops: OpenMP builds.
+*/
+template<typename T_EOS>
+void PIP<T_EOS>::symmetryCheck(typename LARE::LARE3DST<T_EOS>::simulationData &data,
+                               typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+                               data_two_fluid_source &ps, long long step, double time,
+                               const char *stage, bool prepared) {
+    if (step >= ps.symmetry_check_steps) return;
+    portableWrapper::fence();
+    const T_indexType nx = data.nx, iy = 1, iz = 1;
+    struct Field { const char *name; int parity; bool vertex; std::function<double(T_indexType)> get; };
+    std::vector<Field> fields = {
+        {"rho",        1, false, [&](T_indexType i) { return static_cast<double>(data.rho(i,iy,iz)); }},
+        {"rho_n",      1, false, [&](T_indexType i) { return static_cast<double>(dataNeutral.rho(i,iy,iz)); }},
+        {"energy_ion", 1, false, [&](T_indexType i) { return static_cast<double>(data.energy_ion(i,iy,iz)); }},
+        {"energy_n",   1, false, [&](T_indexType i) { return static_cast<double>(dataNeutral.energy(i,iy,iz)); }},
+        {"by",        -1, false, [&](T_indexType i) { return static_cast<double>(data.by(i,iy,iz)); }},
+        {"vx",        -1, true,  [&](T_indexType i) { return static_cast<double>(data.vx(i,iy,iz)); }},
+        {"vy",         1, true,  [&](T_indexType i) { return static_cast<double>(data.vy(i,iy,iz)); }},
+        {"vx_n",      -1, true,  [&](T_indexType i) { return static_cast<double>(dataNeutral.vx(i,iy,iz)); }},
+        {"vy_n",       1, true,  [&](T_indexType i) { return static_cast<double>(dataNeutral.vy(i,iy,iz)); }},
+        {"bx",         1, true,  [&](T_indexType i) { return static_cast<double>(data.bx(i,iy,iz)); }},
+    };
+    if (prepared) {
+        fields.push_back({"pressure",    1, false, [&](T_indexType i) { return static_cast<double>(data.pressure(i,iy,iz)); }});
+        fields.push_back({"visc_heat",   1, false, [&](T_indexType i) { return static_cast<double>(data.visc_heat(i,iy,iz)); }});
+        fields.push_back({"pressure_n",  1, false, [&](T_indexType i) { return static_cast<double>(dataNeutral.pressure(i,iy,iz)); }});
+        fields.push_back({"visc_heat_n", 1, false, [&](T_indexType i) { return static_cast<double>(dataNeutral.visc_heat(i,iy,iz)); }});
+    }
+    double worst = 0.0; const char *worst_name = "-"; T_indexType worst_i = 0; double worst_a = 0, worst_b = 0;
+    std::string per_field;
+    for (auto &f : fields) {
+        const T_indexType lo = f.vertex ? 0 : 1, hi = nx;
+        double scale = 0.0, err = 0.0; T_indexType ie = lo; double ea = 0, eb = 0;
+        for (T_indexType i = lo; i <= hi; ++i) scale = std::max(scale, std::abs(f.get(i)));
+        for (T_indexType i = lo; i <= hi; ++i) {
+            const T_indexType m = f.vertex ? nx - i : nx + 1 - i;
+            const double a = f.get(i), b = f.parity * f.get(m);
+            if (std::abs(a - b) > err) { err = std::abs(a - b); ie = i; ea = a; eb = f.get(m); }
+        }
+        const double rel = scale > 0.0 ? err/scale : 0.0;
+        if (rel > 1.0e-12) {
+            char buf[64]; std::snprintf(buf, sizeof buf, " %s %.1e", f.name, rel); per_field += buf;
+        }
+        if (rel > worst) { worst = rel; worst_name = f.name; worst_i = ie; worst_a = ea; worst_b = eb; }
+    }
+    printf("symmetry step %lld t=%.6e %-40s max %.2e%s\n", step, time, stage, worst,
+           per_field.empty() ? "  (all fields symmetric to 1e-12)" : (std::string("  [") + per_field + " ]").c_str());
+    if (worst > 1.0e-12 && !symmetry_broken_reported) {
+        symmetry_broken_reported = true;
+        printf("SYMMETRY FIRST BROKEN at step %lld, %s: field %s, x index %lld (mirror %lld), value %.15e vs mirror %.15e\n",
+               step, stage, worst_name, static_cast<long long>(worst_i),
+               static_cast<long long>(std::strcmp(worst_name, "vx") == 0 || std::strcmp(worst_name, "vy") == 0 ||
+                                      std::strcmp(worst_name, "vx_n") == 0 || std::strcmp(worst_name, "vy_n") == 0 ||
+                                      std::strcmp(worst_name, "bx") == 0 ? nx - worst_i : nx + 1 - worst_i),
+               worst_a, worst_b);
+    }
+    std::fflush(stdout);
+}
+
+/*
 * Start-up record of the run configuration. Everything that selects the physics or the solver
 * is printed here, so a log file alone identifies the run that produced it.
 * Add new data_two_fluid_source flags to this list when they are introduced.
@@ -2297,6 +2364,8 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
     printf("  check_source           : %s\n", onoff(ps.check_source));
     printf("  watch_state            : %s (trend line every %d steps)\n", onoff(ps.watch_state), ps.watch_interval);
     printf("  debug_twofluid_steps   : %s\n", onoff(ps.debug_twofluid_steps));
+    printf("  symmetry_check         : %s%s\n", onoff(ps.symmetry_check),
+           ps.symmetry_check ? (" (first " + std::to_string(ps.symmetry_check_steps) + " steps)").c_str() : "");
 
     // Combinations that are legal to compile but almost certainly not what was intended
     int n_warn = 0;
@@ -2718,8 +2787,10 @@ void PIP<T_EOS>::implicitSourceSolve(typename LARE::LARE3DST<T_EOS>::simulationD
                total_stage_rejects);
     }
  
-    // The live arrays hold the last stage state, so always copy the final solution back
+    // The live arrays hold the last stage state, so always copy the final solution back, then
+    // bring the ghost cells into line with it (the packed ghost entries were frozen)
     this->UnpackArrayToViews(this->u_buf.data(), data, dataNeutral);
+    this->refreshSourceGhosts();
 }
  
 // f = F(u): write the trial state into the live arrays, evaluate the exact two-fluid
@@ -2730,6 +2801,7 @@ void PIP<T_EOS>::RHSAdapter(const double *u, double *f, void *user) {
     PIP *pip = c->pip;
  
     pip->UnpackArrayToViews(u, *c->data, *c->dataNeutral);
+    pip->refreshSourceGhosts(); // ghosts mirror the trial interior, as in the explicit path
     pip->get_ac(*c->data, *c->dataNeutral, *c->plasma_source);
     pip->get_two_fluid_source(*c->data, *c->dataNeutral, *c->plasma_source);
     pip->PackSourcesToArray(*c->plasma_source, *c->data, f);
@@ -2797,18 +2869,24 @@ void PIP<T_EOS>::PackSourcesToArray(data_two_fluid_source &plasma_source,
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         const std::int64_t cell = ((static_cast<std::int64_t>(iz) + 1) * sy + (iy + 1)) * sx + (ix + 1);
         const std::int64_t idx = cell * 10;
-        const bool frozen = (ix == -1) || (iy == -1) || (iz == -1);
+        // The unknowns are the interior points only, identical on both sides of the domain:
+        // cell-centred components (densities, energies) on cells 1..n, vertex-centred components
+        // (velocities) on vertices 0..n. Every other packed entry is a ghost: its source is zero, so
+        // the solver does not evolve it, and RHSAdapter refreshes the live ghost values from the
+        // boundary conditions before each source evaluation.
+        const bool cell_ghost   = (ix < 1) || (iy < 1) || (iz < 1);
+        const bool vertex_ghost = (ix < 0) || (iy < 0) || (iz < 0);
  
-        f_raw[idx + 0] = frozen ? 0.0 : plasma_source.source_mass(ix, iy, iz);
-        f_raw[idx + 1] = frozen ? 0.0 : plasma_source.source_mass_n(ix, iy, iz);
-        f_raw[idx + 2] = frozen ? 0.0 : plasma_source.source_v_x(ix, iy, iz);
-        f_raw[idx + 3] = frozen ? 0.0 : plasma_source.source_v_y(ix, iy, iz);
-        f_raw[idx + 4] = frozen ? 0.0 : plasma_source.source_v_z(ix, iy, iz);
-        f_raw[idx + 5] = frozen ? 0.0 : plasma_source.source_v_x_n(ix, iy, iz);
-        f_raw[idx + 6] = frozen ? 0.0 : plasma_source.source_v_y_n(ix, iy, iz);
-        f_raw[idx + 7] = frozen ? 0.0 : plasma_source.source_v_z_n(ix, iy, iz);
-        f_raw[idx + 8] = frozen ? 0.0 : plasma_source.source_energy(ix, iy, iz);
-        f_raw[idx + 9] = frozen ? 0.0 : plasma_source.source_energy_n(ix, iy, iz);
+        f_raw[idx + 0] = cell_ghost   ? 0.0 : plasma_source.source_mass(ix, iy, iz);
+        f_raw[idx + 1] = cell_ghost   ? 0.0 : plasma_source.source_mass_n(ix, iy, iz);
+        f_raw[idx + 2] = vertex_ghost ? 0.0 : plasma_source.source_v_x(ix, iy, iz);
+        f_raw[idx + 3] = vertex_ghost ? 0.0 : plasma_source.source_v_y(ix, iy, iz);
+        f_raw[idx + 4] = vertex_ghost ? 0.0 : plasma_source.source_v_z(ix, iy, iz);
+        f_raw[idx + 5] = vertex_ghost ? 0.0 : plasma_source.source_v_x_n(ix, iy, iz);
+        f_raw[idx + 6] = vertex_ghost ? 0.0 : plasma_source.source_v_y_n(ix, iy, iz);
+        f_raw[idx + 7] = vertex_ghost ? 0.0 : plasma_source.source_v_z_n(ix, iy, iz);
+        f_raw[idx + 8] = cell_ghost   ? 0.0 : plasma_source.source_energy(ix, iy, iz);
+        f_raw[idx + 9] = cell_ghost   ? 0.0 : plasma_source.source_energy_n(ix, iy, iz);
     }, Range(-1, data.nx), Range(-1, data.ny), Range(-1, data.nz));
 }
  

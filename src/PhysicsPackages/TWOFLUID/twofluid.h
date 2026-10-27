@@ -132,6 +132,12 @@ namespace TWOFLUID
         SAMS::T_dataType implicit_rtol=1.0e-6;  // relative tolerance of the PETSc time stepper (command line -ts_rtol overrides)
         SAMS::T_dataType implicit_atol=1.0e-9;  // absolute tolerance of the PETSc time stepper (command line -ts_atol overrides)
         bool implicit_limit_dt=false;           // if false the explicit collisional dt limit is not applied when implicit=true
+        // Mirror-symmetry check for problems symmetric about x = 0 (e.g. snow_hillier_2021): after
+        // every stage of the first symmetry_check_steps steps, print the largest left/right mismatch
+        // of each field relative to its maximum, and flag the first stage where it exceeds round-off.
+        // Debugging aid: host-side loops, only for x-symmetric set-ups uniform in y and z.
+        bool symmetry_check=true;
+        int symmetry_check_steps=20;
         bool watch_state=true;                  // scan the whole state for NaN/Inf at several points of each step (cheap debugging aid)
         int watch_interval=100;                 // print a one-line trend summary every this many timesteps (needs watch_state)
 
@@ -182,6 +188,24 @@ namespace TWOFLUID
 
 	    static constexpr int petsc_stride = 10;
 
+	    // Set in getVariables. Used to re-apply the boundary conditions of the fields the two-fluid
+	    // sources change, so ghost cells always match the interior they mirror.
+	    SAMS::harness *harness_ptr = nullptr;
+
+	    // The source terms are applied to INTERIOR points only (cells 1..n, vertices 0..n in each
+	    // direction, the same on both sides of the domain) and the ghost cells are then refreshed from
+	    // the boundary conditions. Updating ghost layers directly, as before, touched the low-side
+	    // ghosts but not the high-side ones, and left them inconsistent with the cells they mirror.
+	    void refreshSourceGhosts() {
+	        if (!harness_ptr) return;
+	        auto &reg = harness_ptr->variableRegistry;
+	        for (const char *name : {"rho", "energy_ion", "vx", "vy", "vz",
+	                                 "LARENF/rho", "LARENF/energy", "LARENF/vx", "LARENF/vy", "LARENF/vz"}) {
+	            reg.applyBoundaryConditions(name);
+	        }
+	        portableWrapper::fence();
+	    }
+
 	    std::shared_ptr<SAMS_PETSC::StiffSolver> stiff_solver; // created on first use
 	    std::vector<double> u_buf;       // state handed to / returned from the solver
 	    std::vector<double> u_start_buf; // copy of the state at the start of a solve, for rollback
@@ -209,6 +233,13 @@ namespace TWOFLUID
 
 	    // Debugging aid: scan the whole state (ghost layer included) for NaN/Inf and keep a trend line.
 	    // `time` < 0 means "not available at this hook". Defined in TwoFluid.cpp.
+	    // See data_two_fluid_source::symmetry_check. Defined in TwoFluid.cpp.
+	    void symmetryCheck(LARE::LARE3DST<T_EOS>::simulationData &data,
+	                       LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+	                       data_two_fluid_source &plasma_source, long long step, double time,
+	                       const char *stage, bool prepared);
+	    bool symmetry_broken_reported = false;
+
 	    void watchState(LARE::LARE3DST<T_EOS>::simulationData &data,
 	                    LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
 	                    data_two_fluid_source &plasma_source,
@@ -268,9 +299,11 @@ namespace TWOFLUID
                     set_bc_heating(data,plasma_source);
                 }
                 get_two_fluid_source(data,dataNeutral,plasma_source);
+                if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,0,0.0,"initial condition",false); }
             }
             
             void getVariables(data_two_fluid_source &plasma_source,oldData &oldData, SAMS::harness &harness){
+                harness_ptr = &harness; // for refreshSourceGhosts()
                 allocate(plasma_source, harness);
                 if (plasma_source.check_conservation) {allocate_conserved(oldData,harness);}
             }
@@ -285,6 +318,7 @@ namespace TWOFLUID
             
             void applySourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
                 if (plasma_source.debug_twofluid_steps) {printf("applySourceTermsStart start \n");}
+                if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"start of step",true); }
                 if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"before the first source half-step",timeData.time,false); }
                 if (plasma_source.check_conservation) {copyState(data, dataNeutral, oldData);};
                 if (plasma_source.check_source) {checkSourceConservation(data,dataNeutral,plasma_source);};
@@ -310,6 +344,20 @@ namespace TWOFLUID
                 if (plasma_source.debug_twofluid_steps) {printf("applySourceTermsStart end \n");}
             };
 
+            // Symmetry-check hooks. PIP is registered after both LARE packages, so each of these runs
+            // after the corresponding LARE stage has been done for both fluids.
+            void afterSourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::timeState &timeData){
+                if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after source half-step 1 and re-prepare",true); }
+            }
+            void startOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::timeState &timeData){
+                if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after predictor",false); }
+            }
+            void halfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::timeState &timeData){
+                if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after corrector",false); }
+            }
+            void endOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::timeState &timeData){
+                if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after remap",false); }
+            }
             void afterEndOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
                 if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"after the hydro step, before the second source half-step",timeData.time,false); }
                 if (plasma_source.implicit) {
@@ -335,6 +383,7 @@ namespace TWOFLUID
                 }
                 if (plasma_source.check_conservation) {checkConservation(data,dataNeutral,oldData);};
                 if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"after the second source half-step",timeData.time,true); }
+                if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after source half-step 2",false); }
             };
 
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){

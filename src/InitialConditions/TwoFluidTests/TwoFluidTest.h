@@ -59,9 +59,9 @@ namespace examples
             // open boundaries, 11 outputs). The paper's equilibrium figures are at t = 40000 with 256000
             // cells; scale x_half with t_end (fast-mode signals travel at ~1.05 in these units) and nx to
             // keep dx, and change both codes together.
-            SAMS::T_dataType t_end = 100.0;
-            SAMS::T_dataType x_half = 150.0; // domain is [-x_half, x_half]
-            SAMS::T_indexType nx = 4096;     // dx = 0.073
+            SAMS::T_dataType t_end = 1.0;
+            SAMS::T_dataType x_half = 5.0; // domain is [-x_half, x_half]
+            SAMS::T_indexType nx = 512;     // dx = 0.073
         } sh21;
         /**
          * Initial conditions should not be timed
