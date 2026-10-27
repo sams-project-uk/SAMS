@@ -67,6 +67,8 @@ struct StiffSolver::Impl {
     Vec u_work = nullptr;
     Vec f_base = nullptr;
     Vec f_pert = nullptr;
+    Vec f_minus = nullptr;           // f(u - h) for the central-difference Jacobian
+    bool fd_forward = false;         // -tf_fd_forward 1: one-sided differences (cheaper, NOT mirror-symmetric)
     Vec h_pert = nullptr;
     std::vector<PetscScalar> blocks; // stride*stride dense block per cell
     PetscReal dt_hint = 0.0;         // last suggested internal step, first guess of the next solve
@@ -141,12 +143,31 @@ PetscErrorCode StiffSolver::Impl::BuildBlocks(TS ts, PetscReal t, Vec U, Impl *s
     }
     const long long nonfinite_before = s->rhs_nonfinite;
 
-    PetscCall(Rhs(ts, t, U, s->f_base, s));
-
-    // Perturbation size: sqrt(eps) * max(|u|, 1e-3 * max over cells |u_k|), per entry
+    // Finite-difference Jacobian blocks, one column (variable k) at a time, perturbing variable k in
+    // every cell at once.
+    //
+    // Default: CENTRAL differences, J(:,k) = [S(u + h e_k) - S(u - h e_k)] / (2h). These are
+    // unchanged when h -> -h, so the Jacobian respects every symmetry of the source terms. In
+    // particular a mirror-symmetric state (v_x odd, densities even, ...) gets mirror-symmetric
+    // blocks. One-sided differences, S(u + h) - S(u), perturb mirror cells from opposite sides for
+    // odd quantities; their O(h) error then differs between mirror cells, and at large, stiff steps
+    // (where the Rosenbrock-W result depends on the Jacobian) the solve itself breaks the symmetry.
+    // Central differences are also O(h^2) accurate, for twice the source evaluations (2*stride
+    // instead of 1 + stride per Jacobian; blocks are still cached across rejected steps).
+    // PETSC_OPTIONS="-tf_fd_forward 1" restores the one-sided version.
+    //
+    // Step: eps^(1/3) * max(|u|, 1e-3 * max over cells |u_k|) for central differences (sqrt(eps)
+    // for one-sided). For components that must stay positive, h <= |u|/2 so that u - h > 0; mirror
+    // cells have equal |u|, so they get equal steps.
     std::vector<PetscReal> vmax(bs);
     PetscCall(VecStrideNormAll(U, NORM_INFINITY, vmax.data()));
-    const PetscReal sq = std::sqrt(static_cast<PetscReal>(DBL_EPSILON));
+    const bool central = !s->fd_forward;
+    const PetscReal rel = central ? std::cbrt(static_cast<PetscReal>(DBL_EPSILON))
+                                  : std::sqrt(static_cast<PetscReal>(DBL_EPSILON));
+    std::vector<char> is_positive(bs, 0);
+    for (int comp : s->positive) if (comp >= 0 && comp < bs) is_positive[comp] = 1;
+
+    if (!central) PetscCall(Rhs(ts, t, U, s->f_base, s));
 
     const PetscScalar *u;
     PetscScalar *h;
@@ -154,34 +175,46 @@ PetscErrorCode StiffSolver::Impl::BuildBlocks(TS ts, PetscReal t, Vec U, Impl *s
     PetscCall(VecGetArray(s->h_pert, &h));
     for (PetscInt cell = 0; cell < nc; ++cell) {
         for (PetscInt k = 0; k < bs; ++k) {
-            PetscReal ref = std::max(static_cast<PetscReal>(PetscAbsScalar(u[cell * bs + k])), 1.0e-3 * vmax[k]);
+            const PetscReal au = static_cast<PetscReal>(PetscAbsScalar(u[cell * bs + k]));
+            PetscReal ref = std::max(au, 1.0e-3 * vmax[k]);
             if (ref == 0.0) ref = 1.0;
-            h[cell * bs + k] = sq * ref;
+            PetscReal hk = rel * ref;
+            if (central && is_positive[k] && au > 0.0) hk = std::min(hk, 0.5 * au);
+            h[cell * bs + k] = hk;
         }
     }
     PetscCall(VecRestoreArrayRead(U, &u));
 
     for (PetscInt k = 0; k < bs; ++k) {
-        // Perturb variable k in every cell at once
-        PetscCall(VecCopy(U, s->u_work));
         PetscScalar *w;
+        // S(u + h e_k)
+        PetscCall(VecCopy(U, s->u_work));
         PetscCall(VecGetArray(s->u_work, &w));
         for (PetscInt cell = 0; cell < nc; ++cell) w[cell * bs + k] += h[cell * bs + k];
         PetscCall(VecRestoreArray(s->u_work, &w));
-
         PetscCall(Rhs(ts, t, s->u_work, s->f_pert, s));
+        // S(u - h e_k), or S(u) for one-sided differences
+        Vec f_other = s->f_base;
+        if (central) {
+            PetscCall(VecCopy(U, s->u_work));
+            PetscCall(VecGetArray(s->u_work, &w));
+            for (PetscInt cell = 0; cell < nc; ++cell) w[cell * bs + k] -= h[cell * bs + k];
+            PetscCall(VecRestoreArray(s->u_work, &w));
+            PetscCall(Rhs(ts, t, s->u_work, s->f_minus, s));
+            f_other = s->f_minus;
+        }
 
-        const PetscScalar *f0, *fp;
-        PetscCall(VecGetArrayRead(s->f_base, &f0));
+        const PetscScalar *fo, *fp;
+        PetscCall(VecGetArrayRead(f_other, &fo));
         PetscCall(VecGetArrayRead(s->f_pert, &fp));
         for (PetscInt cell = 0; cell < nc; ++cell) {
-            const PetscScalar inv_h = 1.0 / h[cell * bs + k];
+            const PetscScalar inv = 1.0 / ((central ? 2.0 : 1.0) * h[cell * bs + k]);
             PetscScalar *blk = &s->blocks[static_cast<size_t>(cell) * bs * bs];
             for (PetscInt i = 0; i < bs; ++i) {
-                blk[i * bs + k] = (fp[cell * bs + i] - f0[cell * bs + i]) * inv_h; // row-oriented: J(i,k)
+                blk[i * bs + k] = (fp[cell * bs + i] - fo[cell * bs + i]) * inv; // row-oriented: J(i,k)
             }
         }
-        PetscCall(VecRestoreArrayRead(s->f_base, &f0));
+        PetscCall(VecRestoreArrayRead(f_other, &fo));
         PetscCall(VecRestoreArrayRead(s->f_pert, &fp));
     }
     PetscCall(VecRestoreArray(s->h_pert, &h));
@@ -361,6 +394,7 @@ StiffSolver::StiffSolver(std::int64_t ncells, int stride,
     SS_ABORT(VecDuplicate(s.u_sol, &s.u_work));
     SS_ABORT(VecDuplicate(s.u_sol, &s.f_base));
     SS_ABORT(VecDuplicate(s.u_sol, &s.f_pert));
+    SS_ABORT(VecDuplicate(s.u_sol, &s.f_minus));
     SS_ABORT(VecDuplicate(s.u_sol, &s.h_pert));
     s.blocks.assign(static_cast<size_t>(s.ncells) * s.stride * s.stride, 0.0);
 
@@ -389,6 +423,9 @@ StiffSolver::StiffSolver(std::int64_t ncells, int stride,
         // PETSC_OPTIONS="-tf_domain_check 1" turns it on (for experiments / diagnostics).
         PetscBool dc = PETSC_FALSE;
         SS_ABORT(PetscOptionsGetBool(nullptr, nullptr, "-tf_domain_check", &dc, nullptr));
+        PetscBool fwd = PETSC_FALSE;
+        SS_ABORT(PetscOptionsGetBool(nullptr, nullptr, "-tf_fd_forward", &fwd, nullptr));
+        s.fd_forward = (fwd == PETSC_TRUE);
         s.domain_check = (dc == PETSC_TRUE);
         if (s.domain_check) SS_ABORT(TSSetFunctionDomainError(s.ts, Impl::Domain));
     }
@@ -429,6 +466,7 @@ StiffSolver::~StiffSolver() {
         if (s.u_work) VecDestroy(&s.u_work);
         if (s.f_base) VecDestroy(&s.f_base);
         if (s.f_pert) VecDestroy(&s.f_pert);
+        if (s.f_minus) VecDestroy(&s.f_minus);
         if (s.h_pert) VecDestroy(&s.h_pert);
         if (s.jac)    MatDestroy(&s.jac);
         if (s.ts)     TSDestroy(&s.ts);
@@ -560,13 +598,13 @@ std::string StiffSolver::describe() const {
         "  PETSc tolerances       : rtol = %.3e, atol = %.3e\n"
         "  PETSc step adaptor     : %s, max internal steps %lld\n"
         "  PETSc linear solver    : KSP %s, PC %s\n"
-        "  Jacobian               : block diagonal %lldx%lld, finite differences, %lld cells\n"
+        "  Jacobian               : block diagonal %lldx%lld, %s finite differences, %lld cells\n"
         "  Stage domain check     : %s\n",
         ts_type ? ts_type : "?", rosw_type,
         static_cast<double>(rtol), static_cast<double>(atol),
         adapt_type ? adapt_type : "?", static_cast<long long>(max_steps),
         ksp_type ? ksp_type : "?", pc_type ? pc_type : "?",
-        static_cast<long long>(s.stride), static_cast<long long>(s.stride), static_cast<long long>(s.ncells),
+        static_cast<long long>(s.stride), static_cast<long long>(s.stride), s.fd_forward ? "one-sided" : "central", static_cast<long long>(s.ncells),
         s.domain_check ? "on (-tf_domain_check 1)" : "off");
     return std::string(buf);
 }

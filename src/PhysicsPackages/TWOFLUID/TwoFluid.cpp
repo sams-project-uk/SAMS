@@ -2243,7 +2243,8 @@ void PIP<T_EOS>::symmetryCheck(typename LARE::LARE3DST<T_EOS>::simulationData &d
                                typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
                                data_two_fluid_source &ps, long long step, double time,
                                const char *stage, bool prepared) {
-    if (step >= ps.symmetry_check_steps) return;
+    if (time > ps.symmetry_check_until) return;
+    const bool verbose = step < ps.symmetry_check_steps;
     portableWrapper::fence();
     const T_indexType nx = data.nx, iy = 1, iz = 1;
     struct Field { const char *name; int parity; bool vertex; std::function<double(T_indexType)> get; };
@@ -2282,8 +2283,21 @@ void PIP<T_EOS>::symmetryCheck(typename LARE::LARE3DST<T_EOS>::simulationData &d
         }
         if (rel > worst) { worst = rel; worst_name = f.name; worst_i = ie; worst_a = ea; worst_b = eb; }
     }
-    printf("symmetry step %lld t=%.6e %-40s max %.2e%s\n", step, time, stage, worst,
-           per_field.empty() ? "  (all fields symmetric to 1e-12)" : (std::string("  [") + per_field + " ]").c_str());
+    if (verbose) {
+        printf("symmetry step %lld t=%.6e %-40s max %.2e%s\n", step, time, stage, worst,
+               per_field.empty() ? "  (all fields symmetric to 1e-12)" : (std::string("  [") + per_field + " ]").c_str());
+    } else if (worst > 0.0) {
+        const int decade = static_cast<int>(std::floor(std::log10(worst)));
+        if (decade > symmetry_decade_reported) {
+            symmetry_decade_reported = decade;
+            printf("symmetry GREW to %.2e at step %lld t=%.6e %s: field %s, x index %lld (value %.10e, mirror %.10e)%s\n",
+                   worst, step, time, stage, worst_name, static_cast<long long>(worst_i), worst_a, worst_b,
+                   per_field.empty() ? "" : (std::string("  [") + per_field + " ]").c_str());
+        }
+    }
+    if (verbose && worst > 0.0) {
+        symmetry_decade_reported = std::max(symmetry_decade_reported, static_cast<int>(std::floor(std::log10(worst))));
+    }
     if (worst > 1.0e-12 && !symmetry_broken_reported) {
         symmetry_broken_reported = true;
         printf("SYMMETRY FIRST BROKEN at step %lld, %s: field %s, x index %lld (mirror %lld), value %.15e vs mirror %.15e\n",
@@ -2365,7 +2379,8 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
     printf("  watch_state            : %s (trend line every %d steps)\n", onoff(ps.watch_state), ps.watch_interval);
     printf("  debug_twofluid_steps   : %s\n", onoff(ps.debug_twofluid_steps));
     printf("  symmetry_check         : %s%s\n", onoff(ps.symmetry_check),
-           ps.symmetry_check ? (" (first " + std::to_string(ps.symmetry_check_steps) + " steps)").c_str() : "");
+           ps.symmetry_check ? (" (every stage printed for the first " + std::to_string(ps.symmetry_check_steps) +
+                                " steps, then each new power of ten of growth)").c_str() : "");
 
     // Combinations that are legal to compile but almost certainly not what was intended
     int n_warn = 0;

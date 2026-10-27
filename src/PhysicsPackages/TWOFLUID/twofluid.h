@@ -132,12 +132,15 @@ namespace TWOFLUID
         SAMS::T_dataType implicit_rtol=1.0e-6;  // relative tolerance of the PETSc time stepper (command line -ts_rtol overrides)
         SAMS::T_dataType implicit_atol=1.0e-9;  // absolute tolerance of the PETSc time stepper (command line -ts_atol overrides)
         bool implicit_limit_dt=false;           // if false the explicit collisional dt limit is not applied when implicit=true
-        // Mirror-symmetry check for problems symmetric about x = 0 (e.g. snow_hillier_2021): after
-        // every stage of the first symmetry_check_steps steps, print the largest left/right mismatch
-        // of each field relative to its maximum, and flag the first stage where it exceeds round-off.
+        // Mirror-symmetry check for problems symmetric about x = 0 (e.g. snow_hillier_2021). Every stage
+        // of every step is checked. For the first symmetry_check_steps steps each check is printed;
+        // after that, only the first time the largest relative mismatch crosses each new power of ten
+        // (1e-15, 1e-14, ..., 1), with its step, stage, field and cell. Set symmetry_check_until (a
+        // simulation time) to stop checking; the default checks the whole run.
         // Debugging aid: host-side loops, only for x-symmetric set-ups uniform in y and z.
         bool symmetry_check=true;
         int symmetry_check_steps=20;
+        double symmetry_check_until=1.0e300;
         bool watch_state=true;                  // scan the whole state for NaN/Inf at several points of each step (cheap debugging aid)
         int watch_interval=100;                 // print a one-line trend summary every this many timesteps (needs watch_state)
 
@@ -239,6 +242,7 @@ namespace TWOFLUID
 	                       data_two_fluid_source &plasma_source, long long step, double time,
 	                       const char *stage, bool prepared);
 	    bool symmetry_broken_reported = false;
+	    int symmetry_decade_reported = -17;   // highest power of ten already reported
 
 	    void watchState(LARE::LARE3DST<T_EOS>::simulationData &data,
 	                    LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
