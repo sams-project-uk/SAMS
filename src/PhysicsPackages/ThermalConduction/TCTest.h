@@ -75,9 +75,9 @@ namespace SAMS
 			varRegistry.registerVariable<SAMS::T_dataType>(T_problem::species::fieldName(), pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 			varRegistry.registerVariable<SAMS::T_dataType>("rho", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 			// Each component of B is staggered by half a cell in the direction that it points
-			varRegistry.registerVariable<SAMS::T_dataType>("Bx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
-			varRegistry.registerVariable<SAMS::T_dataType>("By", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
-			varRegistry.registerVariable<SAMS::T_dataType>("Bz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+			varRegistry.registerVariable<SAMS::T_dataType>("bx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+			varRegistry.registerVariable<SAMS::T_dataType>("by", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts));
+			varRegistry.registerVariable<SAMS::T_dataType>("bz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
 		}
 
 		/**
@@ -95,7 +95,7 @@ namespace SAMS
 				varRegistry.addBoundaryCondition(T_problem::species::fieldName(), dim, SAMS::domain::edges::upper, std::make_shared<clamp>(energy, 1.0));
 			}
 
-			for (const char *name : {"Bx", "By", "Bz"})
+			for (const char *name : {"bx", "by", "bz"})
 			{
 				SAMS::variableDef &varDef = varRegistry.getVariable(name);
 				varRegistry.addBoundaryCondition(name, std::make_shared<SAMS::simpleZeroGradientBC<SAMS::T_dataType, 3>>(varDef));
@@ -113,9 +113,9 @@ namespace SAMS
 			auto &varRegistry = harness.variableRegistry;
 			volumeArray field, bx, by, bz, rho;
 			varRegistry.fillPPArray(T_problem::species::fieldName(), field);
-			varRegistry.fillPPArray("Bx", bx);
-			varRegistry.fillPPArray("By", by);
-			varRegistry.fillPPArray("Bz", bz);
+			varRegistry.fillPPArray("bx", bx);
+			varRegistry.fillPPArray("by", by);
+			varRegistry.fillPPArray("bz", bz);
 			varRegistry.fillPPArray("rho", rho);
 
 			pw::assign(field, 1.0);

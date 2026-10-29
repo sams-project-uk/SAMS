@@ -325,10 +325,10 @@ namespace SAMS
 		}
 
 		/** @brief The name of the problem, which includes the species */
-		inline static constexpr auto name = SAMS::constexprName("braginskii_") + T_species::name + T_eos::name;
+		inline static constexpr auto name = SAMS::constexprName("Braginskii_") + T_species::name + T_eos::name;
 
 		/** @brief The name that the arrays and axes of the problem are registered under, which the species share */
-		inline static constexpr auto memoryName = SAMS::constexprName("braginskii") + T_eos::name;
+		inline static constexpr auto memoryName = SAMS::constexprName("Braginskii") + T_eos::name;
 
 		/** @brief The name of the variable that is evolved */
 		static constexpr const char *fieldName()
@@ -427,9 +427,9 @@ namespace SAMS
 		void getVariables(SAMS::harness &harness)
 		{
 			auto &varRegistry = harness.variableRegistry;
-			varRegistry.fillPPArray("Bx", bx);
-			varRegistry.fillPPArray("By", by);
-			varRegistry.fillPPArray("Bz", bz);
+			varRegistry.fillPPArray("bx", bx);
+			varRegistry.fillPPArray("by", by);
+			varRegistry.fillPPArray("bz", bz);
 			varRegistry.fillPPArray("rho", rho);
 		}
 
