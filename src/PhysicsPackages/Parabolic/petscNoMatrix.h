@@ -195,14 +195,9 @@ namespace SAMS
 			PetscFunctionReturn(PETSC_SUCCESS);
 		}
 
-		void initialize()
+		void initialize(SAMS::harness &harness)
 		{
-			PetscErrorCode ierr = PetscInitializeNoArguments();
-			if (ierr)
-			{
-				SAMS::cerr << "PetscInitializeNoArguments failed with error " << ierr << std::endl;
-				std::exit(EXIT_FAILURE);
-			}
+			harness.initialisePETSc();
 		}
 
 		void setBoundaryConditions(SAMS::harness &harness, packRefs packs)
@@ -447,7 +442,6 @@ namespace SAMS
 #endif
 			MatDestroy(&A);
 			KSPDestroy(&ksp);
-			PetscFinalize();
 		}
 	};
 

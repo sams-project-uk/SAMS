@@ -32,17 +32,17 @@ namespace SAMS
 		struct parameters
 		{
 			/** @brief Conductivity at T = 1 */
-			double kappa0;
+			double kappa0 = 0.0;
 			/** @brief Power of T in the conductivity */
-			double exponent;
+			double exponent = 2.5;
 			/** @brief Softening of the magnetic field, below which the conduction is isotropic */
-			double fieldSoftening;
+			double fieldSoftening = 1.0e-6;
 			/** @brief Free streaming heat flux at T = 1, which goes as T^(3/2) */
-			double limiterFlux;
+			double limiterFlux = 0.0;
 			/** @brief Exponent of the limiter. 2 gives Larsen's limiter */
-			double limiterExponent;
+			double limiterExponent = 2.0;
 			/** @brief Softening of the free streaming flux, which keeps the limiter finite where T is zero */
-			double limiterSoftening;
+			double limiterSoftening = 1.0e-10;
 		};
 
 		using dataPack = SAMS::dataPacks::multiPack<parameters, lareData>;

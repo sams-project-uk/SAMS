@@ -28,7 +28,7 @@ namespace SAMS
 		struct parameters
 		{
 			/** @brief The conductivity */
-			double kappa;
+			double kappa = 0.0;
 		};
 
 		using dataPack = SAMS::dataPacks::multiPack<parameters, lareData>;
