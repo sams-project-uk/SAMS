@@ -167,7 +167,6 @@ namespace SAMS
             callCore_calculateTimestep();
             #ifdef USE_MPI
             SAMS::harness& h = std::get<harness&>(runnerData);
-						std::cout << "dt = " << tData.dt << " " << h.MPIManager.getRank() << "\n";
             MPI_Allreduce(MPI_IN_PLACE, &tData.dt, 1, MPI_DOUBLE, MPI_MIN, h.MPIManager.getComm());
             #endif
             //Allow the simulations to gather the updated timestep

@@ -2,7 +2,6 @@
 #define MULTIGRIDTEST_H
 #include "runner.h"
 #include "harness.h"
-#include "timer.h"
 #include "builtInBoundaryConditions.h"
 #include "helpers.h"
 
@@ -312,14 +311,18 @@ namespace SAMS
 		 * @brief The largest magnitude of the residual of a level
 		 * @param l The level
 		 * @param dt Timestep
-		 * @return The maximum of |res|
+		 * @return The maximum of |res| over all ranks
 		 */
 		double residualNorm(level &l, double dt)
 		{
 			computeResidual(l, dt);
 			const volumeArray res = l.res;
-			return pw::maxval(LAMBDA(size_t i, size_t j, size_t k) { return std::abs(res(i, j, k)); },
+			double norm = pw::maxval(LAMBDA(size_t i, size_t j, size_t k) { return std::abs(res(i, j, k)); },
 				l.xcLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
+#ifdef USE_MPI
+			MPI_Allreduce(MPI_IN_PLACE, &norm, 1, MPI_DOUBLE, MPI_MAX, harnessPtr->MPIManager.getComm());
+#endif
+			return norm;
 		}
 
 		/**
@@ -481,8 +484,6 @@ namespace SAMS
 		void solve(double dt, int sweeps, int coarsestSweeps, double tol, packRefs packs)
 		{
 
-			timer t;
-			t.begin();
 			callWithFixedAndInferred(problem, &T::template prepareSolve<level>, packs, levels);
 
 			const double initialResidual = residualNorm(levels[0], dt);
@@ -525,10 +526,9 @@ namespace SAMS
 
 			int totalSweeps = 0;
 			for (int count : sweepCounts) totalSweeps += count;
-			std::cout << "Multigrid cycles: " << cycleCount << ", sweeps: " << totalSweeps << " (per level, finest first:";
-			for (int count : sweepCounts) std::cout << " " << count;
-			std::cout << ")\n";
-			t.end();
+			SAMS::debug3 << "Multigrid cycles: " << cycleCount << ", sweeps: " << totalSweeps << " (per level, finest first:";
+			for (int count : sweepCounts) SAMS::debug3 << " " << count;
+			SAMS::debug3 << ")\n";
 		}
 
 		inline static constexpr auto nameType = T::name + SAMS::constexprName("_mg");
@@ -693,7 +693,7 @@ namespace SAMS
 			harness.variableRegistry.applyBoundaryConditions("scratch");
 			solve(ts.dt, 5, 10000, SOLVER_TOLERANCE, packs);
 			callWithFixedAndInferred(problem, &T::afterSolve, packs, harness);
-			std::cout << pw::sum(field) << "\n";
+			SAMS::debug3 << pw::sum(field) << "\n";
 		}
 	};
 

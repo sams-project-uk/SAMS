@@ -6,8 +6,7 @@
 #include "LARE/shared_data.h"
 #include "../Parabolic/helpers.h"
 
-// Use a constant parallel conductivity of 0.1
-#define CONSTANT_CONDUCTIVITY
+// Define NO_BRAGINSKII_LARSON to turn off Larsen's flux limiter, and NO_BRAGINSKII_VAN_LEER to turn off the van Leer limiter of the cross conductances
 
 namespace SAMS
 {
@@ -126,8 +125,26 @@ namespace SAMS
 		/** @brief Larsen's flux limiter for the conductance of a face, given the unlimited flux through it and the temperature on it */
 		DEVICEPREFIX double limitConductance(const parameters &pr, double conductance, double flux, double temperature, size_t i, size_t j, size_t k, int direction) const
 		{
+#ifndef NO_BRAGINSKII_LARSON
 			const double freeStreaming = pr.limiterFlux * pow(temperature, 1.5) + pr.limiterSoftening;
 			return conductance / pow(1.0 + pow(flux / freeStreaming, pr.limiterExponent), 1.0 / pr.limiterExponent);
+#else
+			return conductance;
+#endif
+		}
+
+		/** @brief The van Leer limiter factor for the gradient across a cell, from the field either side of it. It is 1 for a smooth field and 0 at an extremum */
+		DEVICEPREFIX static double vanLeerFactor(double lower, double centre, double upper)
+		{
+			const double dm = centre - lower, dp = upper - centre;
+			return dm * dp > 0.0 ? 4.0 * dm * dp / ((dm + dp) * (dm + dp)) : 0.0;
+		}
+
+		/** @brief The van Leer limiter factor for a face, which is the smaller of the factors of the two cells that share it */
+		DEVICEPREFIX static double vanLeerFace(double lowerA, double centreA, double upperA, double lowerB, double centreB, double upperB)
+		{
+			const double a = vanLeerFactor(lowerA, centreA, upperA), b = vanLeerFactor(lowerB, centreB, upperB);
+			return a < b ? a : b;
 		}
 
 		/** @brief Half the reciprocal of the central difference width at cell i */
@@ -175,8 +192,14 @@ namespace SAMS
 				const double flux = txx * std::abs(u0(i, j, k) - u0(i + 1, j, k)) / (0.5 * (dx(i) + dx(i + 1)));
 				const double temperature = 0.5 * (u0(i, j, k) + u0(i + 1, j, k));
 				txx0(i, j, k) = p.limitConductance(pr, txx, flux, temperature, i, j, k, 0);
-				txy0(i, j, k) = p.limitConductance(pr, cross * bxf * byf, flux, temperature, i, j, k, 0);
-				txz0(i, j, k) = p.limitConductance(pr, cross * bxf * bzf, flux, temperature, i, j, k, 0);
+#ifndef NO_BRAGINSKII_VAN_LEER
+				const double limitY = p.vanLeerFace(u0(i, j - 1, k), u0(i, j, k), u0(i, j + 1, k), u0(i + 1, j - 1, k), u0(i + 1, j, k), u0(i + 1, j + 1, k));
+				const double limitZ = p.vanLeerFace(u0(i, j, k - 1), u0(i, j, k), u0(i, j, k + 1), u0(i + 1, j, k - 1), u0(i + 1, j, k), u0(i + 1, j, k + 1));
+#else
+				const double limitY = 1.0, limitZ = 1.0;
+#endif
+				txy0(i, j, k) = p.limitConductance(pr, limitY * cross * bxf * byf, flux, temperature, i, j, k, 0);
+				txz0(i, j, k) = p.limitConductance(pr, limitZ * cross * bxf * bzf, flux, temperature, i, j, k, 0);
 			};
 			pw::applyKernel(tensorX, l.xbLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
 
@@ -192,9 +215,15 @@ namespace SAMS
 				const double tyy = normal * (byf * byf + eps2);
 				const double flux = tyy * std::abs(u0(i, j, k) - u0(i, j + 1, k)) / (0.5 * (dy(j) + dy(j + 1)));
 				const double temperature = 0.5 * (u0(i, j, k) + u0(i, j + 1, k));
-				tyx0(i, j, k) = p.limitConductance(pr, cross * byf * bxf, flux, temperature, i, j, k, 1);
+#ifndef NO_BRAGINSKII_VAN_LEER
+				const double limitX = p.vanLeerFace(u0(i - 1, j, k), u0(i, j, k), u0(i + 1, j, k), u0(i - 1, j + 1, k), u0(i, j + 1, k), u0(i + 1, j + 1, k));
+				const double limitZ = p.vanLeerFace(u0(i, j, k - 1), u0(i, j, k), u0(i, j, k + 1), u0(i, j + 1, k - 1), u0(i, j + 1, k), u0(i, j + 1, k + 1));
+#else
+				const double limitX = 1.0, limitZ = 1.0;
+#endif
+				tyx0(i, j, k) = p.limitConductance(pr, limitX * cross * byf * bxf, flux, temperature, i, j, k, 1);
 				tyy0(i, j, k) = p.limitConductance(pr, tyy, flux, temperature, i, j, k, 1);
-				tyz0(i, j, k) = p.limitConductance(pr, cross * byf * bzf, flux, temperature, i, j, k, 1);
+				tyz0(i, j, k) = p.limitConductance(pr, limitZ * cross * byf * bzf, flux, temperature, i, j, k, 1);
 			};
 			pw::applyKernel(tensorY, l.xcLocalDomainRange, l.ybLocalDomainRange, l.zcLocalDomainRange);
 
@@ -210,8 +239,14 @@ namespace SAMS
 				const double tzz = normal * (bzf * bzf + eps2);
 				const double flux = tzz * std::abs(u0(i, j, k) - u0(i, j, k + 1)) / (0.5 * (dz(k) + dz(k + 1)));
 				const double temperature = 0.5 * (u0(i, j, k) + u0(i, j, k + 1));
-				tzx0(i, j, k) = p.limitConductance(pr, cross * bzf * bxf, flux, temperature, i, j, k, 2);
-				tzy0(i, j, k) = p.limitConductance(pr, cross * bzf * byf, flux, temperature, i, j, k, 2);
+#ifndef NO_BRAGINSKII_VAN_LEER
+				const double limitX = p.vanLeerFace(u0(i - 1, j, k), u0(i, j, k), u0(i + 1, j, k), u0(i - 1, j, k + 1), u0(i, j, k + 1), u0(i + 1, j, k + 1));
+				const double limitY = p.vanLeerFace(u0(i, j - 1, k), u0(i, j, k), u0(i, j + 1, k), u0(i, j - 1, k + 1), u0(i, j, k + 1), u0(i, j + 1, k + 1));
+#else
+				const double limitX = 1.0, limitY = 1.0;
+#endif
+				tzx0(i, j, k) = p.limitConductance(pr, limitX * cross * bzf * bxf, flux, temperature, i, j, k, 2);
+				tzy0(i, j, k) = p.limitConductance(pr, limitY * cross * bzf * byf, flux, temperature, i, j, k, 2);
 				tzz0(i, j, k) = p.limitConductance(pr, tzz, flux, temperature, i, j, k, 2);
 			};
 			pw::applyKernel(tensorZ, l.xcLocalDomainRange, l.ycLocalDomainRange, l.zbLocalDomainRange);

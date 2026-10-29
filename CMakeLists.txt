@@ -43,6 +43,10 @@ option(PETSC "Enable PETSc" OFF)
 option(EXACT_FLUX_CONSERVATION "Exact flux conservation in the parabolic solvers" OFF)
 #Relative tolerance of the parabolic solvers. If it is not set the default in the source code is used
 set(SOLVER_TOLERANCE "" CACHE STRING "Relative tolerance of the parabolic solvers, for example 1e-10")
+#Larsen's flux limiter in Braginskii thermal conduction. Turning it off defines NO_BRAGINSKII_LARSON
+option(BRAGINSKII_LARSON "Larsen's flux limiter in Braginskii thermal conduction" ON)
+#van Leer limiter of the cross conductances in Braginskii thermal conduction. Turning it off defines NO_BRAGINSKII_VAN_LEER
+option(BRAGINSKII_VAN_LEER "van Leer limiter of the cross conductances in Braginskii thermal conduction" ON)
 
 if (TIMER_SUPPORT)
   message(STATUS "Enabling timer support")
@@ -53,6 +57,18 @@ if(EXACT_FLUX_CONSERVATION)
   message(STATUS "Enabling exact flux conservation in the parabolic solvers")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEXACT_FLUX_CONSERVATION")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DEXACT_FLUX_CONSERVATION")
+endif()
+
+if(NOT BRAGINSKII_LARSON)
+  message(STATUS "Turning off Larsen's flux limiter in Braginskii thermal conduction")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_BRAGINSKII_LARSON")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DNO_BRAGINSKII_LARSON")
+endif()
+
+if(NOT BRAGINSKII_VAN_LEER)
+  message(STATUS "Turning off the van Leer limiter in Braginskii thermal conduction")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_BRAGINSKII_VAN_LEER")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DNO_BRAGINSKII_VAN_LEER")
 endif()
 
 if(SOLVER_TOLERANCE)

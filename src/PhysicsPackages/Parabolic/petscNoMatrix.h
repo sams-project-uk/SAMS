@@ -4,7 +4,6 @@
 #include "harness.h"
 #include <petscksp.h>
 #include <vector>
-#include "timer.h"
 
 // Relative tolerance of the solvers of all the MultigridTest packages. Define SOLVER_TOLERANCE when compiling to set it for all of them
 #ifndef SOLVER_TOLERANCE
@@ -201,7 +200,7 @@ namespace SAMS
 			PetscErrorCode ierr = PetscInitializeNoArguments();
 			if (ierr)
 			{
-				std::cerr << "PetscInitializeNoArguments failed with error " << ierr << std::endl;
+				SAMS::cerr << "PetscInitializeNoArguments failed with error " << ierr << std::endl;
 				std::exit(EXIT_FAILURE);
 			}
 		}
@@ -341,9 +340,6 @@ namespace SAMS
 			const size_t nx = levels[0].nx, ny = levels[0].ny, nz = levels[0].nz;
 			const lineArray dxc = levels[0].dxc, dyc = levels[0].dyc, dzc = levels[0].dzc;
 
-			timer t;
-			t.begin();
-
 			levels[0].rhs = field;
 			callWithFixedAndInferred(problem, &T::template prepareSolve<level>, packs, levels);
 
@@ -399,7 +395,7 @@ namespace SAMS
 			PetscInt iterations;
 			PetscCallAbort(comm, KSPGetConvergedReason(ksp, &reason));
 			PetscCallAbort(comm, KSPGetIterationNumber(ksp, &iterations));
-			SAMS::cout << "PETSc iterations: " << iterations << "\n";
+			SAMS::debug3 << "PETSc iterations: " << iterations << "\n";
 			if (reason < 0)
 			{
 				SAMS::cerr << "Warning: the PETSc solve did not converge at step " << ts.step << ", reason " << KSPConvergedReasons[reason] << " after " << iterations << " iterations" << std::endl;
@@ -433,14 +429,13 @@ namespace SAMS
 			pw::fence();
 			PetscCallAbort(comm, VecRestoreArrayAndMemType(x, &xp));
 
-			t.end();
 			callWithFixedAndInferred(problem, &T::afterSolve, packs, harness);
 			const SAMS::T_dataType localSum = pw::sum(field);
 			SAMS::T_dataType total = localSum;
 #ifdef USE_MPI
 			PetscCallMPIAbort(comm, MPIU_Allreduce(&localSum, &total, 1, MPIU_SCALAR, MPIU_SUM, comm));
 #endif
-			SAMS::cout << total << "\n";
+			SAMS::debug3 << total << "\n";
 		}
 
 		void finalize()
