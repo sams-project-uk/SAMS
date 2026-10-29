@@ -32,6 +32,11 @@ class LAREBoundaryConditions : public SAMS::boundaryConditions
     {
         fn(data, time, dimension, edge);
     }
+
+    SAMS::boundaryConditions* clone() const override
+    {
+        return new LAREBoundaryConditions(*this);
+    }
 };
 
 #endif

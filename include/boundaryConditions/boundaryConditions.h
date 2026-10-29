@@ -12,6 +12,7 @@ namespace SAMS
         boundaryConditions() = default;
         virtual ~boundaryConditions() = default;
         virtual void apply(int dimension, SAMS::domain::edges edge)=0;
+        virtual boundaryConditions* clone() const = 0;
     };
 
 }

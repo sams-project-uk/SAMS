@@ -81,6 +81,15 @@ namespace SAMS
             portableWrapper::assign(slice, clampValue);
         }
 
+        /**
+         * Create a copy of this boundary condition
+         * @return A pointer to a new simpleClamp that the caller owns
+         */
+        boundaryConditions* clone() const override
+        {
+            return new simpleClamp(*this);
+        }
+
     };
 
     /**
@@ -169,6 +178,15 @@ namespace SAMS
                 portableWrapper::applyKernel(helper, params...);
             }, ranges);
         }
+
+        /**
+         * Create a copy of this boundary condition
+         * @return A pointer to a new simpleMirrorBC that the caller owns
+         */
+        boundaryConditions* clone() const override
+        {
+            return new simpleMirrorBC(*this);
+        }
     };
 
 
@@ -246,6 +264,15 @@ namespace SAMS
                 portableWrapper::applyKernel(helper, params...);
             }, ranges);
         }
+
+        /**
+         * Create a copy of this boundary condition
+         * @return A pointer to a new simpleZeroGradientBC that the caller owns
+         */
+        boundaryConditions* clone() const override
+        {
+            return new simpleZeroGradientBC(*this);
+        }
     };
 
     template<typename T, int rank, portableWrapper::arrayTags tag = portableWrapper::arrayTags::accelerated>
@@ -296,6 +323,15 @@ namespace SAMS
             auto &sourceSlice = sourceSlices[dimension * 2 + edgeIndex];
             auto &destSlice = destSlices[dimension * 2 + edgeIndex];
             portableWrapper::assign(destSlice, sourceSlice);
+        }
+
+        /**
+         * Create a copy of this boundary condition
+         * @return A pointer to a new simplePeriodicBC that the caller owns
+         */
+        boundaryConditions* clone() const override
+        {
+            return new simplePeriodicBC(*this);
         }
     };
 

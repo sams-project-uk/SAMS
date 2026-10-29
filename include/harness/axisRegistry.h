@@ -14,6 +14,7 @@
 */
 #ifndef SAMS_AXISREGISTRY_H
 #define SAMS_AXISREGISTRY_H
+#include <algorithm>
 #include <any>
 #include <unordered_map>
 #include <stdexcept>
@@ -27,6 +28,7 @@
 #include "pp/parallelWrapper.h"
 #include "dimension.h"
 #include "harnessDef.h"
+#include "mpiManager.h"
 #include "utils.h"
 #include "pp/callableTraits.h"
 #include "pp/demangle.h"
@@ -97,6 +99,91 @@ namespace SAMS
             }
         }
     }
+
+    /**
+     * The decomposition of an axis over the ranks along it
+     */
+    class axisDecomposition
+    {
+    public:
+        /**
+         * The position of a cell along the axis
+         */
+        struct location
+        {
+            /**
+             * The rank along the axis that owns the cell
+             */
+            int axisRank;
+            /**
+             * The index of the cell in the block of that rank, counted from 1
+             */
+            SIGNED_INDEX_TYPE local;
+        };
+
+        /**
+         * Set the first global index of the block of each rank along the axis, counted from 1, followed by one past the
+         * last cell of the axis
+         * @param starts The first global index of each block, then one past the last cell
+         */
+        void setBlockStarts(std::vector<SIGNED_INDEX_TYPE> starts)
+        {
+            if (starts.size() < 2 || starts.front() != 1)
+            {
+                throw std::runtime_error("Error: axis decomposition must have at least one block and start at 1\n");
+            }
+            for (std::size_t i = 1; i < starts.size(); ++i)
+            {
+                if (starts[i] < starts[i - 1])
+                {
+                    throw std::runtime_error("Error: axis decomposition blocks must not decrease\n");
+                }
+            }
+            blockStarts = std::move(starts);
+        }
+
+        /**
+         * Has the decomposition been set?
+         */
+        bool isSet() const { return !blockStarts.empty(); }
+
+        /**
+         * The number of ranks along the axis
+         */
+        int ranks() const { return static_cast<int>(blockStarts.size()) - 1; }
+
+        /**
+         * The number of cells in the whole axis
+         */
+        SIGNED_INDEX_TYPE globalCells() const { return blockStarts.back() - 1; }
+
+        /**
+         * The number of cells on the rank at a given position along the axis
+         * @param axisRank The rank along the axis
+         */
+        SIGNED_INDEX_TYPE cellsOnRank(int axisRank) const { return blockStarts[axisRank + 1] - blockStarts[axisRank]; }
+
+        /**
+         * The global index, counted from 1, of the first cell on the rank at a given position along the axis
+         * @param axisRank The rank along the axis
+         */
+        SIGNED_INDEX_TYPE firstIndexOnRank(int axisRank) const { return blockStarts[axisRank]; }
+
+        /**
+         * Find which rank along the axis owns a global index, and the index of the cell within the block of that rank
+         * @param globalIndex The global index of the cell, counted from 1. It must be inside the axis
+         */
+        location locate(SIGNED_INDEX_TYPE globalIndex) const
+        {
+            // The block is the last one that starts at or before the index. The final entry does not start a block
+            const auto it = std::upper_bound(blockStarts.begin(), blockStarts.end() - 1, globalIndex);
+            const int axisRank = static_cast<int>(it - blockStarts.begin()) - 1;
+            return {axisRank, globalIndex - blockStarts[axisRank] + 1};
+        }
+
+    private:
+        std::vector<SIGNED_INDEX_TYPE> blockStarts;
+    };
 
     /**
      * Registry for managing axes in the SAMS framework
@@ -458,6 +545,9 @@ namespace SAMS
 
         public:
             dimension dim{SAMS::staggerType::HALF_CELL};
+            axisDecomposition decomposition;
+            /** For a derived axis, the name of the axis that it is derived from. It is empty for any other axis */
+            std::string sourceAxis;
             SIGNED_INDEX_TYPE localLB = 0;
             SIGNED_INDEX_TYPE localUB = 0;
             COUNT_TYPE maxLowerGhosts = 0;
@@ -652,11 +742,13 @@ namespace SAMS
 
         portableWrapper::portableArrayManager &manager;
         std::unordered_map<std::string, axisInfo> axisMap;
+        /** The MPI layer, which gives the topology that the axes are decomposed over */
+        MPIManager<MPI_DECOMPOSITION_RANK> &mpiMgr;
 
     public:
 
-        axisRegistry(SAMS::memoryRegistry &memRegistry)
-            : manager(memRegistry.getArrayManager())
+        axisRegistry(SAMS::memoryRegistry &memRegistry, MPIManager<MPI_DECOMPOSITION_RANK> &mpiManager)
+            : manager(memRegistry.getArrayManager()), mpiMgr(mpiManager)
         {
         }
 
@@ -1426,6 +1518,187 @@ namespace SAMS
                 auto deltaArray = data.getPPLocalDelta<T_array, portableWrapper::arrayTags::accelerated>(stagger);
                 return deltaArray.data();
             }
+        }
+
+        /**
+         * Register an axis that is derived from another axis, with a different number of cells over the same range
+         * @param name The name of the new axis
+         * @param sourceName The name of the axis that it is derived from
+         * @param cells The number of cells of the new axis
+         */
+        void deriveAxis(const std::string &name, const std::string &sourceName, COUNT_TYPE cells)
+        {
+            if (cells < 1)
+            {
+                throw std::runtime_error("Error: a derived axis must have at least one cell\n");
+            }
+            const auto existing = axisMap.find(name);
+            if (existing != axisMap.end())
+            {
+                // An axis that already exists with the same number of cells is left as it is
+                if (existing->second.dim.getDomainElements(staggerType::CENTRED) == cells)
+                {
+                    return;
+                }
+                throw std::runtime_error("Error: axis " + name + " already exists in registry with a different number of cells\n");
+            }
+            const axisInfo &source = getAxis(sourceName);
+            const SIGNED_INDEX_TYPE sourceCells = static_cast<SIGNED_INDEX_TYPE>(source.dim.getDomainElements(staggerType::CENTRED));
+            const SIGNED_INDEX_TYPE derivedCells = static_cast<SIGNED_INDEX_TYPE>(cells);
+
+            registerAxis(name, source.dim.mpiAxis);
+            setDomainElements(name, cells);
+            setPeriodic(name, source.periodic);
+            auto &derived = getAxis(name);
+            derived.sourceAxis = sourceName;
+
+            // Edge i is at i * sourceCells / derivedCells along the source, by linear interpolation
+            portableWrapper::hostArray<T_dataType, 1> sourceEdges;
+            fillPPAxis(sourceName, sourceEdges, staggerType::HALF_CELL);
+            auto edge = LAMBDA(SIGNED_INDEX_TYPE i)->T_dataType
+            {
+                const SIGNED_INDEX_TYPE scaled = i * sourceCells;
+                const SIGNED_INDEX_TYPE lower = scaled / derivedCells;
+                if (lower >= sourceCells)
+                {
+                    return sourceEdges(sourceCells);
+                }
+                const T_dataType fraction = static_cast<T_dataType>(scaled % derivedCells) / static_cast<T_dataType>(derivedCells);
+                return (static_cast<T_dataType>(1) - fraction) * sourceEdges(lower) + fraction * sourceEdges(lower + 1);
+            };
+            derived.createPositionAxis(staggerType::HALF_CELL, portableWrapper::arrayTags::host, edge);
+            derived.createCentredAxis<T_dataType>(portableWrapper::arrayTags::host);
+        }
+
+        /**
+         * Decompose a single axis by setting the local elements for that axis based on the global elements and the MPI decomposition
+         * A derived axis follows the decomposition of its source axis
+         * @param axisName The name of the axis to decompose
+         */
+        void decomposeAxis(const std::string &axisName)
+        {
+            const int axis = getMPIAxis(axisName);
+            const size_t globalElements = getDomainElements(axisName, staggerType::CENTRED);
+            auto &axisRef = getAxis(axisName);
+            std::vector<SIGNED_INDEX_TYPE> starts;
+            if (axisRef.sourceAxis.empty())
+            {
+                // Decompose the axis, distributing any remainder to the first few ranks. An axis that is not decomposed is one block
+                const int ranksAlongAxis = axis >= 0 ? mpiMgr.getDims()[axis] : 1;
+                const size_t base = globalElements / ranksAlongAxis;
+                const size_t remainder = globalElements % ranksAlongAxis;
+                starts.assign(ranksAlongAxis + 1, 1);
+                for (int p = 0; p < ranksAlongAxis; ++p)
+                {
+                    starts[p + 1] = starts[p] + static_cast<SIGNED_INDEX_TYPE>(base + (static_cast<size_t>(p) < remainder ? 1 : 0));
+                }
+            }
+            else
+            {
+                // A derived axis follows its source: a rank owns the cells whose first edge lies in its source cells
+                if (!getAxis(axisRef.sourceAxis).decomposition.isSet())
+                {
+                    decomposeAxis(axisRef.sourceAxis);
+                }
+                const axisDecomposition &sourceDecomposition = getAxis(axisRef.sourceAxis).decomposition;
+                const SIGNED_INDEX_TYPE sourceCells = sourceDecomposition.globalCells();
+                const SIGNED_INDEX_TYPE cells = static_cast<SIGNED_INDEX_TYPE>(globalElements);
+                starts.resize(sourceDecomposition.ranks() + 1);
+                for (int p = 0; p < sourceDecomposition.ranks(); ++p)
+                {
+                    starts[p] = ((sourceDecomposition.firstIndexOnRank(p) - 1) * cells + sourceCells - 1) / sourceCells + 1;
+                }
+                starts.back() = cells + 1;
+            }
+            axisRef.decomposition.setBlockStarts(starts);
+
+            // Now set the part of the global axis that is on this processor
+            const int myAxisRank = axis >= 0 ? mpiMgr.getCoords()[axis] : 0;
+            const SIGNED_INDEX_TYPE localElements = axisRef.decomposition.cellsOnRank(myAxisRank);
+            setLocalDomainElements(axisName, static_cast<COUNT_TYPE>(localElements), staggerType::CENTRED);
+            const SIGNED_INDEX_TYPE localLB = axisRef.decomposition.firstIndexOnRank(myAxisRank) - 1;
+            axisRef.dim.setGlobalBounds(localLB, localLB + localElements);
+        }
+
+        /**
+         * Decompose all registered axes
+         */
+        void decomposeAllAxes()
+        {
+            for (const auto &pair : axisMap)
+            {
+                // An axis that has been decomposed already is left as it is
+                if (pair.second.decomposition.isSet())
+                {
+                    continue;
+                }
+                SAMS::debug3 << "Decomposing axis: " << pair.first << std::endl;
+                decomposeAxis(pair.first);
+            }
+        }
+
+        /**
+         * Get the number of cells on all of the ranks before a given rank, in the order of the ranks of the Cartesian
+         * communicator. This is the first row that the rank owns in a numbering in which each rank's cells are contiguous
+         * @tparam N The number of axes
+         * @param axisNames The names of the axes
+         * @param owner The rank in the Cartesian communicator
+         */
+        template<std::size_t N>
+        SIGNED_INDEX_TYPE getBlockOffset(const std::array<std::string, N> &axisNames, int owner) const
+        {
+            SIGNED_INDEX_TYPE offset = 0;
+            for (int r = 0; r < owner; ++r)
+            {
+                const std::array<int, MAX_RANK> axisRanks = mpiMgr.getCoordsOfRank(r);
+                SIGNED_INDEX_TYPE cells = 1;
+                for (std::size_t a = 0; a < N; ++a)
+                {
+                    const int axis = getMPIAxis(axisNames[a]);
+                    cells *= getAxis(axisNames[a]).decomposition.cellsOnRank(axis >= 0 ? axisRanks[axis] : 0);
+                }
+                offset += cells;
+            }
+            return offset;
+        }
+
+        /**
+         * Get the row of a cell in a numbering in which the cells of each rank are contiguous, in the order of the ranks of
+         * the Cartesian communicator, with the first axis fastest inside a rank.
+         * A cell beyond the domain has the row of the cell it wraps to if its axis is periodic, and the row -1 if it is not
+         * @tparam N The number of axes
+         * @param axisNames The names of the axes
+         * @param globalIndex The global index of the cell along each axis, counted from 1
+         */
+        template<std::size_t N>
+        SIGNED_INDEX_TYPE getBlockedIndex(const std::array<std::string, N> &axisNames, std::array<SIGNED_INDEX_TYPE, N> globalIndex) const
+        {
+            std::array<int, MAX_RANK> ownerAxisRanks{};
+            std::array<SIGNED_INDEX_TYPE, N> ownerCells;
+            std::array<SIGNED_INDEX_TYPE, N> local;
+            for (std::size_t a = 0; a < N; ++a)
+            {
+                const int axis = getMPIAxis(axisNames[a]);
+                const axisDecomposition &decomposition = getAxis(axisNames[a]).decomposition;
+                const SIGNED_INDEX_TYPE global = decomposition.globalCells();
+                if (globalIndex[a] < 1 || globalIndex[a] > global)
+                {
+                    if (axis < 0 || !mpiMgr.isPeriodic(axis)) return -1;
+                    globalIndex[a] = ((globalIndex[a] - 1) % global + global) % global + 1;
+                }
+                const axisDecomposition::location where = decomposition.locate(globalIndex[a]);
+                if (axis >= 0) ownerAxisRanks[axis] = where.axisRank;
+                local[a] = where.local;
+                ownerCells[a] = decomposition.cellsOnRank(where.axisRank);
+            }
+            const int owner = mpiMgr.getRankFromCoords(ownerAxisRanks);
+            SIGNED_INDEX_TYPE inBlock = 0, stride = 1;
+            for (std::size_t a = 0; a < N; ++a)
+            {
+                inBlock += (local[a] - 1) * stride;
+                stride *= ownerCells[a];
+            }
+            return getBlockOffset(axisNames, owner) + inBlock;
         }
 
         void finalize()

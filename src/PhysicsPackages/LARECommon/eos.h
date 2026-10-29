@@ -42,6 +42,18 @@ namespace LARE
         {
             return temperature / (gamma - 1.0);
         }
+        FUNCTORMETHODPREFIX INLINE T_dataType getTemperature(eosEnergy energy) const
+        {
+            return (gamma - 1.0) * energy;
+        }
+        FUNCTORMETHODPREFIX INLINE T_dataType getCV() const
+        {
+            return 1.0 / (gamma - 1.0);
+        }
+        FUNCTORMETHODPREFIX INLINE T_dataType getCP() const
+        {
+            return gamma / (gamma - 1.0);
+        }
         void setGamma(T_dataType gamma_in)
         {
             gamma = gamma_in;

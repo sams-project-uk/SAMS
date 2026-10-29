@@ -75,10 +75,10 @@
 #define DEVICEPREFIX __device__ __host__
 #define UNREPEATED inline
 #define INLINE inline __attribute__((always_inline))
-#define LAMBDA [=] __device__ __host__
-#define CLASS_LAMBDA [=, *this] __device__ __host__
-#define NCLAMBDA(...) [__VA_ARGS__] __device__ __host__
-#define FUNCTORMETHODPREFIX __device__ __host__
+#define LAMBDA [=] DEVICEPREFIX
+#define CLASS_LAMBDA [=, *this] DEVICEPREFIX
+#define NCLAMBDA(...) [__VA_ARGS__] DEVICEPREFIX
+#define FUNCTORMETHODPREFIX DEVICEPREFIX
 #if __cplusplus >= 202002L
 #define ATOMIC_REF_DEVICE(T) ::cuda::atomic_ref<T, ::cuda::thread_scope_device>
 #define ATOMIC_REF_HOST(T) std::atomic_ref<T>
@@ -91,10 +91,10 @@
 #define DEVICEPREFIX __device__ __host__
 #define UNREPEATED inline
 #define INLINE inline __attribute__((always_inline))
-#define LAMBDA [=] __device__ __host__
-#define CLASS_LAMBDA [=, *this] __device__ __host__
-#define NCLAMBDA(...) [__VA_ARGS__] __device__ __host__
-#define FUNCTORMETHODPREFIX __device__ __host__
+#define LAMBDA [=] DEVICEPREFIX
+#define CLASS_LAMBDA [=, *this] DEVICEPREFIX
+#define NCLAMBDA(...) [__VA_ARGS__] DEVICEPREFIX
+#define FUNCTORMETHODPREFIX DEVICEPREFIX
 #if __cplusplus >= 202002L
 #define ATOMIC_REF_DEVICE(T) __hipc::atomic_ref<T, hip::thread_scope_device>
 #define ATOMIC_REF_HOST(T) std::atomic_ref<T>

@@ -102,7 +102,7 @@ namespace portableWrapper
 #if defined(NATIVE_LOOP_COLLAPSE) && NATIVE_LOOP_COLLAPSE <= 3
 #pragma omp parallel for collapse(3) schedule(dynamic)
 #else
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic,4)
 #endif
             for (SIGNED_INDEX_TYPE i1 = lower_bound1; i1 <= upper_bound1; ++i1)
             {

@@ -266,7 +266,6 @@ namespace LARE
         using Range = pw::Range;
 
         auto &axRegistry = harness.axisRegistry;
-        auto &varRegistry = harness.variableRegistry;
         auto &remapManager = harness.memoryRegistry.getArrayManager();
         // Centred since LARE thinks in terms of cell centres for nx, ny, nz
         nx = axRegistry.getLocalDomainElements("X", SAMS::staggerType::CENTRED);

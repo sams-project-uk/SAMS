@@ -520,6 +520,8 @@ namespace LARE
          */
         void boundary_conditions();
 
+				void initializeBoundaryConditions() {boundary_conditions();}
+
         void shock_viscosity(simulationData &data);
         void resistive_effects(simulationData &data);
         void rkstep(simulationData &data);

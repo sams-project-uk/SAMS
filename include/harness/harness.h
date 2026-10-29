@@ -9,8 +9,8 @@
 namespace SAMS {
     struct harness{
         SAMS::memoryRegistry memoryRegistry;
-        SAMS::axisRegistry axisRegistry{memoryRegistry};
-        SAMS::MPIManager<SAMS::MPI_DECOMPOSITION_RANK> MPIManager{axisRegistry};
+        SAMS::MPIManager<SAMS::MPI_DECOMPOSITION_RANK> MPIManager;
+        SAMS::axisRegistry axisRegistry{memoryRegistry, MPIManager};
         SAMS::variableRegistry variableRegistry{MPIManager, axisRegistry, memoryRegistry};
 
         void initialize([[maybe_unused]] int &argc, [[maybe_unused]] char** &argv){

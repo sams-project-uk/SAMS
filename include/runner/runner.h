@@ -84,14 +84,15 @@ namespace SAMS
         /** Types of requested simulations. Must come first */
         using T_packages = std::tuple<Packages...>;
         harness harnessData;
+        timeState timeStateData;
         /** Internal runner data that might be requested by simulations
          * Add new types here if they are internal state shared by multiple simulations
         */
-        using T_runnerData = std::tuple<harness&, timeState, controlFunctions>;
+        using T_runnerData = std::tuple<harness&, timeState&, controlFunctions>;
         /**Data packs requested by simulations */
         using T_dataPacks = dataPackTuple_t<Packages...>;
         using T_combined = tupleUnion_t<T_packages, T_runnerData, T_dataPacks>;
-        T_combined runnerData = initializeTuple<>(harnessData);
+        T_combined runnerData = initializeTuple(harnessData, timeStateData);
 
         struct internalPackageInfo{
             int level = -1;
@@ -138,6 +139,8 @@ namespace SAMS
         FULL_CALL_X(defaultValues); //Set default parameter values
         FULL_CALL_X(controlVariables); //Setup control variables
         FULL_CALL_X(setDomain); //Set the domain for simulations
+        FULL_CALL_X(registerSecondaryAxes); //Register axes that depend on the decomposition of the main axes
+        FULL_CALL_X(registerSecondaryVariables); //Register variables that use the secondary axes
 
         FULL_CALL_X(getVariables); //Get variable objects from the variable registry
 
@@ -145,6 +148,7 @@ namespace SAMS
         FULL_CALL_X(initialConditions); //Set initial conditions
         FULL_CALL_X(setBoundaryConditions); //Set boundary conditions
         FULL_CALL_X(defaultVariables); //Set default variable values
+		FULL_CALL_X(initializeBoundaryConditions);
 
         FULL_CALL_X(beforeStartOfTimestep); //Actions just before the step starts
         FULL_CALL_X(startOfTimestep); //Actions to perform at the start of each timestep
@@ -157,12 +161,13 @@ namespace SAMS
          * @note This is called in response to a package calling controlFunctions::setTimestep(), not directly by the runner
          */
         void calculateTimestep(){
-            timeState& tData = std::get<timeState>(runnerData);
+            timeState& tData = std::get<timeState&>(runnerData);
             //Packages should compare their suggested timesteps and set the smallest one
             tData.dt = std::numeric_limits<T_dataType>::max();
             callCore_calculateTimestep();
             #ifdef USE_MPI
             SAMS::harness& h = std::get<harness&>(runnerData);
+						std::cout << "dt = " << tData.dt << " " << h.MPIManager.getRank() << "\n";
             MPI_Allreduce(MPI_IN_PLACE, &tData.dt, 1, MPI_DOUBLE, MPI_MIN, h.MPIManager.getComm());
             #endif
             //Allow the simulations to gather the updated timestep
@@ -189,7 +194,7 @@ namespace SAMS
 #if defined(USE_MPI) && defined(ALLOW_RANK_INCONSISTENCY)
             SAMS::harness& h = std::get<harness&>(runnerData);
             int localOut = outputNow ? 1 : 0;
-            MPI_Allreduce(MPI_IN_PLACE, &localOut, 1, MPI_INT, MPI_LOR, h.MPIManager.getGlobalComm());
+            MPI_Allreduce(MPI_IN_PLACE, &localOut, 1, MPI_INT, MPI_LOR, h.MPIManager.getComm());
             outputNow = (localOut == 1);
 #endif
             return outputNow;
@@ -272,44 +277,38 @@ namespace SAMS
          * Function to initialize the combined tuple of simulations, runner data and data packs
          */
         template<int level=0>
-        static auto initializeTuple(harness& h){
-           constexpr std::size_t N = std::tuple_size_v<T_combined>;
+        static decltype(auto) inline __attribute__((always_inline)) initializeTupleElement(harness& h, timeState& t){
             using T_current = std::tuple_element_t<level, T_combined>;
 
             //Case where the tuple element is just default constructible
             if constexpr (std::is_default_constructible_v<T_current>) {
-                if constexpr (level + 1 < N) {
-                    return std::tuple_cat(
-                        std::make_tuple(T_current{}),
-                        initializeTuple<level + 1>(h)
-                    );
-                } else {
-                    return std::make_tuple(T_current{});
-                }
-                //Case where the tuple element is a reference to the harness
-            } else if constexpr (std::is_reference_v<T_current>) {
-                if constexpr (level + 1 < N) {
-                    return std::tuple_cat(
-                        std::tuple<T_current>(h),
-                        initializeTuple<level + 1>(h)
-                    );
-                } else {
-                    return std::tuple<T_current>(h);
-                }
-                //Case where the tuple element is constructible from a harness reference
+                return T_current{};
+            //Case where the tuple element is a reference to the harness
+            } else if constexpr (std::is_reference_v<T_current> && std::is_same_v<std::remove_reference_t<T_current>,harness>) {
+                return h;
+            //Case where the tuple element is a reference to the timestate
+            } else if constexpr (std::is_reference_v<T_current> && std::is_same_v<std::remove_reference_t<T_current>,timeState>) {
+                return t;
+            //Case where the tuple element is constructible from a harness reference
             } else if constexpr (std::is_constructible_v<T_current, harness&>) {
-                if constexpr (level + 1 < N) {
-                    return std::tuple_cat(
-                        std::make_tuple(T_current{h}),
-                        initializeTuple<level + 1>(h)
-                    );
-                } else {
-                    return std::make_tuple(T_current{h});
-                }
+                return T_current{h};
+            //Case where the tuple element is constructible from a timestate reference
+            } else if constexpr (std::is_constructible_v<T_current, timeState&>) {
+                return T_current{t};
             } else {
                 static_assert(portableWrapper::alwaysFalse<T_current>::value,
                               "Error: Package or data pack type is not default constructible or constructible from a harness reference.");
             }
+        }
+
+        template<std::size_t... Is>
+        static auto inline __attribute__((always_inline)) initializeTupleImpl(harness& h, timeState& t, std::index_sequence<Is...>) {
+            return T_combined{initializeTupleElement<Is>(h, t)...};
+        }
+
+        static auto inline __attribute__((always_inline)) initializeTuple(harness& h, timeState& t) {
+            constexpr std::size_t N = std::tuple_size_v<T_combined>;
+            return initializeTupleImpl(h, t, std::make_index_sequence<N>{});
         }
 
         /**
@@ -457,9 +456,12 @@ namespace SAMS
         void decomposeAndAllocate()
         {
             harness& h = getHarness();
-            auto& mpi = h.MPIManager;
             auto& varReg = h.variableRegistry;
-            mpi.decomposeAllAxes();
+            h.axisRegistry.decomposeAllAxes();
+            //Now that the main axes are decomposed, packages can register axes that depend on that, and decompose them
+            registerSecondaryAxes();
+            h.axisRegistry.decomposeAllAxes();
+            registerSecondaryVariables();
             //Allocate variables
             varReg.allocateAll();
         }
@@ -559,20 +561,21 @@ namespace SAMS
             defaultVariables(); //Set default variable values
             initialConditions(); //Set initial conditions
             setBoundaryConditions(); //Attach boundary conditions
+						initializeBoundaryConditions();
             writeOutput(); //Write initial output
         }
 
         void runPackages(){
             for (;;){
-                size_t step = std::get<timeState>(runnerData).step;
+                size_t step = std::get<timeState&>(runnerData).step;
                 if (step%10 == 0){
-                    SAMS::cout << "Starting timestep " << step << " at time " << std::get<timeState>(runnerData).time <<  ", dt = " << std::get<timeState>(runnerData).dt << std::endl;
+                    SAMS::cout << "Starting timestep " << step << " at time " << std::get<timeState&>(runnerData).time <<  ", dt = " << std::get<timeState&>(runnerData).dt << std::endl;
                 }
                 beforeStartOfTimestep(); //Set timestep value
                 calculateTimestep(); //Set timestep value
                 startOfTimestep(); //Start of timestep (predictor)
                 halfTimestep(); //Half timestep (correction)
-                auto& tData = std::get<timeState>(runnerData);
+                auto& tData = std::get<timeState&>(runnerData);
                 tData.step++;
                 tData.time += tData.dt;
                 endOfTimestep(); //End of timestep (remap for LARE3D)
@@ -585,7 +588,7 @@ namespace SAMS
                 steer(); //Computational steering
             }
             writeOutput(); //Final output
-            SAMS::cout << "Simulation complete. Time stepping ended at step " << std::get<timeState>(runnerData).step << " and time " << std::get<timeState>(runnerData).time << std::endl;
+            SAMS::cout << "Simulation complete. Time stepping ended at step " << std::get<timeState&>(runnerData).step << " and time " << std::get<timeState&>(runnerData).time << std::endl;
         }
 
         void finalizePackages(){

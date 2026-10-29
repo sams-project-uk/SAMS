@@ -19,6 +19,7 @@ namespace SAMS{
         // ...added constructor to accept array results from operator+...
         constexpr constexprName(const std::array<char, N> &a) : data(a) {}
         constexpr std::size_t size() const noexcept { return N - 1; }
+        constexpr const char *c_str() const noexcept { return data.data(); }
         // constexpr conversion operator — works on constexpr instances
         constexpr operator std::string_view() const noexcept { return {data.data(), size()}; }
     };

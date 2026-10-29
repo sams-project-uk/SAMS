@@ -5,7 +5,8 @@
 #include <mpi.h>
 #endif
 
-#include "axisRegistry.h"
+#include "harnessDef.h"
+#include "streams.h"
 #include "dimension.h"
 #include "typeRegistry.h"
 #include "mpiDefaultTypes.h"
@@ -113,8 +114,6 @@ namespace SAMS
     static const int Dims = i_Dims;
     private:
 
-        axisRegistry &ar;
-
         #ifdef USE_MPI
           //Create a map from an integer to an MPI combiner type string for naming purposes
           inline static std::map<int, std::string> mpiCombinerMap = {
@@ -137,7 +136,7 @@ namespace SAMS
 
 #ifdef MPI_ERRORS_RETURN
 #define checkMPIError(fn) checkMPIErrorCore(fn, __FILE__, __LINE__)
-        inline void checkMPIErrorCore(int errcode, const char *file, int line)
+        inline void checkMPIErrorCore(int errcode, const char *file, int line) const
         {
             if (errcode != MPI_SUCCESS)
             {
@@ -763,52 +762,29 @@ namespace SAMS
         }
 
         /**
-         * Decompose a single axis by setting the local elements for that axis based on the global elements and the MPI decomposition
-         * @param axisName The name of the axis to decompose
+         * Get the rank in the Cartesian communicator of the process at a given position along each MPI axis
+         * @param axisRanks The position along each MPI axis
          */
-        void decomposeAxis(const std::string &axisName)
+        int getRankFromCoords([[maybe_unused]] const std::array<int, MAX_RANK> &axisRanks) const
         {
-            int axis = ar.getMPIAxis(axisName);
-            size_t globalElements = ar.getDomainElements(axisName, staggerType::CENTRED);
-            size_t localElements = 0;
-            if (axis >= 0)
-            {
-                // Decompose the axis, distributing any remainder to the first few ranks
-                localElements = globalElements / dims[axis];
-                size_t remainder = globalElements % dims[axis];
-                if (static_cast<std::size_t>(coords[axis]) < remainder)
-                {
-                    localElements++;
-                }
-            } else {
-                // Axis is not decomposed, so all elements are local
-                localElements = globalElements;
-            }
-            ar.setLocalDomainElements(axisName, localElements, staggerType::CENTRED);
+            int owner = 0;
+#ifdef USE_MPI
+            checkMPIError(MPI_Cart_rank(comm, axisRanks.data(), &owner));
+#endif
+            return owner;
+        }
 
-            /*if (axis < 0){
-                //Axis is not decomposed so nothing more to do
-                return;
-            }*/
-           #ifdef USE_MPI
-            //Now set part of the global axis that is on this processor
-            size_t localLB = 0;
-            for(int i=0; i<coords[axis]; i++){
-                size_t procElements = globalElements / dims[axis];
-                size_t remainder = globalElements % dims[axis];
-                if (i < remainder)
-                {
-                    procElements++;
-                }
-                localLB += procElements;
-            }
-            #else
-            size_t localLB = 0;
-            #endif
-            size_t localUB = localLB + localElements;
-            auto &axisRef = ar.getAxis(axisName);
-            axisRef.dim.setGlobalBounds(localLB, localUB);
-            //axisRef.dim.setPeriodic(periods[axis] != 0);
+        /**
+         * Get the position along each MPI axis of the process with a given rank in the Cartesian communicator
+         * @param r The rank in the Cartesian communicator
+         */
+        std::array<int, MAX_RANK> getCoordsOfRank([[maybe_unused]] int r) const
+        {
+            std::array<int, MAX_RANK> axisRanks{};
+#ifdef USE_MPI
+            checkMPIError(MPI_Cart_coords(comm, r, Dims, axisRanks.data()));
+#endif
+            return axisRanks;
         }
 
         /**
@@ -1115,9 +1091,8 @@ namespace SAMS
             SIGNED_INDEX_TYPE LB[MAX_RANK], UB[MAX_RANK];
             for (int axis = 0; axis < rank; axis++)
             {
-                auto &axisRef = ar.getAxis(dims[axis].axisName);
                 //For non-decomposed axes, set MPI types to NULL
-                if (axisRef.dim.mpiAxis <0){
+                if (dims[axis].mpiAxis < 0){
                     mpiSend[axis*2] = MPI_DATATYPE_NULL;
                     mpiSend[axis*2+1] = MPI_DATATYPE_NULL;
                     mpiRecv[axis*2] = MPI_DATATYPE_NULL;
@@ -1230,19 +1205,6 @@ namespace SAMS
             }
         } 
 
-        /**
-         * Decompose all registered axes
-         */
-        void decomposeAllAxes()
-        {
-            const auto &areg = ar;
-            for (const auto &pair : areg.getAxisMap())
-            {
-                SAMS::debug3 << "Decomposing axis: " << pair.first << std::endl;
-                decomposeAxis(pair.first);
-            }
-        }
-
         void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] int axis, [[maybe_unused]] SAMS::domain::edges edgeType)
         {
 #ifdef USE_MPI
@@ -1306,7 +1268,7 @@ namespace SAMS
         /**
          * Create an MPIManager with default communicator MPI_COMM_WORLD
          */
-        MPIManager(axisRegistry &axisReg) : ar(axisReg)
+        MPIManager()
         {
             defaultInit(MPI_COMM_WORLD);
         }
@@ -1316,7 +1278,7 @@ namespace SAMS
          * Outer code must ensure that the communicator is valid throughout the lifetime of the MPIManager
          * @param customComm The custom MPI communicator to use
          */
-        MPIManager(axisRegistry &axisReg, MPI_Comm customComm) : ar(axisReg)
+        MPIManager(MPI_Comm customComm)
         {
             defaultInit(customComm);
         }
