@@ -54,14 +54,21 @@ namespace examples
             SAMS::T_dataType tau_IR = 1.0e-3;// recombination rate relative to the collision rate
             SAMS::T_dataType alpha0 = 1.0;   // collisional coefficient at t = 0
             bool ionisation_potential = true;// true: IRIP model (the paper's main case, and PIP's model); false: IR
+            // Current sheet profile. 0: sharp step at x = 0 (eq. 80). > 0: B_y = -B0 tanh(pi x / (w dx)) with
+            // w = sheet_width_cells, a half-width of about w/pi cells. w = 10 is exactly PIP's smooth sheet
+            // (shock_tube_ion.f90 with sharp_interface = .false.: mask = pi x, wtr = 10 dx), so set the same
+            // choice in both codes. As in PIP, only B_y is smoothed (the sheet is not in pressure balance and
+            // collapses, which drives the reconnection). A step across one cell face makes the first response
+            // of the sheet as violent as the grid allows and amplifies round-off by many orders of magnitude.
+            SAMS::T_dataType sheet_width_cells = 10.0;
             // Run length and grid for a first validation run (the bottom row of Fig. 7, t = 100), matched
             // cell for cell by the PIP reference set-up (shock_tube_ion.f90 with ix = 4096 on [-150, 150],
             // open boundaries, 11 outputs). The paper's equilibrium figures are at t = 40000 with 256000
             // cells; scale x_half with t_end (fast-mode signals travel at ~1.05 in these units) and nx to
             // keep dx, and change both codes together.
-            SAMS::T_dataType t_end = 1.0;
-            SAMS::T_dataType x_half = 5.0; // domain is [-x_half, x_half]
-            SAMS::T_indexType nx = 512;     // dx = 0.073
+            SAMS::T_dataType t_end = 100.0;
+            SAMS::T_dataType x_half = 150.0; // domain is [-x_half, x_half]
+            SAMS::T_indexType nx = 4096;     // dx = 0.073
         } sh21;
         /**
          * Initial conditions should not be timed

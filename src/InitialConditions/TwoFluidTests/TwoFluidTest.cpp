@@ -405,6 +405,15 @@ namespace examples
                 const SAMS::T_dataType e_p = P_p / ((data.gas_gamma - 1.0) * rho_p0);        // specific energies
                 const SAMS::T_dataType e_n = P_n / ((dataNeutral.gas_gamma - 1.0) * rho_n0);
                 const SAMS::T_dataType Bx = sh21.Bx, B0 = sh21.B0;
+                const SAMS::T_dataType dx_cell = (data.x_max - data.x_min) / data.nx;
+                const SAMS::T_dataType w_sheet = sh21.sheet_width_cells * dx_cell;   // 0: sharp step
+                const SAMS::T_dataType pi = 3.14159265358979323846;
+                if (w_sheet > 0.0) {
+                    printf("  current sheet: B_y = -B0 tanh(pi x / %g) (%g cells, as PIP with sharp_interface = .false.)\n",
+                           static_cast<double>(w_sheet), static_cast<double>(sh21.sheet_width_cells));
+                } else {
+                    printf("  current sheet: sharp step at x = 0 (as PIP with sharp_interface = .true.)\n");
+                }
 
                 printf("  xi_n = %.6f, P_t = %g, T = %.6f, plasma beta = %g, B_x = %g, B_y = -/+%g for x >/< 0\n",
                        static_cast<double>(xi_n), static_cast<double>(P_t),
@@ -419,7 +428,8 @@ namespace examples
                         energy(ix, iy, iz) = e_p;
                         energy_neutral(ix, iy, iz) = e_n;
                         bx(ix, iy, iz) = Bx;
-                        by(ix, iy, iz) = (xc(ix) > 0.0) ? -B0 : B0;    // eq. 80
+                        by(ix, iy, iz) = (w_sheet > 0.0) ? -B0 * std::tanh(pi * xc(ix) / w_sheet)   // smooth sheet
+                                                         : ((xc(ix) > 0.0) ? -B0 : B0);           // eq. 80
                     },
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));
             }

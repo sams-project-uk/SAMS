@@ -129,6 +129,13 @@ namespace TWOFLUID
         bool check_source=false;
         
 	bool implicit=true; // flag for using the implicit solvers from PETSc
+        // Start-up time step: dt = dt_startup until t = t_startup. Afterwards dt may grow by at most a
+        // factor dt_max_growth per step (<= 0 disables the limit), so it ramps up to the CFL step
+        // instead of jumping (by ~1e5 for the Snow & Hillier set-up), which hits the unresolved
+        // current sheet with a violent first large step.
+        SAMS::T_dataType dt_startup=1.0e-8;
+        SAMS::T_dataType t_startup=1.0e-6;
+        SAMS::T_dataType dt_max_growth=1.1;
         SAMS::T_dataType implicit_rtol=1.0e-6;  // relative tolerance of the PETSc time stepper (command line -ts_rtol overrides)
         SAMS::T_dataType implicit_atol=1.0e-9;  // absolute tolerance of the PETSc time stepper (command line -ts_atol overrides)
         bool implicit_limit_dt=false;           // if false the explicit collisional dt limit is not applied when implicit=true
@@ -194,6 +201,7 @@ namespace TWOFLUID
 	    // Set in getVariables. Used to re-apply the boundary conditions of the fields the two-fluid
 	    // sources change, so ghost cells always match the interior they mirror.
 	    SAMS::harness *harness_ptr = nullptr;
+	    SAMS::T_dataType dt_previous = 0.0;  // last time step, for dt_max_growth
 
 	    // The source terms are applied to INTERIOR points only (cells 1..n, vertices 0..n in each
 	    // direction, the same on both sides of the domain) and the ghost cells are then refreshed from
@@ -411,9 +419,14 @@ namespace TWOFLUID
                     timeData.dt = plasma_source.two_fluid_timestep<timeData.dt ? plasma_source.two_fluid_timestep : timeData.dt;
                 }
                 } // end explicit dt limit
-                if (timeData.time<=1.0e-6) {
-                    timeData.dt = 1.0e-8<timeData.dt ? 1.0e-8 : timeData.dt;
+                if (timeData.time<=plasma_source.t_startup) {
+                    timeData.dt = plasma_source.dt_startup<timeData.dt ? plasma_source.dt_startup : timeData.dt;
                 }
+                if (plasma_source.dt_max_growth > 0.0 && dt_previous > 0.0) {
+                    const SAMS::T_dataType cap = plasma_source.dt_max_growth * dt_previous;
+                    if (timeData.dt > cap) timeData.dt = cap;
+                }
+                dt_previous = timeData.dt;
                 if (plasma_source.debug_twofluid_steps) {printf("calculateTimestep end \n");}
             };
             void getTimestep(SAMS::timeState &timeData, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral){
