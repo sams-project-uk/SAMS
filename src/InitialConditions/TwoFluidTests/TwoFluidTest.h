@@ -69,7 +69,7 @@ namespace examples
             // 1e-14 is the original value (no change). Larger values (e.g. 1e-12, 1e-10, 1e-8) treat
             // negligible velocity jumps as zero, to test whether that stops round-off asymmetries being
             // amplified when shocks form.
-            SAMS::T_dataType visc_limiter_eps = 1.0e-14;
+            SAMS::T_dataType visc_limiter_eps = 1.0e-8;
             // Run length and grid for a first validation run (the bottom row of Fig. 7, t = 100), matched
             // cell for cell by the PIP reference set-up (shock_tube_ion.f90 with ix = 4096 on [-150, 150],
             // open boundaries, 11 outputs). The paper's equilibrium figures are at t = 40000 with 256000
