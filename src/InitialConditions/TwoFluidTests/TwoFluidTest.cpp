@@ -81,7 +81,7 @@ namespace examples
             // Remap kinetic energy correction
             dataNeutral.rke = data.rke;
 
-            if (problem == "snow_hillier_2021") {
+            if (problem == "snow_hillier_2021" || problem == "symmetric_pulse") {
                 // Run length and grid
                 data.t_end = sh21.t_end;
                 data.dt_snapshots = data.t_end / 10;
@@ -105,6 +105,13 @@ namespace examples
                 plasma_source.ion_rec_empirical = true;
                 plasma_source.ion_rec_nlevel = false;
                 plasma_source.ionisation_potential = sh21.ionisation_potential;
+                // Mirror parity of B_y for the symmetry check: odd across the sheet, even for a uniform field
+                plasma_source.symmetry_by_odd = (problem == "snow_hillier_2021");
+                if (!sh21.shock_viscosity) {
+                    data.visc1 = 0.0; data.visc2 = 0.0;
+                    dataNeutral.visc1 = 0.0; dataNeutral.visc2 = 0.0;
+                    printf("snow_hillier_2021 / symmetric_pulse: SHOCK VISCOSITY OFF (sh21.shock_viscosity = false)\n");
+                }
 
                 printf("Snow & Hillier (2021) slow-mode shock: setting T0 = %g K, t_ir = %g, alpha0 = %g,\n"
                        "  rho_ref = %g, P_ref = %g, collisions and empirical rates on, n-level rates off, %s model\n",
@@ -367,10 +374,16 @@ namespace examples
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));
             }
             //////////////////////////////////////////////////////////////////////////////
-            if (problem == "snow_hillier_2021"){
+            if (problem == "snow_hillier_2021" || problem == "symmetric_pulse"){
                 // Snow & Hillier (2021), A&A 645, A81, eqs. 79-84: a current sheet at x = 0 in a uniform
                 // partially ionised plasma in thermal and ionisation equilibrium at T0
-                printf("Snow & Hillier (2021) reconnection-driven slow-mode shock\n");
+                const bool pulse_test = (problem == "symmetric_pulse");
+                if (pulse_test) {
+                    printf("Mirror-symmetry test: Gaussian hot spot (amplitude %g, width %g) in a uniform field B_y = %g\n",
+                           static_cast<double>(pulse.amplitude), static_cast<double>(pulse.width), static_cast<double>(pulse.By));
+                } else {
+                    printf("Snow & Hillier (2021) reconnection-driven slow-mode shock\n");
+                }
 
                 pw::portableArray<SAMS::T_dataType, 3> rho;
                 pw::portableArray<SAMS::T_dataType, 3> bx,by,bz;
@@ -408,7 +421,11 @@ namespace examples
                 const SAMS::T_dataType dx_cell = (data.x_max - data.x_min) / data.nx;
                 const SAMS::T_dataType w_sheet = sh21.sheet_width_cells * dx_cell;   // 0: sharp step
                 const SAMS::T_dataType pi = 3.14159265358979323846;
-                if (w_sheet > 0.0) {
+                const SAMS::T_dataType amp = pulse_test ? pulse.amplitude : 0.0;
+                const SAMS::T_dataType pw_inv = 1.0 / pulse.width;
+                const SAMS::T_dataType By_uniform = pulse.By;
+                if (pulse_test) {
+                } else if (w_sheet > 0.0) {
                     printf("  current sheet: B_y = -B0 tanh(pi x / %g) (%g cells, as PIP with sharp_interface = .false.)\n",
                            static_cast<double>(w_sheet), static_cast<double>(sh21.sheet_width_cells));
                 } else {
@@ -425,10 +442,12 @@ namespace examples
                     {
                         rho(ix, iy, iz) = rho_p0;
                         rho_n(ix, iy, iz) = rho_n0;
-                        energy(ix, iy, iz) = e_p;
-                        energy_neutral(ix, iy, iz) = e_n;
+                        // symmetric_pulse: both pressures (hence temperatures) raised by the same Gaussian factor
+                        const SAMS::T_dataType heat = 1.0 + amp * std::exp(-(xc(ix) * pw_inv) * (xc(ix) * pw_inv));
+                        energy(ix, iy, iz) = e_p * heat;
+                        energy_neutral(ix, iy, iz) = e_n * heat;
                         bx(ix, iy, iz) = Bx;
-                        by(ix, iy, iz) = (w_sheet > 0.0) ? -B0 * std::tanh(pi * xc(ix) / w_sheet)   // smooth sheet
+                        by(ix, iy, iz) = pulse_test ? By_uniform : (w_sheet > 0.0) ? -B0 * std::tanh(pi * xc(ix) / w_sheet)   // smooth sheet
                                                          : ((xc(ix) > 0.0) ? -B0 : B0);           // eq. 80
                     },
                     rho.getRange(0), rho.getRange(1), rho.getRange(2));

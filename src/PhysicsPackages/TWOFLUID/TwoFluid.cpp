@@ -2235,7 +2235,8 @@ void PIP<T_EOS>::setNormalisation(typename LARE::LARE3DST<T_EOS>::simulationData
 /*
 * Mirror-symmetry check about x = 0 (see data_two_fluid_source::symmetry_check).
 * Cell-centred x index ix (1..nx) mirrors nx+1-ix; vertex-centred (0..nx) mirrors nx-ix. Under the
-* mirror, densities, energies, pressures, viscous heating, v_y, v_z and B_x are even; v_x and B_y odd.
+* mirror, densities, energies, pressures, viscous heating and B_x are even and v_x is odd; v_y and B_y
+* have opposite parities that depend on the problem (see vy_par below).
 * The problem is uniform in y and z, so one row (iy = iz = 1) is checked. Host-side loops: OpenMP builds.
 */
 template<typename T_EOS>
@@ -2248,16 +2249,21 @@ void PIP<T_EOS>::symmetryCheck(typename LARE::LARE3DST<T_EOS>::simulationData &d
     portableWrapper::fence();
     const T_indexType nx = data.nx, iy = 1, iz = 1;
     struct Field { const char *name; int parity; bool vertex; std::function<double(T_indexType)> get; };
+    // Which mirror symmetry the problem has (B is an axial vector):
+    //  - current sheet (B_y odd in x): plain reflection x -> -x; v_x odd, v_y even, B_y odd;
+    //  - uniform oblique field: reflection combined with a half-turn about the x axis (a plain
+    //    reflection would flip the uniform B_y); v_x and v_y odd, B_y even.
+    const int vy_par = ps.symmetry_by_odd ? 1 : -1;
     std::vector<Field> fields = {
         {"rho",        1, false, [&](T_indexType i) { return static_cast<double>(data.rho(i,iy,iz)); }},
         {"rho_n",      1, false, [&](T_indexType i) { return static_cast<double>(dataNeutral.rho(i,iy,iz)); }},
         {"energy_ion", 1, false, [&](T_indexType i) { return static_cast<double>(data.energy_ion(i,iy,iz)); }},
         {"energy_n",   1, false, [&](T_indexType i) { return static_cast<double>(dataNeutral.energy(i,iy,iz)); }},
-        {"by",        -1, false, [&](T_indexType i) { return static_cast<double>(data.by(i,iy,iz)); }},
+        {"by", ps.symmetry_by_odd ? -1 : 1, false, [&](T_indexType i) { return static_cast<double>(data.by(i,iy,iz)); }},
         {"vx",        -1, true,  [&](T_indexType i) { return static_cast<double>(data.vx(i,iy,iz)); }},
-        {"vy",         1, true,  [&](T_indexType i) { return static_cast<double>(data.vy(i,iy,iz)); }},
+        {"vy",    vy_par, true,  [&](T_indexType i) { return static_cast<double>(data.vy(i,iy,iz)); }},
         {"vx_n",      -1, true,  [&](T_indexType i) { return static_cast<double>(dataNeutral.vx(i,iy,iz)); }},
-        {"vy_n",       1, true,  [&](T_indexType i) { return static_cast<double>(dataNeutral.vy(i,iy,iz)); }},
+        {"vy_n",  vy_par, true,  [&](T_indexType i) { return static_cast<double>(dataNeutral.vy(i,iy,iz)); }},
         {"bx",         1, true,  [&](T_indexType i) { return static_cast<double>(data.bx(i,iy,iz)); }},
     };
     if (prepared) {

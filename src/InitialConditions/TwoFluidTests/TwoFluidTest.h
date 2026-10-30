@@ -37,7 +37,8 @@ namespace examples
 
         // Which problem: "sod", "briowu", "hillier", "sedov" or "snow_hillier_2021"
         // TODO - this should be a data item somewhere...
-        const std::string problem = "snow_hillier_2021";
+        // "sod", "briowu", "hillier", "sedov", "snow_hillier_2021" or "symmetric_pulse"
+        const std::string problem = "symmetric_pulse";
 
         /**
          * Parameters of the reconnection-driven slow-mode shock of Snow & Hillier (2021), A&A 645, A81,
@@ -61,15 +62,34 @@ namespace examples
             // collapses, which drives the reconnection). A step across one cell face makes the first response
             // of the sheet as violent as the grid allows and amplifies round-off by many orders of magnitude.
             SAMS::T_dataType sheet_width_cells = 10.0;
+            // false: switch LARE's shock viscosity off in both fluids (visc1 = visc2 = 0), e.g. to test
+            // whether it is what amplifies the asymmetry at the sheet. For short diagnostic runs only.
+            bool shock_viscosity = true;
             // Run length and grid for a first validation run (the bottom row of Fig. 7, t = 100), matched
             // cell for cell by the PIP reference set-up (shock_tube_ion.f90 with ix = 4096 on [-150, 150],
             // open boundaries, 11 outputs). The paper's equilibrium figures are at t = 40000 with 256000
             // cells; scale x_half with t_end (fast-mode signals travel at ~1.05 in these units) and nx to
             // keep dx, and change both codes together.
-            SAMS::T_dataType t_end = 100.0;
-            SAMS::T_dataType x_half = 150.0; // domain is [-x_half, x_half]
-            SAMS::T_indexType nx = 4096;     // dx = 0.073
+            SAMS::T_dataType t_end = 0.1;
+            SAMS::T_dataType x_half = 5.0; // domain is [-x_half, x_half]
+            SAMS::T_indexType nx = 512;     // dx = 0.073
         } sh21;
+
+        /**
+         * problem == "symmetric_pulse": a mirror-symmetry test that exercises the same physics as
+         * snow_hillier_2021 (same plasma, rates, ionisation potential, grid, run length and solver
+         * settings, all taken from sh21) without a current sheet. The field is uniform, and at x = 0 a
+         * Gaussian raises the pressure (and so the temperature) of both fluids by a factor
+         * 1 + amplitude * exp(-(x/width)^2). The hot region is out of ionisation equilibrium and expands,
+         * launching waves outward to both sides; the centre is a rarefaction, so there are no colliding
+         * flows and the shock viscosity does not act there. The solution must stay mirror-symmetric to
+         * round-off: any growth of the asymmetry indicates a bug.
+         */
+        struct symmetricPulseParameters {
+            SAMS::T_dataType amplitude = 1.0;  // peak relative pressure increase (1: the temperature doubles)
+            SAMS::T_dataType width = 0.5;      // Gaussian width, in simulation length units
+            SAMS::T_dataType By = 1.0;         // uniform field; B_x is sh21.Bx
+        } pulse;
         /**
          * Initial conditions should not be timed
          */
