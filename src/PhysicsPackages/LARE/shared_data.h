@@ -12,8 +12,8 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#ifndef SHARED_DATA_KOKKOS_H
-#define SHARED_DATA_KOKKOS_H
+#ifndef SHARED_DATA_LARE_H
+#define SHARED_DATA_LARE_H
 
 #include <cstdint>
 #include <cassert>

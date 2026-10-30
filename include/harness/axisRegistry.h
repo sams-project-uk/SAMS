@@ -1443,6 +1443,47 @@ namespace SAMS
             array.rebase(localRange);
         }
 
+#ifdef USE_KOKKOS
+        /**
+         * Fill a Kokkos offset view (KOV) with the axis data. The element type is that of the view
+         * @param axisname The name of the axis
+         * @param view The offset view to fill
+         * @param stagger The staggering type
+         */
+        template<typename T_view>
+        void fillKOVAxis(const std::string axisname, T_view &view, staggerType stagger)
+        {
+            auto array = getPPAxis<typename T_view::non_const_value_type>(axisname, stagger);
+            view = portableWrapper::kokkos::toOffsetView(array);
+        }
+
+        /**
+         * Fill a Kokkos offset view (KOV) with the axis data for the local domain only, which includes ghost cells
+         * @param axisname The name of the axis
+         * @param view The offset view to fill
+         * @param stagger The staggering type
+         */
+        template<typename T_view>
+        void fillKOVLocalAxis(const std::string axisname, T_view &view, staggerType stagger)
+        {
+            auto array = getPPLocalAxis<typename T_view::non_const_value_type>(axisname, stagger);
+            view = portableWrapper::kokkos::toOffsetView(array);
+        }
+
+        /**
+         * Fill a Kokkos offset view (KOV) with the axis delta data for the local domain only, which includes ghost cells
+         * @param axisname The name of the axis
+         * @param view The offset view to fill
+         * @param stagger The staggering type
+         */
+        template<typename T_view>
+        void fillKOVLocalDelta(const std::string axisname, T_view &view, staggerType stagger)
+        {
+            auto array = getPPLocalDelta<typename T_view::non_const_value_type>(axisname, stagger);
+            view = portableWrapper::kokkos::toOffsetView(array);
+        }
+#endif
+
         /**
          * Get a raw pointer to the axis data
          * @param axisname The name of the axis

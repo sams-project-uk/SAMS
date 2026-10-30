@@ -263,6 +263,17 @@ namespace SAMS{
             const auto & varDef = getVariable(name);
              return varDef.getKokkosOffsetView<T, Arank, tag>();
         }
+
+        /**
+         * Fill a Kokkos offset view (KOV) from the description of a variable in the registry. The element type and rank are those of the view.
+         * @param name The name of the variable
+         * @param view The offset view to fill
+         * @tparam T_view The type of the offset view
+         */
+        template<typename T_view>
+        void fillKOVArray(const std::string name, T_view &view) const {
+            view = getKokkosOffsetView<typename T_view::non_const_value_type, static_cast<int>(T_view::rank)>(name);
+        }
         #endif
 
        /**

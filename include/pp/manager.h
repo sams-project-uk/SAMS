@@ -520,6 +520,44 @@ namespace portableWrapper {
             return wrapper;
         }
 
+#ifdef USE_KOKKOS
+        /**
+         * Allocate an array over the given ranges and wrap it as a Kokkos offset view (KOV). The memory belongs to the manager
+         * @param view The offset view to set. The element type is that of the view
+         * @param ranges The ranges of the array in each direction
+         */
+        template <typename T_view, typename... T_ranges>
+        void allocateKOV(T_view &view, T_ranges... ranges)
+        {
+            portableArray<typename T_view::non_const_value_type, sizeof...(T_ranges), arrayTags::accelerated> wrapper;
+            allocate(wrapper, ranges...);
+            view = kokkos::toOffsetView(wrapper);
+        }
+
+        /**
+         * Create an array over the given ranges and return it as a Kokkos offset view (KOV). The memory belongs to the manager
+         * @tparam T The element type
+         * @param ranges The ranges of the array in each direction
+         */
+        template <typename T, typename... T_ranges>
+        auto createKOV(T_ranges... ranges)
+        {
+            auto wrapper = create<T>(ranges...);
+            return kokkos::toOffsetView(wrapper);
+        }
+
+        /**
+         * Deallocate the memory of a Kokkos offset view (KOV) that was allocated by this manager, and reset the view
+         * @param view The offset view to deallocate
+         */
+        template <typename T_view>
+        void deallocateKOV(T_view &view)
+        {
+            deallocate(static_cast<void *>(view.data()));
+            view = T_view();
+        }
+#endif
+
         template <typename T, int rank, arrayTags tags>
         void deallocate(portableArray<T, rank, tags> &wrapper)
         {
