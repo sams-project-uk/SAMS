@@ -28,6 +28,8 @@ namespace LARE
                                                   int j0, int j1, int j2, int j3,
                                                   int k0, int k1, int k2, int k3)
     {
+        // EXPERIMENTAL: the "negligible velocity jump" threshold below is data.visc_limiter_eps (default
+        // 1e-14, the original hard-coded value); see its declaration in shared_data.h.
         dvdots = pw::min(0.0, dvdots);
         T_dataType rho_edge = 2.0 * data.rho_v(i1, j1, k1) * data.rho_v(i2, j2, k2) / (data.rho_v(i1, j1, k1) + data.rho_v(i2, j2, k2));
 
@@ -38,7 +40,7 @@ namespace LARE
         T_dataType dv = std::sqrt(dv2);
 
         T_dataType psi = 0.0;
-        dvdots = dv * data.dt / dx < 1.e-14 ? 0.0 : dvdots / dv;
+        dvdots = dv * data.dt / dx < data.visc_limiter_eps ? 0.0 : dvdots / dv;
 
         T_dataType dvxm = data.vx(i0, j0, k0) - data.vx(i1, j1, k1);
         T_dataType dvxp = data.vx(i2, j2, k2) - data.vx(i3, j3, k3);
@@ -49,8 +51,8 @@ namespace LARE
 
         T_dataType rl = 1.0, rr = 1.0;
 
-        rl = dv * data.dt / dx < 1.e-14 ? 1.0 : (dvxp * dvx + dvyp * dvy + dvzp * dvz) * dx / (dxp * dv2);
-        rr = dv * data.dt / dx < 1.e-14 ? 1.0 : (dvxm * dvx + dvym * dvy + dvzm * dvz) * dx / (dxm * dv2);
+        rl = dv * data.dt / dx < data.visc_limiter_eps ? 1.0 : (dvxp * dvx + dvyp * dvy + dvzp * dvz) * dx / (dxp * dv2);
+        rr = dv * data.dt / dx < data.visc_limiter_eps ? 1.0 : (dvxm * dvx + dvym * dvy + dvzm * dvz) * dx / (dxm * dv2);
 
         psi = pw::min({0.5 * (rr + rl), 2.0 * rl, 2.0 * rr, 1.0});
         psi = pw::max(0.0, psi);

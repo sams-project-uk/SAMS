@@ -143,6 +143,13 @@ namespace LARE
         T_dataType visc1;      // Linear shock viscosity coefficient
         T_dataType visc2;      // Quadratic shock viscosity coefficient
         T_dataType visc2_norm; // Normalized quadratic shock viscosity coefficient
+        // EXPERIMENTAL (two-fluid symmetry testing): threshold below which edge_viscosity treats the
+        // velocity jump across an edge as zero (test: |dv| dt / dx < visc_limiter_eps). The default 1e-14
+        // is the original hard-coded value, so the scheme is unchanged unless this is set. Just above a
+        // threshold at machine precision, the Caramana limiter's ratios (dv_neighbour / dv) are dominated
+        // by round-off, which can amplify round-off asymmetries by large factors when a shock forms.
+        // Used by the LARE3DSingleTemperature and LARE3DNeutralFluid edge_viscosity only.
+        T_dataType visc_limiter_eps = 1.0e-14;
 
         // Physical constants
         T_dataType gas_gamma;      // Ratio of specific heats

@@ -107,6 +107,12 @@ namespace examples
                 plasma_source.ionisation_potential = sh21.ionisation_potential;
                 // Mirror parity of B_y for the symmetry check: odd across the sheet, even for a uniform field
                 plasma_source.symmetry_by_odd = (problem == "snow_hillier_2021");
+                data.visc_limiter_eps = sh21.visc_limiter_eps;
+                dataNeutral.visc_limiter_eps = sh21.visc_limiter_eps;
+                if (sh21.visc_limiter_eps != 1.0e-14) {
+                    printf("EXPERIMENTAL: shock-viscosity limiter threshold visc_limiter_eps = %g (original 1e-14)\n",
+                           static_cast<double>(sh21.visc_limiter_eps));
+                }
                 if (!sh21.shock_viscosity) {
                     data.visc1 = 0.0; data.visc2 = 0.0;
                     dataNeutral.visc1 = 0.0; dataNeutral.visc2 = 0.0;
