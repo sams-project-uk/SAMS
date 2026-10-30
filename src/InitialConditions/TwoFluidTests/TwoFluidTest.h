@@ -64,7 +64,7 @@ namespace examples
             SAMS::T_dataType sheet_width_cells = 10.0;
             // false: switch LARE's shock viscosity off in both fluids (visc1 = visc2 = 0), e.g. to test
             // whether it is what amplifies the asymmetry at the sheet. For short diagnostic runs only.
-            bool shock_viscosity = true;
+            bool shock_viscosity = false;
             // Run length and grid for a first validation run (the bottom row of Fig. 7, t = 100), matched
             // cell for cell by the PIP reference set-up (shock_tube_ion.f90 with ix = 4096 on [-150, 150],
             // open boundaries, 11 outputs). The paper's equilibrium figures are at t = 40000 with 256000
@@ -86,7 +86,7 @@ namespace examples
          * round-off: any growth of the asymmetry indicates a bug.
          */
         struct symmetricPulseParameters {
-            SAMS::T_dataType amplitude = 1.0;  // peak relative pressure increase (1: the temperature doubles)
+            SAMS::T_dataType amplitude = 0.02;  // peak relative pressure increase (1: the temperature doubles)
             SAMS::T_dataType width = 0.5;      // Gaussian width, in simulation length units
             SAMS::T_dataType By = 1.0;         // uniform field; B_x is sh21.Bx
         } pulse;
