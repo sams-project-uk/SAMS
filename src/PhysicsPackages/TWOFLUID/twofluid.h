@@ -145,12 +145,12 @@ namespace TWOFLUID
         // (1e-15, 1e-14, ..., 1), with its step, stage, field and cell. Set symmetry_check_until (a
         // simulation time) to stop checking; the default checks the whole run.
         // Debugging aid: host-side loops, only for x-symmetric set-ups uniform in y and z.
-        bool symmetry_check=true;
-        bool symmetry_by_odd=true;   // set by the problem: true = current sheet (B_y odd, v_y even); false =
+        bool symmetry_check=false;
+        bool symmetry_by_odd=false;   // set by the problem: true = current sheet (B_y odd, v_y even); false =
                                      // uniform oblique field (B_y even, v_y odd), see symmetryCheck
         int symmetry_check_steps=20;
         double symmetry_check_until=1.0e300;
-        bool watch_state=true;                  // scan the whole state for NaN/Inf at several points of each step (cheap debugging aid)
+        bool watch_state=false;                  // scan the whole state for NaN/Inf at several points of each step (cheap debugging aid)
         int watch_interval=100;                 // print a one-line trend summary every this many timesteps (needs watch_state)
 
         bool substepping=false;

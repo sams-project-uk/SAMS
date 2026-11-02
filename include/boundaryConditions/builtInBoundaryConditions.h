@@ -172,6 +172,99 @@ namespace SAMS
     };
 
 
+    /**
+     * Helper functor for reflectionBC: sets a ghost point to parity * (its mirror image across the
+     * symmetry plane). The mirror image of index g is (indexSum - g); see reflectionBC.
+     */
+    template<typename T, int rank, portableWrapper::arrayTags tag = portableWrapper::arrayTags::accelerated>
+    class reflectionHelper
+    {
+        private:
+            portableWrapper::portableArray<T, rank, tag> Array;
+            int dim;
+            T_indexType indexSum;
+            T parity;
+        public:
+        reflectionHelper(portableWrapper::portableArray<T, rank, tag> &Array, int dim, T_indexType indexSum, T parity)
+            : Array(Array), dim(dim), indexSum(indexSum), parity(parity)
+        {
+        }
+
+        template<typename... Params>
+        FUNCTORMETHODPREFIX void operator()(Params... params) const {
+            TUPLE<Params...> dst(params...), src(params...);
+            portableWrapper::getTupleElement(src, dim) = indexSum - portableWrapper::getTupleElement(dst, dim);
+            APPLY(Array, dst) = parity * APPLY(Array, src);
+        }
+    };
+
+    /**
+     * Symmetry-plane (reflection) boundary condition: the boundary is a plane of mirror symmetry and the
+     * variable is even (parity = +1) or odd (parity = -1) under the reflection. Each ghost point is set to
+     * parity times its mirror image inside the domain:
+     *   - cell-centred data (the plane lies on the face between the last ghost and the first domain cell):
+     *     lower edge ghost g <- parity * A(2 LB - 1 - g), upper edge ghost g <- parity * A(2 UB + 1 - g);
+     *   - half-cell (vertex / face) data, or data marked face-centred in this dimension (the plane passes
+     *     through the boundary point P = first/last face): ghost g <- parity * A(2 P - g), and for odd
+     *     variables the value ON the plane is set to zero (e.g. the normal velocity or normal mass flux).
+     * faceCentredDim marks a dimension in which the data are face values although the variable is
+     * registered as cell-centred (LARE's remap mass flux dm, which holds fluxes through x faces during the
+     * x remap). For such data the face on the boundary has index LB - 1.
+     * This differs from simpleMirrorBC, which reflects the deviation from the boundary value
+     * (ghost = 2 A(boundary) - A(interior)), i.e. a linear extrapolation rather than a symmetry plane.
+     */
+    template<typename T, int rank, portableWrapper::arrayTags tag = portableWrapper::arrayTags::accelerated>
+    class reflectionBC : public singleVariableBC<T, rank, tag>
+    {
+        T parity;
+        int faceCentredDim;
+    public:
+        reflectionBC(const SAMS::variableDef &varDef, T parity, int faceCentredDim = -1)
+            : singleVariableBC<T, rank, tag>(varDef), parity(parity), faceCentredDim(faceCentredDim)
+        {
+        }
+
+        void apply(int dimension, SAMS::domain::edges edge) override
+        {
+            const bool lower = (edge == SAMS::domain::edges::lower);
+            auto &ranges = this->boundaryRanges[dimension * 2 + (lower ? 0 : 1)];
+            auto &dimInfo = this->varDef.getDimension(dimension);
+            const T_indexType LB = dimInfo.getLocalDomainLB();
+            const T_indexType UB = dimInfo.getLocalDomainUB();
+            const bool cellCentred = (LB == dimInfo.getLocalDomainLB(SAMS::staggerType::CENTRED));
+            const bool faceData = (dimension == faceCentredDim);
+
+            // Mirror index sum, and the index of the point lying on the plane (if any)
+            T_indexType indexSum, planeIndex = 0;
+            bool pointOnPlane = true;
+            if (faceData && cellCentred) {             // face values stored with cell-centred indexing
+                planeIndex = lower ? LB - 1 : UB;
+                indexSum = 2 * planeIndex;
+            } else if (cellCentred) {                  // plane between cells
+                indexSum = lower ? 2 * LB - 1 : 2 * UB + 1;
+                pointOnPlane = false;
+            } else {                                   // half-cell: plane through the boundary point
+                planeIndex = lower ? LB : UB;
+                indexSum = 2 * planeIndex;
+            }
+
+            reflectionHelper<T, rank, tag> helper(this->variable, dimension, indexSum, parity);
+            std::apply([&helper](auto... params){
+                portableWrapper::applyKernel(helper, params...);
+            }, ranges);
+
+            // An odd variable vanishes on the symmetry plane
+            if (pointOnPlane && parity < static_cast<T>(0)) {
+                auto planeRanges = ranges;
+                portableWrapper::getTupleElement(planeRanges, dimension) = portableWrapper::Range(planeIndex, planeIndex);
+                portableWrapper::portableArray<T, rank, tag> slice = std::apply([this](auto... rangeArgs){
+                    return this->variable(rangeArgs...);
+                }, planeRanges);
+                portableWrapper::assign(slice, static_cast<T>(0));
+            }
+        }
+    };
+
    /**
      * Helper functor to perform zero gradient boundary conditions
      * @tparam T The data type of the variable

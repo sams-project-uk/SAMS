@@ -26,6 +26,10 @@ namespace examples
          * @param harness SAMS harness
          */
         void attachBoundaryConditions(const std::string& varName, SAMS::harness &harness);
+        // Parity (+1 even, -1 odd) of a variable under the reflection x -> -x about the current sheet
+        // (B is an axial vector), for the half-domain symmetry plane. faceDim returns 0 for data holding
+        // fluxes through x faces although registered cell-centred (LARE's remap mass flux dm).
+        static SAMS::T_dataType sheetMirrorParity(const std::string &varName, int &faceDim);
 
     public:
 
@@ -38,7 +42,7 @@ namespace examples
         // Which problem: "sod", "briowu", "hillier", "sedov" or "snow_hillier_2021"
         // TODO - this should be a data item somewhere...
         // "sod", "briowu", "hillier", "sedov", "snow_hillier_2021" or "symmetric_pulse"
-        const std::string problem = "symmetric_pulse";
+        const std::string problem = "snow_hillier_2021";
 
         /**
          * Parameters of the reconnection-driven slow-mode shock of Snow & Hillier (2021), A&A 645, A81,
@@ -65,6 +69,11 @@ namespace examples
             // false: switch LARE's shock viscosity off in both fluids (visc1 = visc2 = 0), e.g. to test
             // whether it is what amplifies the asymmetry at the sheet. For short diagnostic runs only.
             bool shock_viscosity = true;
+            // Half domain x in [0, x_half] with a symmetry plane at x = 0 (the current sheet), as in PIP's
+            // original shock_tube_ion set-up (flag_bnd(1) = 3). The mirror symmetry is then exact by
+            // construction. nx is halved so the cell size stays 2 x_half / sh21.nx; use the same cells in
+            // PIP (start(1) = 0, end(1) = x_half, ix = nx/2, flag_bnd_x_l = 3). snow_hillier_2021 only.
+            bool half_domain = true;
             // EXPERIMENTAL: threshold of the shock-viscosity limiter (LARE edge_viscosity, both fluids).
             // 1e-14 is the original value (no change). Larger values (e.g. 1e-12, 1e-10, 1e-8) treat
             // negligible velocity jumps as zero, to test whether that stops round-off asymmetries being
@@ -75,9 +84,9 @@ namespace examples
             // open boundaries, 11 outputs). The paper's equilibrium figures are at t = 40000 with 256000
             // cells; scale x_half with t_end (fast-mode signals travel at ~1.05 in these units) and nx to
             // keep dx, and change both codes together.
-            SAMS::T_dataType t_end = 0.1;
-            SAMS::T_dataType x_half = 5.0; // domain is [-x_half, x_half]
-            SAMS::T_indexType nx = 512;     // dx = 0.073
+            SAMS::T_dataType t_end = 1.0;
+            SAMS::T_dataType x_half = 10.0; // domain is [-x_half, x_half]
+            SAMS::T_indexType nx = 4096;     // dx = 0.073
         } sh21;
 
         /**

@@ -21,7 +21,31 @@ namespace examples
             //std::shared_ptr<SAMS::boundaryConditions> mirrorBC = std::make_shared<SAMS::simpleMirrorBC<SAMS::T_dataType, 3>>(varDef);
             //varDef.addBoundaryCondition(0, mirrorBC);
             std::shared_ptr<SAMS::boundaryConditions> freeBC = std::make_shared<SAMS::simpleZeroGradientBC<SAMS::T_dataType, 3>>(varDef);
-            varDef.addBoundaryCondition(0, freeBC);
+            if (sh21.half_domain && problem == "snow_hillier_2021") {
+                // Lower x edge: symmetry plane through the current sheet; upper x edge: open
+                int faceDim = -1;
+                const SAMS::T_dataType parity = sheetMirrorParity(varName, faceDim);
+                std::shared_ptr<SAMS::boundaryConditions> symBC =
+                    std::make_shared<SAMS::reflectionBC<SAMS::T_dataType, 3>>(varDef, parity, faceDim);
+                varDef.addBoundaryCondition(0, SAMS::domain::edges::lower, symBC);
+                varDef.addBoundaryCondition(0, SAMS::domain::edges::upper, freeBC);
+            } else {
+                varDef.addBoundaryCondition(0, freeBC);
+            }
+        }
+
+        SAMS::T_dataType TwoFluidTest::sheetMirrorParity(const std::string &varName, int &faceDim)
+        {
+            // Plain reflection x -> -x: v_x is odd (polar vector); B_y and B_z are odd (axial vector);
+            // densities, energies, v_y, v_z and B_x are even. dm is the x mass flux during the x remap
+            // (odd, face-centred in x). PIP's flag_bnd = 3 flips v_x, B_y and v_z instead of B_z: the two
+            // differ only in the z components, which are identically zero in this problem.
+            faceDim = -1;
+            if (varName == "LARE/dm" || varName == "LARENF/dm") { faceDim = 0; return -1.0; }
+            for (const char *odd : {"vx", "LARE/vx1", "LARENF/vx", "LARENF/vx1", "by", "bz"}) {
+                if (varName == odd) return -1.0;
+            }
+            return 1.0;
         }
 
         /**
@@ -87,6 +111,16 @@ namespace examples
                 data.dt_snapshots = data.t_end / 10;
                 data.nx = sh21.nx;
                 data.x_min = -sh21.x_half;
+                if (sh21.half_domain && problem == "snow_hillier_2021") {
+                    // Half domain with a symmetry plane at x = 0: same cell size, half the cells
+                    data.x_min = 0.0;
+                    data.nx = sh21.nx / 2;
+                    plasma_source.symmetry_check = false;  // no mirror cells to compare: symmetry is imposed
+                    printf("snow_hillier_2021: HALF DOMAIN x in [0, %g], %lld cells, symmetry plane at x = 0 "
+                           "(in-code symmetry check off)\n", static_cast<double>(sh21.x_half), static_cast<long long>(data.nx));
+                } else if (sh21.half_domain) {
+                    printf("WARNING: sh21.half_domain is only implemented for snow_hillier_2021; ignored\n");
+                }
                 data.x_max = sh21.x_half;
                 data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
                 data.z_max = (data.x_max - data.x_min) * data.nz / data.nx;
