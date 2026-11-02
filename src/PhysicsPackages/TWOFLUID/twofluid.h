@@ -146,6 +146,15 @@ namespace TWOFLUID
         // simulation time) to stop checking; the default checks the whole run.
         // Debugging aid: host-side loops, only for x-symmetric set-ups uniform in y and z.
         bool symmetry_check=false;
+        // Grid-noise check: after every stage, the largest second difference of the vertex velocities
+        // (v_x, v_y of both fluids) relative to their maximum, and the signed odd-even (checkerboard)
+        // amplitude around the worst vertex. Every stage is printed while noise_check_from <= t <=
+        // noise_check_to; outside that window only each new power of ten of the relative noise is.
+        // A sign that flips from stage to stage shows a mode that one operator creates and the next
+        // one reverses. Debugging aid: host-side loops, 1D problems (uses iy = iz = 1).
+        bool noise_check=false;
+        double noise_check_from=0.0;
+        double noise_check_to=0.0;
         bool symmetry_by_odd=false;   // set by the problem: true = current sheet (B_y odd, v_y even); false =
                                      // uniform oblique field (B_y even, v_y odd), see symmetryCheck
         int symmetry_check_steps=20;
@@ -252,6 +261,11 @@ namespace TWOFLUID
 	                       data_two_fluid_source &plasma_source, long long step, double time,
 	                       const char *stage, bool prepared);
 	    bool symmetry_broken_reported = false;
+	    // See data_two_fluid_source::noise_check. Defined in TwoFluid.cpp.
+	    void noiseCheck(LARE::LARE3DST<T_EOS>::simulationData &data,
+	                    LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
+	                    data_two_fluid_source &plasma_source, long long step, double time, const char *stage);
+	    int noise_decade_reported = -17;
 	    int symmetry_decade_reported = -17;   // highest power of ten already reported
 
 	    void watchState(LARE::LARE3DST<T_EOS>::simulationData &data,
@@ -314,6 +328,7 @@ namespace TWOFLUID
                 }
                 get_two_fluid_source(data,dataNeutral,plasma_source);
                 if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,0,0.0,"initial condition",false); }
+                if (plasma_source.noise_check) { noiseCheck(data,dataNeutral,plasma_source,0,0.0,"initial condition"); }
             }
             
             void getVariables(data_two_fluid_source &plasma_source,oldData &oldData, SAMS::harness &harness){
@@ -333,6 +348,7 @@ namespace TWOFLUID
             void applySourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
                 if (plasma_source.debug_twofluid_steps) {printf("applySourceTermsStart start \n");}
                 if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"start of step",true); }
+                if (plasma_source.noise_check) { noiseCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"start of step"); }
                 if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"before the first source half-step",timeData.time,false); }
                 if (plasma_source.check_conservation) {copyState(data, dataNeutral, oldData);};
                 if (plasma_source.check_source) {checkSourceConservation(data,dataNeutral,plasma_source);};
@@ -362,15 +378,19 @@ namespace TWOFLUID
             // after the corresponding LARE stage has been done for both fluids.
             void afterSourceTermsStart(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::timeState &timeData){
                 if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after source half-step 1 and re-prepare",true); }
+                if (plasma_source.noise_check) { noiseCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after source half-step 1 and re-prepare"); }
             }
             void startOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::timeState &timeData){
                 if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after predictor",false); }
+                if (plasma_source.noise_check) { noiseCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after predictor"); }
             }
             void halfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::timeState &timeData){
                 if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after corrector",false); }
+                if (plasma_source.noise_check) { noiseCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after corrector"); }
             }
             void endOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source, SAMS::timeState &timeData){
                 if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after remap",false); }
+                if (plasma_source.noise_check) { noiseCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after remap"); }
             }
             void afterEndOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source,oldData &oldData,SAMS::timeState &timeData){
                 if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"after the hydro step, before the second source half-step",timeData.time,false); }
@@ -398,6 +418,7 @@ namespace TWOFLUID
                 if (plasma_source.check_conservation) {checkConservation(data,dataNeutral,oldData);};
                 if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"after the second source half-step",timeData.time,true); }
                 if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after source half-step 2",false); }
+                if (plasma_source.noise_check) { noiseCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after source half-step 2"); }
             };
 
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
