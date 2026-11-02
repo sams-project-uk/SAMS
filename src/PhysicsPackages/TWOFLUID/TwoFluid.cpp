@@ -2429,8 +2429,8 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
         printf("  method                 : explicit, Strang split, dt limited by the collisional timescale\n");
     }
     printf("  PETSC_OPTIONS          : %s\n", petsc_env ? petsc_env : "(not set)");
-    printf("  start-up time step     : dt = %g until t = %g, then growth limited to x%g per step%s\n",
-           static_cast<double>(ps.dt_startup), static_cast<double>(ps.t_startup), static_cast<double>(ps.dt_max_growth),
+    printf("  start-up time step     : first step %g x the allowed step, then growth limited to x%g per step%s\n",
+           static_cast<double>(ps.startup_dt_fraction), static_cast<double>(ps.dt_max_growth),
            ps.dt_max_growth > 0.0 ? "" : " (limit OFF)");
     printf("Diagnostics\n");
     printf("  check_conservation     : %s\n", onoff(ps.check_conservation));

@@ -129,12 +129,14 @@ namespace TWOFLUID
         bool check_source=false;
         
 	bool implicit=true; // flag for using the implicit solvers from PETSc
-        // Start-up time step: dt = dt_startup until t = t_startup. Afterwards dt may grow by at most a
-        // factor dt_max_growth per step (<= 0 disables the limit), so it ramps up to the CFL step
-        // instead of jumping (by ~1e5 for the Snow & Hillier set-up), which hits the unresolved
-        // current sheet with a violent first large step.
-        SAMS::T_dataType dt_startup=1.0e-8;
-        SAMS::T_dataType t_startup=1.0e-6;
+        // Start-up time step: the first step is startup_dt_fraction times the step the CFL and source
+        // limits would allow (relative, so it adapts to the grid and the problem), and afterwards dt may
+        // grow by at most a factor dt_max_growth per step until those limits are reached. This ramps up
+        // to the CFL step instead of starting with it, which would hit an unresolved initial
+        // discontinuity (e.g. the current sheet) with a violent first large step. With x1.1 per step
+        // the ramp takes about ln(1/startup_dt_fraction)/ln(1.1) steps (~73 for 1e-3).
+        // startup_dt_fraction >= 1 or dt_max_growth <= 0 switch the respective part off.
+        SAMS::T_dataType startup_dt_fraction=1.0e-3;
         SAMS::T_dataType dt_max_growth=1.1;
         SAMS::T_dataType implicit_rtol=1.0e-6;  // relative tolerance of the PETSc time stepper (command line -ts_rtol overrides)
         SAMS::T_dataType implicit_atol=1.0e-9;  // absolute tolerance of the PETSc time stepper (command line -ts_atol overrides)
@@ -152,7 +154,7 @@ namespace TWOFLUID
         // noise_check_to; outside that window only each new power of ten of the relative noise is.
         // A sign that flips from stage to stage shows a mode that one operator creates and the next
         // one reverses. Debugging aid: host-side loops, 1D problems (uses iy = iz = 1).
-        bool noise_check=false;
+        bool noise_check=true;
         double noise_check_from=0.0;
         double noise_check_to=0.0;
         bool symmetry_by_odd=false;   // set by the problem: true = current sheet (B_y odd, v_y even); false =
@@ -442,8 +444,12 @@ namespace TWOFLUID
                     timeData.dt = plasma_source.two_fluid_timestep<timeData.dt ? plasma_source.two_fluid_timestep : timeData.dt;
                 }
                 } // end explicit dt limit
-                if (timeData.time<=plasma_source.t_startup) {
-                    timeData.dt = plasma_source.dt_startup<timeData.dt ? plasma_source.dt_startup : timeData.dt;
+                if (dt_previous <= 0.0 && plasma_source.startup_dt_fraction < 1.0) {
+                    // First step only: a fraction of the allowed step; the growth limit then ramps up
+                    timeData.dt *= plasma_source.startup_dt_fraction;
+                    printf("Start-up: first time step %g (%g x the CFL/source-limited step), then growth <= x%g per step\n",
+                           static_cast<double>(timeData.dt), static_cast<double>(plasma_source.startup_dt_fraction),
+                           static_cast<double>(plasma_source.dt_max_growth));
                 }
                 if (plasma_source.dt_max_growth > 0.0 && dt_previous > 0.0) {
                     const SAMS::T_dataType cap = plasma_source.dt_max_growth * dt_previous;
