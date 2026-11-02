@@ -148,12 +148,12 @@ namespace TWOFLUID
         // simulation time) to stop checking; the default checks the whole run.
         // Debugging aid: host-side loops, only for x-symmetric set-ups uniform in y and z.
         bool symmetry_check=false;
-        // Grid-noise check: after every stage, the largest second difference of the vertex velocities
-        // (v_x, v_y of both fluids) relative to their maximum, and the signed odd-even (checkerboard)
-        // amplitude around the worst vertex. Every stage is printed while noise_check_from <= t <=
-        // noise_check_to; outside that window only each new power of ten of the relative noise is.
-        // A sign that flips from stage to stage shows a mode that one operator creates and the next
-        // one reverses. Debugging aid: host-side loops, 1D problems (uses iy = iz = 1).
+        // Grid-noise check: after every stage, the amplitude of the odd-even (checkerboard) mode of the
+        // vertex velocities (v_x, v_y of both fluids), in velocity units, with its sign and location
+        // (see noiseCheck). Every stage is printed while noise_check_from <= t <= noise_check_to;
+        // outside that window only each new power of ten of the amplitude (from 1e-12) is. A sign that
+        // flips from stage to stage shows a mode that one operator creates and the next one reverses.
+        // Debugging aid: host-side loops, 1D problems (uses iy = iz = 1).
         bool noise_check=true;
         double noise_check_from=0.0;
         double noise_check_to=0.0;
@@ -267,7 +267,7 @@ namespace TWOFLUID
 	    void noiseCheck(LARE::LARE3DST<T_EOS>::simulationData &data,
 	                    LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
 	                    data_two_fluid_source &plasma_source, long long step, double time, const char *stage);
-	    int noise_decade_reported = -17;
+	    int noise_decade_reported = -13;
 	    int symmetry_decade_reported = -17;   // highest power of ten already reported
 
 	    void watchState(LARE::LARE3DST<T_EOS>::simulationData &data,

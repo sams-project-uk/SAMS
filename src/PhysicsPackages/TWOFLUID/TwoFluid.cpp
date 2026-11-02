@@ -2317,16 +2317,19 @@ void PIP<T_EOS>::symmetryCheck(typename LARE::LARE3DST<T_EOS>::simulationData &d
 }
 
 /*
-* Grid-noise check (see data_two_fluid_source::noise_check). For each vertex velocity field, the largest
-* |f(i+1) - 2 f(i) + f(i-1)| over interior vertices relative to max |f|, and the signed odd-even amplitude
-* sum_j (-1)^j f(j) / n over 17 vertices centred on the worst one. Host-side loops: OpenMP builds.
+* Grid-noise check (see data_two_fluid_source::noise_check). Measures the odd-even (checkerboard) mode of
+* each vertex velocity field: the alternating sum of second differences over a window of n = 16 vertices,
+*     C(i) = sum_{j=i}^{i+n-1} (-1)^j [f(j+1) - 2 f(j) + f(j-1)] / (4 n),
+* which equals A for a pure checkerboard f(j) = A (-1)^j, is about |d2|/(4n) for an isolated sharp feature,
+* and is ~0 for smooth curvature. Reported in absolute velocity units (largest |C| and its signed value at
+* the window start), so a nearly zero field cannot read as "noisy". Host-side loops: OpenMP builds.
 */
 template<typename T_EOS>
 void PIP<T_EOS>::noiseCheck(typename LARE::LARE3DST<T_EOS>::simulationData &data,
                             typename LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral,
                             data_two_fluid_source &ps, long long step, double time, const char *stage) {
     portableWrapper::fence();
-    const T_indexType nx = data.nx, iy = 1, iz = 1;
+    const T_indexType nx = data.nx, iy = 1, iz = 1, n = 16;
     struct Field { const char *name; std::function<double(T_indexType)> get; };
     const Field fields[] = {
         {"vx",   [&](T_indexType i) { return static_cast<double>(data.vx(i,iy,iz)); }},
@@ -2335,32 +2338,35 @@ void PIP<T_EOS>::noiseCheck(typename LARE::LARE3DST<T_EOS>::simulationData &data
         {"vy_n", [&](T_indexType i) { return static_cast<double>(dataNeutral.vy(i,iy,iz)); }},
     };
     std::string line;
-    double worst = 0.0; const char *wname = "-"; T_indexType wi = 0; double wnyq = 0.0;
+    double worst = 0.0; const char *wname = "-"; T_indexType wi = 0; double wsigned = 0.0;
     for (const auto &f : fields) {
-        double scale = 0.0, d2max = 0.0; T_indexType im = 1;
-        for (T_indexType i = 0; i <= nx; ++i) scale = std::max(scale, std::abs(f.get(i)));
-        for (T_indexType i = 1; i < nx; ++i) {
-            const double d2 = std::abs(f.get(i+1) - 2.0*f.get(i) + f.get(i-1));
-            if (d2 > d2max) { d2max = d2; im = i; }
+        // alternating second differences s(j), j = 1..nx-1, then a running window sum of length n
+        std::vector<double> s(static_cast<size_t>(nx + 1), 0.0);
+        for (T_indexType j = 1; j < nx; ++j)
+            s[j] = ((j % 2) ? -1.0 : 1.0) * (f.get(j+1) - 2.0*f.get(j) + f.get(j-1));
+        double best = 0.0, bestSigned = 0.0; T_indexType bi = 1;
+        double sum = 0.0;
+        for (T_indexType j = 1; j < nx; ++j) {
+            sum += s[j];
+            if (j - n >= 1) sum -= s[j - n];
+            if (j - n + 1 >= 1) {
+                const double C = sum / (4.0 * n);
+                if (std::abs(C) > best) { best = std::abs(C); bestSigned = C; bi = j - n + 1; }
+            }
         }
-        const T_indexType lo = std::max<T_indexType>(0, im - 8), hi = std::min<T_indexType>(nx, im + 8);
-        double nyq = 0.0;
-        for (T_indexType j = lo; j <= hi; ++j) nyq += ((j % 2) ? -1.0 : 1.0) * f.get(j);
-        nyq /= static_cast<double>(hi - lo + 1);
-        const double rel = scale > 0.0 ? d2max/scale : 0.0;
         char buf[96];
-        std::snprintf(buf, sizeof buf, " %s %.1e@%lld(%+.2e)", f.name, rel, static_cast<long long>(im), nyq);
+        std::snprintf(buf, sizeof buf, " %s %.2e@%lld(%+.2e)", f.name, best, static_cast<long long>(bi), bestSigned);
         line += buf;
-        if (rel > worst) { worst = rel; wname = f.name; wi = im; wnyq = nyq; }
+        if (best > worst) { worst = best; wname = f.name; wi = bi; wsigned = bestSigned; }
     }
     if (time >= ps.noise_check_from && time <= ps.noise_check_to) {
         printf("noise step %lld t=%.6e %-40s%s\n", step, time, stage, line.c_str());
-    } else if (worst > 0.0) {
+    } else if (worst > 1.0e-12) {
         const int decade = static_cast<int>(std::floor(std::log10(worst)));
         if (decade > noise_decade_reported) {
             noise_decade_reported = decade;
-            printf("noise GREW to %.2e at step %lld t=%.6e %s: field %s, vertex %lld, odd-even amplitude %+.3e  [%s ]\n",
-                   worst, step, time, stage, wname, static_cast<long long>(wi), wnyq, line.c_str());
+            printf("noise GREW to %.2e at step %lld t=%.6e %s: field %s, window from vertex %lld, signed %+.3e  [%s ]\n",
+                   worst, step, time, stage, wname, static_cast<long long>(wi), wsigned, line.c_str());
         }
     }
     std::fflush(stdout);
