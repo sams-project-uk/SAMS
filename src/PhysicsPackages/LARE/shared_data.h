@@ -587,4 +587,4 @@ namespace LARE
 EOS_DENSITY_ENERGY
 #undef EOS_DEF
 
-#endif // SHARED_DATA_KOKKOS_H
+#endif // SHARED_DATA_LARE_H
