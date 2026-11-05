@@ -37,8 +37,13 @@
 #ifndef PETSC_SUCCESS
 #define PETSC_SUCCESS 0
 #endif
+// PETSc 3.17 already has PetscCall (and defines CHKERRQ through it, so redefining it recurses)
+#ifndef PetscCall
 #define PetscCall(...)            do { PetscErrorCode ss_ierr_ = (__VA_ARGS__); CHKERRQ(ss_ierr_); } while (0)
+#endif
+#ifndef PetscCallAbort
 #define PetscCallAbort(comm, ...) do { PetscErrorCode ss_ierr_ = (__VA_ARGS__); CHKERRABORT(comm, ss_ierr_); } while (0)
+#endif
 #endif
 
 // The raw double arrays handed to the callback are PETSc's own storage

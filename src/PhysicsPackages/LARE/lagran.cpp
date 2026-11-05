@@ -101,7 +101,7 @@ namespace LARE
                 d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
             } else
             {
-                static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS pressure interface");
+                static_assert(pw::alwaysFalse<decltype(ix)>::value, "Unsupported EOS pressure interface");
             }
             d.pressure(ix, iy, iz) = d.p_e(ix, iy, iz) + d.p_i(ix, iy, iz);
         },
@@ -397,7 +397,7 @@ namespace LARE
             cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
          else
         {
-            static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS sound speed interface");
+            static_assert(pw::alwaysFalse<decltype(ix)>::value, "Unsupported EOS sound speed interface");
         }
 
         T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
@@ -619,7 +619,7 @@ namespace LARE
                 data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e), eosIndex(ix), eosIndex(iy), eosIndex(iz));
                 data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i), eosIndex(ix), eosIndex(iy), eosIndex(iz));
             } else {
-                static_assert(pw::alwaysFalse<T_dataType>::value, "Unsupported EOS getPressure interface");
+                static_assert(pw::alwaysFalse<decltype(ix)>::value, "Unsupported EOS getPressure interface");
             }
 
             data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
