@@ -69,6 +69,10 @@ namespace examples
             // false: switch LARE's shock viscosity off in both fluids (visc1 = visc2 = 0), e.g. to test
             // whether it is what amplifies the asymmetry at the sheet. For short diagnostic runs only.
             bool shock_viscosity = true;
+            // false: switch the two-fluid coupling off (collisions, ionisation/recombination and the
+            // ionisation potential), so each fluid evolves as pure (M)HD. With half_domain this is a closed
+            // system until fast waves reach x = x_half, used to test energy conservation of LARE alone.
+            bool coupling = true;
             // Half domain x in [0, x_half] with a symmetry plane at x = 0 (the current sheet), as in PIP's
             // original shock_tube_ion set-up (flag_bnd(1) = 3). The mirror symmetry is then exact by
             // construction. nx is halved so the cell size stays 2 x_half / sh21.nx; use the same cells in
