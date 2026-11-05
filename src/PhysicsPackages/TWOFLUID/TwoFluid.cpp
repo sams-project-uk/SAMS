@@ -2406,6 +2406,9 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
            static_cast<double>(data.gas_gamma), static_cast<double>(dataNeutral.gas_gamma));
     printf("  shock viscosity        : visc1 = %g, visc2 = %g\n",
            static_cast<double>(data.visc1), static_cast<double>(data.visc2));
+    printf("  rke (remap KE fix)     : plasma %s, neutral %s\n", onoff(data.rke), onoff(dataNeutral.rke));
+    printf("  energy_budget          : %s%s\n", onoff(data.energy_budget),
+           data.energy_budget ? " (plasma per-operator budget at every snapshot time; diagnostic)" : "");
     printf("  resistive MHD          : %s (eta_background = %g, eta0 = %g, j_max = %g)\n",
            onoff(data.resistiveMHD), static_cast<double>(data.eta_background),
            static_cast<double>(data.eta0), static_cast<double>(data.j_max));

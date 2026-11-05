@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cassert>
 #include <string>
+#include <vector>
 #include "LARECommon/types.h"
 #include "LARECommon/eos.h"
 #include "pp/parallelWrapper.h"
@@ -208,6 +209,7 @@ namespace LARE
         
         void beforeStartOfTimestep(simulationData &data){
             lagrangian_prepare(data);
+            if (data.energy_budget) budgetStage(data, budgetPoint::beforeStep);
         }
         /**
          * Called after the first two-fluid source half-step of the Strang splitting and before the
@@ -222,6 +224,7 @@ namespace LARE
          */
         void afterSourceTermsStart(simulationData &data){
             lagrangian_prepare(data);
+            if (data.energy_budget) budgetStage(data, budgetPoint::afterSource1);
         }
         /**
          * Physics timestep functions
@@ -238,6 +241,7 @@ namespace LARE
          */
         void halfTimestep(simulationData &data){
             corrector_step(data);
+            if (data.energy_budget) budgetStage(data, budgetPoint::afterCorrector);
         }
 
         /**
@@ -249,6 +253,7 @@ namespace LARE
             if (data.rke){
                 energy_correction(data);
             }
+            if (data.energy_budget) budgetStage(data, budgetPoint::afterRke);
             eta_calc(data);
         }
 
@@ -377,6 +382,32 @@ namespace LARE
          * Function to add back the kinetic energy correction
          */
         void energy_correction(simulationData &data);
+
+        /**
+         * Energy budget diagnostic (data.energy_budget). See energyBudget.cpp for the definitions.
+         */
+        enum class budgetPoint { beforeStep, afterSource1, afterCorrector, afterRemapPass, afterRke };
+        struct budgetTotals { double eint = 0.0, ekin = 0.0, emag = 0.0; double total() const { return eint + ekin + emag; } };
+        struct budgetAccumulators {
+            double src1 = 0, src2 = 0;                         // source half-steps (and anything else between steps)
+            double lagEint = 0, lagEkin = 0, lagEmag = 0;      // Lagrangian step (predictor + corrector)
+            double Wp = 0, PdV = 0, Wvisc = 0, Qvisc = 0;      // pressure / viscous work and heating
+            double WL[3] = {0, 0, 0};                          // Lorentz work by component
+            double passEint[3] = {0, 0, 0}, passEkin[3] = {0, 0, 0}, passEmag[3] = {0, 0, 0};
+            double xMassRedef = 0;                             // KE change from re-deriving vertex mass after the x-pass
+            double rke = 0;
+            int64_t steps = 0;
+        };
+        budgetTotals budgetMeasure(simulationData &data, bool fluxFormB, remapData *rd = nullptr, double *keLare = nullptr);
+        void budgetStage(simulationData &data, budgetPoint point, int pass = -1, remapData *rd = nullptr);
+        void budgetPrint(simulationData &data);
+        budgetAccumulators eb;
+        budgetTotals eb_last, eb_start;
+        bool eb_started = false, eb_xdone = true;
+        double eb_E0 = 0.0, eb_next_print = 0.0, eb_area = 1.0;
+        std::vector<double> eb_rx;                 // Lagrangian x-width ratio cv1/cv per cell, valid until the x-pass
+        std::vector<double> eb_cellEmagX, eb_cellEmagY, eb_vertEkinX; // cumulative per-x-index contributions
+        std::vector<double> eb_profEmag, eb_profEkin, eb_profEint;                 // per-x-index profiles of the last measurement
     };
 }
 

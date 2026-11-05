@@ -105,6 +105,9 @@ namespace examples
             // Remap kinetic energy correction
             dataNeutral.rke = data.rke;
 
+            // Per-operator energy budget of the plasma (diagnostic; see LARE3DSingleTemperature/energyBudget.cpp)
+            data.energy_budget = false;
+
             if (problem == "snow_hillier_2021" || problem == "symmetric_pulse") {
                 // Run length and grid
                 data.t_end = sh21.t_end;

@@ -53,38 +53,14 @@ namespace LARE
         case_test = ts.step % 6;
 
         // Strang ordering
-        switch (case_test)
+        static constexpr int passOrder[6][3] = {{0, 1, 2}, {1, 2, 0}, {2, 0, 1}, {0, 2, 1}, {2, 1, 0}, {1, 0, 2}};
+        for (int k = 0; k < 3; ++k)
         {
-        case 0:
-            remap_x(data, remap_data);
-            remap_y(data, remap_data);
-            remap_z(data, remap_data);
-            break;
-        case 1:
-            remap_y(data, remap_data);
-            remap_z(data, remap_data);
-            remap_x(data, remap_data);
-            break;
-        case 2:
-            remap_z(data, remap_data);
-            remap_x(data, remap_data);
-            remap_y(data, remap_data);
-            break;
-        case 3:
-            remap_x(data, remap_data);
-            remap_z(data, remap_data);
-            remap_y(data, remap_data);
-            break;
-        case 4:
-            remap_z(data, remap_data);
-            remap_y(data, remap_data);
-            remap_x(data, remap_data);
-            break;
-        case 5:
-            remap_y(data, remap_data);
-            remap_x(data, remap_data);
-            remap_z(data, remap_data);
-            break;
+            const int pass = passOrder[case_test][k];
+            if (pass == 0) remap_x(data, remap_data);
+            else if (pass == 1) remap_y(data, remap_data);
+            else remap_z(data, remap_data);
+            if (data.energy_budget) budgetStage(data, budgetPoint::afterRemapPass, pass, &remap_data);
         }
 
         // bx = bx / (dxab + none_zero), etc.

@@ -153,6 +153,11 @@ namespace LARE
         // Physics selectors
         bool resistiveMHD; // Resistive MHD
         bool rke;          // Remap phase kinetic energy correction
+        // Diagnostic: per-operator energy budget of the plasma (LARE3DST only; see
+        // LARE3DSingleTemperature/energyBudget.cpp). Off by default. Printed at every snapshot time,
+        // and every energy_budget_every steps if > 0.
+        bool energy_budget = false;
+        int64_t energy_budget_every = 0;
 
         // Shock viscosity coefficients
         T_dataType visc1;      // Linear shock viscosity coefficient
