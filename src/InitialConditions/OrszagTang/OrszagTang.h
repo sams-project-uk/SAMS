@@ -4,9 +4,6 @@
 #include "harness.h"
 #include "runner.h"
 #include "shared_data.h"
-#ifdef USE_KOKKOS
-#include "LAREKokkos/shared_data.h"
-#endif
 #include "builtInBoundaryConditions.h"
 
 namespace examples
@@ -56,11 +53,7 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-#ifdef USE_KOKKOS
-        void controlVariables(typename LARE::LARE3D<T_EOS>::simulationData &data, LARE::LARE3DKokkos::simulationData &kokkosData);
-#else
         void controlVariables(typename LARE::LARE3D<T_EOS>::simulationData &data);
-#endif
 
         /**
          * Set up the simulation domain
