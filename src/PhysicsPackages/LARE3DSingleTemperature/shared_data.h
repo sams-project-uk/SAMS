@@ -252,6 +252,7 @@ namespace LARE
             eulerian_remap(data, remap_data, ts);
             if (data.rke){
                 energy_correction(data);
+                if (data.rke_3d_fix) this->energy_bcs(); // interior-only change: refresh the ghosts (see rke_3d_fix)
             }
             if (data.energy_budget) budgetStage(data, budgetPoint::afterRke);
             eta_calc(data);

@@ -138,6 +138,14 @@ namespace LARE
 
         // Physics selectors
         bool rke;          // Remap phase kinetic energy correction
+        // EXPERIMENTAL (off by default, pending agreement with the LARE developers): two fixes to rke in 3D.
+        // (1) Each vertex face's remap kinetic-energy loss dk dm is added to the 4 cells around the face,
+        //     so the share per cell must be 1/4; the code uses 1/2 (correct for LARE2D, 2 cells per face),
+        //     which returns twice the loss as heat (measured: exactly 2.000x with energy_budget).
+        // (2) energy_correction changes interior cells only; the ghost cells are now refreshed afterwards.
+        //     Without this, the next step's pressure uses the uncorrected ghost energy, which drove a
+        //     growing odd-even mode across y and z in a 1D (ny = nz = 2) run.
+        bool rke_3d_fix = false;
 
         // Shock viscosity coefficients
         T_dataType visc1;      // Linear shock viscosity coefficient
@@ -463,6 +471,7 @@ namespace LARE
             eulerian_remap(data, remap_data, core_data,ts);
             if (data.rke){
                 energy_correction(data, core_data);
+                if (data.rke_3d_fix) this->energy_bcs(); // interior-only change: refresh the ghosts (see rke_3d_fix)
             }
         }
 

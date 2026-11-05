@@ -104,6 +104,9 @@ namespace examples
             data.rke = false;
             // Remap kinetic energy correction
             dataNeutral.rke = data.rke;
+            // EXPERIMENTAL fixes to rke in 3D (see LARE/shared_data.h); off by default
+            data.rke_3d_fix = false;
+            dataNeutral.rke_3d_fix = data.rke_3d_fix;
 
             // Per-operator energy budget of the plasma (diagnostic; see LARE3DSingleTemperature/energyBudget.cpp)
             data.energy_budget = false;

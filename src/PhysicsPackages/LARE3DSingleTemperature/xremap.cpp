@@ -531,7 +531,7 @@ namespace LARE
 
                     T_dataType dk = ((data.*mPtr)(ixp, iy, iz) - (data.*mPtr)(ix, iy, iz)) * (remap_data.flux(ix, iy, iz) - 0.5 * ((data.*mPtr)(ixp, iy, iz) + (data.*mPtr)(ix, iy, iz))) - 0.5 * ai * ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) + 0.5 * aip * ((data.*mPtr)(ixp, iy, iz) - remap_data.flux(ix, iy, iz));
 
-                    dk = dk * data.dm(ix, iy, iz) * 0.5;
+                    dk = dk * data.dm(ix, iy, iz) * (data.rke_3d_fix ? 0.25 : 0.5); // 4 cells per vertex face: see rke_3d_fix
                     pw::atomic::accelerated::Add(data.delta_ke(ixp, iy, iz), dk);
                     pw::atomic::accelerated::Add(data.delta_ke(ixp, iyp, iz), dk);
                     pw::atomic::accelerated::Add(data.delta_ke(ixp, iyp, izp), dk);

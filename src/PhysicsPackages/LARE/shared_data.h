@@ -153,6 +153,14 @@ namespace LARE
         // Physics selectors
         bool resistiveMHD; // Resistive MHD
         bool rke;          // Remap phase kinetic energy correction
+        // EXPERIMENTAL (off by default, pending agreement with the LARE developers): two fixes to rke in 3D.
+        // (1) Each vertex face's remap kinetic-energy loss dk dm is added to the 4 cells around the face,
+        //     so the share per cell must be 1/4; the code uses 1/2 (correct for LARE2D, 2 cells per face),
+        //     which returns twice the loss as heat (measured: exactly 2.000x with energy_budget).
+        // (2) energy_correction changes interior cells only; the ghost cells are now refreshed afterwards.
+        //     Without this, the next step's pressure uses the uncorrected ghost energy, which drove a
+        //     growing odd-even mode across y and z in a 1D (ny = nz = 2) run.
+        bool rke_3d_fix = false;
         // Diagnostic: per-operator energy budget of the plasma (LARE3DST only; see
         // LARE3DSingleTemperature/energyBudget.cpp). Off by default. Printed at every snapshot time,
         // and every energy_budget_every steps if > 0.
