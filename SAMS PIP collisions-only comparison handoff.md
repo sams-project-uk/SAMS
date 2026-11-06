@@ -230,3 +230,89 @@ Suggested acceptance, following the first handoff:
 - **Pilot outputs on the workstation:**
   - `runs/pip_col_src/build_pilot` (L = 150), `runs/pip_col_src/build_big` (L = 2500, dx = 0.31);
   - `runs/collonly/sams_t1`, `runs/collonly/sams_t1_mpi2` (SAMS smoke test, serial and 2 ranks).
+
+## Status update, 6 Nov 2026 (14:30): MPI fixed, production runs started
+
+This section records where things stand on the workstation (16 physical cores, 2 × 8) and what is left to do.
+
+### Objectives (unchanged)
+
+- Compare SAMS and PIP on the collisions-only Snow & Hillier (2021) current sheet to **t = 100**, half domain **L = 2000**, at **dx = 0.02** (main) and **dx = 0.04** (resolution check).
+- Requirements: nothing reaches the outer boundary, and **≥ 50 cells across the shock** (ρ\_n width).
+- Deliverables: the full comparison figure and the slow-shock close-up (`scripts/collonly_compare.py`).
+
+### What changed today
+
+**SAMS MPI bug found and fixed: commit `7740c79`** ("Fix off-by-one in MPI halo exchange for staggered axes", `include/harness/mpiManager.h`).
+
+- **Cause:** `assignVariableMPITypes` sent the shared boundary vertex of a staggered (HALF\_CELL) axis as the neighbour's first ghost. Every vertex-centred array (v\_x, v\_y, v\_z and their `*1` copies) therefore had ghosts shifted one vertex towards the rank boundary. Nothing showed until flow reached a rank boundary, then the errors were order 1.
+- **Fix:** the send window moves inward by `getGhostAdjust(stagger)` on the exchanged axis. Cell-centred arrays are unchanged.
+- **Scope:** this is a harness bug, so it affected **every SAMS package with staggered variables run on more than one rank**, not only TWOFLUID. Earlier multi-rank SAMS results should be treated as suspect.
+- **Checks:**
+  - Smoke test (L = 150, 16 ranks, t = 1): bit-identical to serial in all snapshots and all 33 datasets, with the same 1072 steps. Before the fix it was off by 0.3.
+  - Hard case (16 ranks, a rank boundary every 1.17, so the shock crosses many of them, t = 0.6): bit-identical.
+  - Control: a serial run with B\_x perturbed by 10⁻¹⁵ stays within 10⁻¹². The old MPI divergence was a genuine bug, not chaos.
+  - The earlier "2 ranks are bit-identical" check in the handoff presumably passed only because the flow had not reached the rank boundary (x = 75) by t = 1.
+
+**SAMS scaling** (production dx = 0.02 grid, 100,000 cells, `OMP_NUM_THREADS=1`, split in x only, measured from step 10 to step 50 while PIP occupied 8 cores):
+
+| Ranks | Wall time per step | Speed-up vs 4 ranks |
+| --- | --- | --- |
+| 4 | 3.33 s | 1 |
+| 8 | 1.85 s | 1.80 (90 % efficiency) |
+| 16 (L = 150 smoke test) | 9.4× faster than serial | |
+
+The serial production run had averaged about 12.8 s/step, so the earlier "7–8 days on 1 core" estimate was optimistic: serial would have taken about 2.5 weeks.
+
+**Serial SAMS production runs stopped.** `runs/sams_L2000_dx002` and `runs/sams_L2000_dx004` were killed at t ≈ 0.024 and t ≈ 0.05. Their directories are kept but are superseded.
+
+### Runs
+
+**PIP reference runs: all finished** (`runs/pip_refs.sh`, 8 ranks each, log `runs/pip_refs.log`):
+
+| Run | Order | Wall time | Output |
+| --- | --- | --- | --- |
+| `pip_L2000_dx002` | 1 | 40 min | `runs/pip_L2000_dx002/out` |
+| `pip_L2000_dx002_o2` | 2 | 93 min | `runs/pip_L2000_dx002_o2/out` |
+| `pip_L2000_dx004` | 1 | 8 min | `runs/pip_L2000_dx004/out` |
+
+**SAMS production runs: running**, started 14:26 with the fixed MPI build:
+
+| Run | Cells | Ranks | Early rate | Expected finish |
+| --- | --- | --- | --- | --- |
+| `runs/sams_L2000_dx002_mpi10` | 100,000 | 10 | ~1.5–1.7 s/step | ~2–2.5 days (≈ 120k steps) |
+| `runs/sams_L2000_dx004_mpi5` | 50,000 | 5 | ~1.5 s/step | ~1 day (≈ 60k steps) |
+
+The expected finishes are estimates from the first ~100 steps, assuming dt settles near 0.8 dx / 19. Re-estimate once t > 1.
+
+- **Launch:** `runs/launch_sams_mpi.sh <name> <binary> <np>`. It runs `mpirun` under `nohup` with `SAMS_DECOMPOSITION=0,1,1`, `OMP_NUM_THREADS=1` and `--bind-to none`, copies the binary into the run directory and refuses to overwrite an existing one.
+- **Logs:** `<run>/run.log`, with every line timestamped. `/usr/bin/time` appends the total wall time at the end.
+- **Output:** `<run>/SAMS_testdata/diagnostics_000NN_rankR.h5`, joined by the comparison script.
+- **Progress:** `grep "Starting timestep" runs/sams_L2000_dx002_mpi10/run.log | tail -1`
+- **Binaries:** `runs/scaling/sams_dx002`, `runs/scaling/sams_dx004`. The scaling-test logs are in `runs/scaling/np4`, `np8` and `results.txt`.
+- **Expected noise in the logs:** "noise GREW" lines come from the TWOFLUID checkerboard diagnostic (`noise_check`). The serial runs print the same values.
+- **Expected exit error:** rank 0 exits through `MPI_Abort`, as in the handoff.
+
+### Uncommitted changes (branch `TwoFluidWIP`)
+
+| File | Change | Suggested action |
+| --- | --- | --- |
+| `include/runner/runner.h` | `SAMS_DECOMPOSITION="nx,ny,nz"` environment override for the MPI decomposition (0 = automatic). Unset keeps the old behaviour. | Commit on its own |
+| `scripts/collonly_compare.py` | Falls back to `diagnostics_NNNNN.h5` for serial runs | Commit |
+| `src/InitialConditions/TwoFluidTests/TwoFluidTest.h` | Production set-up: `ionisation_recombination = false`, `t_end = 100`, `x_half = 2000`, `nx = 200000` | Run configuration; commit or keep local |
+| `src/PhysicsPackages/TWOFLUID/twofluid.h` | `implicit = false` (explicit sources) | Run configuration |
+
+The grid is compile-time. The dx = 0.04 binary was built with `nx = 100000`, and the source was then set back to `nx = 200000`.
+
+### Next steps
+
+1. **Monitor the SAMS runs.** Check that dt settles near the CFL value and refresh the finish estimate after t ≈ 1.
+2. **Check intermediate snapshots** against PIP as they appear, starting with dx = 0.04 at t = 10 (`--snap 1`). This catches problems early instead of after two days.
+3. **Run the comparison** when the runs finish (handoff step 6):
+   ```
+   python3 scripts/collonly_compare.py --pip runs/pip_L2000_dx002/out --sams runs/sams_L2000_dx002_mpi10/SAMS_testdata --snap 10 --out collonly_t100
+   ```
+   Repeat against `pip_L2000_dx002_o2` and against the dx = 0.04 pair.
+4. **Re-measure the shock widths** at dx = 0.02 and 0.04 in both codes, and confirm ≥ 50 cells across ρ\_n and a boundary change below 10⁻¹⁰.
+5. **Commit** `SAMS_DECOMPOSITION` and the compare-script fix. Decide whether the production set-up in `TwoFluidTest.h` and `twofluid.h` is committed.
+6. **Flag the halo fix to other SAMS users.** Any multi-rank run with staggered variables before `7740c79` may be wrong.
