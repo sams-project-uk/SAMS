@@ -445,6 +445,7 @@ namespace LARE
             eulerian_remap(data, remap_data, core_data);
             if (data.rke){
                 energy_correction(data, core_data);
+                this->energy_bcs(); // energy_correction changes interior cells only: refresh the ghosts
             }
         }
 

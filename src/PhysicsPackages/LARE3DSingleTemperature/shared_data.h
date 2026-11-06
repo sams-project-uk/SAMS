@@ -229,6 +229,7 @@ namespace LARE
             eulerian_remap(data, remap_data);
             if (data.rke){
                 energy_correction(data);
+                this->energy_bcs(); // energy_correction changes interior cells only: refresh the ghosts
             }
             eta_calc(data);
         }
