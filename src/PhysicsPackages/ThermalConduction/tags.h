@@ -9,10 +9,10 @@ namespace SAMS
 	struct electron
 	{
 		/** @brief The name of the species */
-		inline static constexpr auto name = SAMS::constexprName("electron");
+		inline static constexpr auto name = SAMS::makeName("electron");
 
 		/** @brief The name of the variable that is evolved, which is the energy of the species */
-		inline static constexpr auto field = SAMS::constexprName("energy_") + name;
+		inline static constexpr auto field = SAMS::makeName("energy_") + name;
 
 		static constexpr const char *fieldName()
 		{
@@ -24,10 +24,10 @@ namespace SAMS
 	struct ion
 	{
 		/** @brief The name of the species */
-		inline static constexpr auto name = SAMS::constexprName("ion");
+		inline static constexpr auto name = SAMS::makeName("ion");
 
 		/** @brief The name of the variable that is evolved, which is the energy of the species */
-		inline static constexpr auto field = SAMS::constexprName("energy_") + name;
+		inline static constexpr auto field = SAMS::makeName("energy_") + name;
 
 		static constexpr const char *fieldName()
 		{

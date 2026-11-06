@@ -21,6 +21,14 @@ namespace LARE
 
         using T_dataType = SAMS::T_dataType;
 
+    /**
+     * Square of a value. pow(value, 2) calls the general power function on the GPU, which is slow in double precision
+     */
+    DEVICEPREFIX INLINE T_dataType sqr(T_dataType value)
+    {
+        return value * value;
+    }
+
     template<typename T_EOS>
     DEVICEPREFIX INLINE T_dataType edge_viscosity(const typename LARE3D<T_EOS>::simulationData &data,
                                                   T_dataType dvdots, T_dataType dx, T_dataType dxm, T_dataType dxp, T_dataType cs_edge,
@@ -195,9 +203,7 @@ namespace LARE
                         data.by1(ix, iy, iz) * data.by1(ix, iy, iz) +
                         data.bz1(ix, iy, iz) * data.bz1(ix, iy, iz);
         T_dataType p = data.pressure(ix, iy, iz);
-        cs(ix, iy, iz) = std::sqrt((data.gas_gamma * p + b2) / rmin); }, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
-        pw::fence();
-        // Compute cs_v
+        cs(ix, iy, iz) = std::sqrt((data.gas_gamma * p + b2) / rmin); }, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);        // Compute cs_v
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izp = iz + 1;
         T_indexType iyp = iy + 1;
@@ -213,8 +219,6 @@ namespace LARE
             cs(ix, iyp, izp) * data.cv(ix, iyp, izp) +
             cs(ixp, iyp, izp) * data.cv(ixp, iyp, izp);
         cs_v(ix, iy, iz) = 0.125 * sum / data.cv_v(ix, iy, iz); }, xp1, yp1, zp1);
-        pw::fence();
-
         // alpha1
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
             T_indexType ixm = ix - 1;
@@ -278,27 +282,25 @@ namespace LARE
             i0, i1, i2, i3, j0, j1, j2, j3,
             k0, k1, k2, k3); }, Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(0, data.nz + 1));
 
-        pw::fence();
-
         // p_visc and visc_heat
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
             T_indexType izm = iz - 1, izp = iz + 1;
             T_indexType iym = iy - 1, iyp = iy + 1;
             T_indexType ixm = ix - 1;
-            T_dataType a1 = pow(data.vx(ixm, iym, izm) - data.vx(ix, iym, izm), 2) + pow(data.vy(ixm, iym, izm) - data.vy(ix, iym, izm), 2) + pow(data.vz(ixm, iym, izm) - data.vz(ix, iym, izm), 2);
-            T_dataType a2 = pow(data.vx(ix,  iym, izm) - data.vx(ix, iy, izm), 2) + pow(data.vy(ix, iym, izm) - data.vy(ix, iy, izm), 2) + pow(data.vz(ix, iym, izm) - data.vz(ix, iy, izm), 2);
-            T_dataType a3 = pow(data.vx(ix,  iy, izm) - data.vx(ixm, iy, izm), 2) + pow(data.vy(ix, iy, izm) - data.vy(ixm, iy, izm), 2) + pow(data.vz(ix, iy, izm) - data.vz(ixm, iy, izm), 2);
-            T_dataType a4 = pow(data.vx(ixm, iy, izm) - data.vx(ixm, iym, izm), 2) + pow(data.vy(ixm, iy, izm) - data.vy(ixm, iym, izm), 2) + pow(data.vz(ixm, iy, izm) - data.vz(ixm, iym, izm), 2);
+            T_dataType a1 = sqr(data.vx(ixm, iym, izm) - data.vx(ix, iym, izm)) + sqr(data.vy(ixm, iym, izm) - data.vy(ix, iym, izm)) + sqr(data.vz(ixm, iym, izm) - data.vz(ix, iym, izm));
+            T_dataType a2 = sqr(data.vx(ix,  iym, izm) - data.vx(ix, iy, izm)) + sqr(data.vy(ix, iym, izm) - data.vy(ix, iy, izm)) + sqr(data.vz(ix, iym, izm) - data.vz(ix, iy, izm));
+            T_dataType a3 = sqr(data.vx(ix,  iy, izm) - data.vx(ixm, iy, izm)) + sqr(data.vy(ix, iy, izm) - data.vy(ixm, iy, izm)) + sqr(data.vz(ix, iy, izm) - data.vz(ixm, iy, izm));
+            T_dataType a4 = sqr(data.vx(ixm, iy, izm) - data.vx(ixm, iym, izm)) + sqr(data.vy(ixm, iy, izm) - data.vy(ixm, iym, izm)) + sqr(data.vz(ixm, iy, izm) - data.vz(ixm, iym, izm));
 
-            T_dataType a5 = pow(data.vx(ixm, iym, iz) - data.vx(ix, iym, iz), 2) + pow(data.vy(ixm, iym, iz) - data.vy(ix, iym, iz), 2) + pow(data.vz(ixm, iym, iz) - data.vz(ix, iym, iz), 2);
-            T_dataType a6 = pow(data.vx(ix, iym, iz) - data.vx(ix, iy, iz), 2) + pow(data.vy(ix, iym, iz) - data.vy(ix, iy, iz), 2) + pow(data.vz(ix, iym, iz) - data.vz(ix, iy, iz), 2);
-            T_dataType a7 = pow(data.vx(ix, iy, iz) - data.vx(ixm, iy, iz), 2) + pow(data.vy(ix, iy, iz) - data.vy(ixm, iy, iz), 2) + pow(data.vz(ix, iy, iz) - data.vz(ixm, iy, iz), 2);
-            T_dataType a8 = pow(data.vx(ixm, iy, iz) - data.vx(ixm, iym, iz), 2) + pow(data.vy(ixm, iy, iz) - data.vy(ixm, iym, iz), 2) + pow(data.vz(ixm, iy, iz) - data.vz(ixm, iym, iz), 2);
+            T_dataType a5 = sqr(data.vx(ixm, iym, iz) - data.vx(ix, iym, iz)) + sqr(data.vy(ixm, iym, iz) - data.vy(ix, iym, iz)) + sqr(data.vz(ixm, iym, iz) - data.vz(ix, iym, iz));
+            T_dataType a6 = sqr(data.vx(ix, iym, iz) - data.vx(ix, iy, iz)) + sqr(data.vy(ix, iym, iz) - data.vy(ix, iy, iz)) + sqr(data.vz(ix, iym, iz) - data.vz(ix, iy, iz));
+            T_dataType a7 = sqr(data.vx(ix, iy, iz) - data.vx(ixm, iy, iz)) + sqr(data.vy(ix, iy, iz) - data.vy(ixm, iy, iz)) + sqr(data.vz(ix, iy, iz) - data.vz(ixm, iy, iz));
+            T_dataType a8 = sqr(data.vx(ixm, iy, iz) - data.vx(ixm, iym, iz)) + sqr(data.vy(ixm, iy, iz) - data.vy(ixm, iym, iz)) + sqr(data.vz(ixm, iy, iz) - data.vz(ixm, iym, iz));
 
-            T_dataType a9 = pow(data.vx(ix, iy, izm) - data.vx(ix, iy, iz), 2) + pow(data.vy(ix, iy, izm) - data.vy(ix, iy, iz), 2) + pow(data.vz(ix, iy, izm) - data.vz(ix, iy, iz), 2);
-            T_dataType a10 = pow(data.vx(ixm, iy, izm) - data.vx(ixm, iy, iz), 2) + pow(data.vy(ixm, iy, izm) - data.vy(ixm, iy, iz), 2) + pow(data.vz(ixm, iy, izm) - data.vz(ixm, iy, iz), 2);
-            T_dataType a11 = pow(data.vx(ixm, iym, izm) - data.vx(ixm, iym, iz), 2) + pow(data.vy(ixm, iym, izm) - data.vy(ixm, iym, iz), 2) + pow(data.vz(ixm, iym, izm) - data.vz(ixm, iym, iz), 2);
-            T_dataType a12 = pow(data.vx(ix, iym, izm) - data.vx(ix, iym, iz), 2) + pow(data.vy(ix, iym, izm) - data.vy(ix, iym, iz), 2) + pow(data.vz(ix, iym, izm) - data.vz(ix, iym, iz), 2);
+            T_dataType a9 = sqr(data.vx(ix, iy, izm) - data.vx(ix, iy, iz)) + sqr(data.vy(ix, iy, izm) - data.vy(ix, iy, iz)) + sqr(data.vz(ix, iy, izm) - data.vz(ix, iy, iz));
+            T_dataType a10 = sqr(data.vx(ixm, iy, izm) - data.vx(ixm, iy, iz)) + sqr(data.vy(ixm, iy, izm) - data.vy(ixm, iy, iz)) + sqr(data.vz(ixm, iy, izm) - data.vz(ixm, iy, iz));
+            T_dataType a11 = sqr(data.vx(ixm, iym, izm) - data.vx(ixm, iym, iz)) + sqr(data.vy(ixm, iym, izm) - data.vy(ixm, iym, iz)) + sqr(data.vz(ixm, iym, izm) - data.vz(ixm, iym, iz));
+            T_dataType a12 = sqr(data.vx(ix, iym, izm) - data.vx(ix, iym, iz)) + sqr(data.vy(ix, iym, izm) - data.vy(ix, iym, iz)) + sqr(data.vz(ix, iym, izm) - data.vz(ix, iym, iz));
 
             data.p_visc(ix, iy, iz) = pw::max(data.p_visc(ix, iy, iz), -data.alpha1(ix, iy, iz) * std::sqrt(a1));
             data.p_visc(ix, iy, iz) = pw::max(data.p_visc(ix, iy, iz), -data.alpha2(ix, iy, iz) * std::sqrt(a2));
@@ -373,9 +375,7 @@ namespace LARE
                  a6 * (data.vz(ix, iy, iz) - data.vz(ix, iy, izp))) /
                 data.cv_v(ix, iy, iz);
         },
-                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-    }
+                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));    }
 
     template<typename T_EOS>
     void LARE3D<T_EOS>::set_dt(simulationData &data)
@@ -557,13 +557,11 @@ namespace LARE
             jy = (jy + jyp) * 0.5;
             jz = (jz + jzp) * 0.5;
 
-            T_dataType j_local = sqrt(pow(jx, 2.0) + pow(jy, 2.0) + pow(jz, 2.0));
+            T_dataType j_local = sqrt(sqr(jx) + sqr(jy) + sqr(jz));
 
             data.eta(ix, iy, iz) = j_local > data.j_max ? data.eta_background + data.eta0 : data.eta_background;
         },
-                        Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz + 1));
-        pw::fence();
-    }
+                        Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz + 1));    }
 
     template<typename T_EOS>
     void LARE3D<T_EOS>::resistive_effects(simulationData &data)
@@ -587,9 +585,7 @@ namespace LARE
             data.curlb(ix, iy, izm) + data.curlb(ixm, iy, izm) +
             data.curlb(ix, iym, izm) + data.curlb(ixm, iym, izm);
 
-        data.energy_electron(ix,iy,iz) += sum_curlb * data.dt/(8.0 * data.rho(ix,iy,iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-        pw::fence();
-        energy_bcs();
+        data.energy_electron(ix,iy,iz) += sum_curlb * data.dt/(8.0 * data.rho(ix,iy,iz)); }, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));        energy_bcs();
 
         //Once more to get j_perp and j_par correct
         rkstep(data);
@@ -622,9 +618,7 @@ namespace LARE
             // This isn't really curlb. It's actually heat flux
             data.curlb(ix, iy, iz) = data.eta(ix, iy, iz) * (jx * jx + jy * jy + jz * jz);
         },
-                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-    }
+                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));    }
 
     template<typename T_EOS>
     void LARE3D<T_EOS>::bstep(simulationData &data)
@@ -677,9 +671,7 @@ namespace LARE
                 data.flux_x(ix, iym, iz) - 
                 data.flux_x(ixm, iy, iz) + 
                 data.flux_x(ixm, iym, iz)
-        ) * data.dt / area; }, Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
-        pw::fence();
-        bfield_bcs();
+        ) * data.dt / area; }, Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));        bfield_bcs();
     }
 
     template<typename T_EOS>
@@ -723,8 +715,6 @@ namespace LARE
             },
                             Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
         }
-
-        pw::fence();
 
         // Compute forces and currents
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -841,9 +831,7 @@ namespace LARE
             data.vy1(ix, iy, iz) = data.vy(ix, iy, iz) + data.dt / 2.0 * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
             data.vz1(ix, iy, iz) = data.vz(ix, iy, iz) + data.dt / 2.0 * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz);
         },
-                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-        // Remap (half timestep) boundary conditions
+                        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));        // Remap (half timestep) boundary conditions
         this->remap_v_bcs();
     }
 
@@ -866,9 +854,7 @@ namespace LARE
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         data.vx(ix, iy, iz) += data.dt * (data.fx_visc(ix, iy, iz) + data.fx(ix, iy, iz)) / data.rho_v(ix, iy, iz);
         data.vy(ix, iy, iz) += data.dt * (data.fy_visc(ix, iy, iz) + data.fy(ix, iy, iz)) / data.rho_v(ix, iy, iz);
-        data.vz(ix, iy, iz) += data.dt * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz); }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-        velocity_bcs();
+        data.vz(ix, iy, iz) += data.dt * (data.fz_visc(ix, iy, iz) + data.fz(ix, iy, iz)) / data.rho_v(ix, iy, iz); }, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));        velocity_bcs();
 
         // Correct density and energy to final values
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -908,8 +894,6 @@ namespace LARE
             // total_visc_heating += dt * visc_heat(ix, iy, iz) * cv(ix, iy, iz);
         },
                         Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-        pw::fence();
-
         this->energy_bcs();
         this->density_bcs();
         this->velocity_bcs();
@@ -990,9 +974,7 @@ namespace LARE
             data.by1(ix, iy, iz) = (data.by1(ix, iy, iz) + w4 * data.dt / 2.0) / (1.0 + dv);
             data.bz1(ix, iy, iz) = (data.bz1(ix, iy, iz) + w5 * data.dt / 2.0) / (1.0 + dv);
         },
-                        Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-        pw::fence();
-    }
+                        Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));    }
 
     template<typename T_EOS>
     void LARE3D<T_EOS>::shock_heating(simulationData &data)

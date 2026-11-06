@@ -1105,7 +1105,8 @@ namespace SAMS
                 {
                     if (i == axis) {
                         //In the direction being created, only send the last real cells
-                        LB[i] = dims[i].getLocalDomainLB();
+                        //Staggered variables skip the edge on the domain boundary
+                        LB[i] = dims[i].getLocalDomainLB() + getstaggerRegistry().getGhostAdjust(dims[i].stagger);
                         //Note! Sending lower bounds so need to send number matching upper ghosts
                         UB[i] = LB[i] + dims[i].upperGhosts-1;
                     } else {
@@ -1123,8 +1124,9 @@ namespace SAMS
                     if  (i == axis) {
                         //In the direction being created send the last real cells
                         //Note we are sending at top of domain so count must be for LOWER ghosts
-                        LB[i] = dims[i].getLocalDomainUB() - dims[i].lowerGhosts+1;
-                        UB[i] = dims[i].getLocalDomainUB();
+                        //Staggered variables skip the edge on the domain boundary
+                        LB[i] = dims[i].getLocalDomainUB() - getstaggerRegistry().getGhostAdjust(dims[i].stagger) - dims[i].lowerGhosts+1;
+                        UB[i] = dims[i].getLocalDomainUB() - getstaggerRegistry().getGhostAdjust(dims[i].stagger);
                     } else {
                         //In other directions, send the whole local domain
                         LB[i] = dims[i].getLocalLB();

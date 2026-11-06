@@ -41,6 +41,12 @@ enum class dataState{
 	foundMultiple
 };
 
+//Name and staggering of one axis of a rectilinear mesh. An empty name means that the dimension is not used
+struct meshAxis{
+	std::string name;
+	SAMS::staggerType stagger = SAMS::staggerType::CENTRED;
+};
+
 class primitive {
 public:
 using allowedMeshTypes_impl = std::tuple<float, double>;
@@ -198,18 +204,16 @@ class writer {
 	/**
 	 * @brief Structure to hold infor about a rectilinear mesh
 	 * @param rank The rank of the mesh
-	 * @param sizes The size of the mesh in each dimension
-	 * 
+	 * @param sizes The global size of the mesh in each dimension
+	 * @param axisNames The name of the axis in each dimension
+	 * @param staggers The staggering of the mesh in each dimension
 	 */
 	struct rlMeshInfo{
-		size_t rank;
-		std::array<size_t, maximumRank> sizes;
-		size_t zones;
-		template<typename ...Args>
-		rlMeshInfo(Args... args) : rank{sizeof...(args)}, sizes{args...}, zones{std::reduce(sizes.begin(), sizes.end(), size_t(1), std::multiplies<>())} {
-			static_assert(sizeof...(args) <= maximumRank, "Too many dimensions for rectilinear mesh");
-		}
-		rlMeshInfo() = default;
+		size_t rank = 0;
+		std::array<size_t, maximumRank> sizes{};
+		std::array<std::string, maximumRank> axisNames;
+		std::array<SAMS::staggerType, maximumRank> staggers{};
+		size_t zones = 1;
 	};
 
 	struct meshInfo {
@@ -217,17 +221,41 @@ class writer {
 		size_t zones;
 		const std::type_info* type = nullptr;
 		std::variant<rlMeshInfo> specificInfo;
+		//Function that writes the mesh with the type of its axes
+		void (writer::*writeMeshFn)(const char*, meshInfo&) = nullptr;
 	};
 
 	//Structure to hold data info
 	struct dataInfo{
 		std::string meshName;
-		size_t elementSize;		
+		//Name of the variable in the variable registry that the data is taken from
+		std::string varName;
+		size_t elementSize;
 		const std::type_info* type = nullptr;
 		std::array<size_t, maximumRank> staggers;
 		bool written = false;
+		//Function that writes the data with the type of its variable
+		void (writer::*writeFn)(const char*, dataInfo&, meshInfo&) = nullptr;
 		dataInfo() = default;
-		dataInfo(const char* meshName, const size_t elementSize, const std::type_info* type) : meshName(meshName), elementSize(elementSize), type(type){};
+		dataInfo(const char* meshName, const char* varName) : meshName(meshName), varName(varName){};
+	};
+
+	/**
+	 * @brief Structure to hold the part of a variable that this rank writes
+	 * @param rank The rank of the variable
+	 * @param localSizes The size of the local array, including ghost cells, in each dimension
+	 * @param localStarts The first element of the local array that is written in each dimension
+	 * @param counts The number of elements written in each dimension
+	 * @param globalSizes The size of the whole variable across all ranks in each dimension
+	 * @param globalStarts The position of the written elements in the whole variable in each dimension
+	 */
+	struct blockInfo{
+		size_t rank = 0;
+		std::array<size_t, maximumRank> localSizes{};
+		std::array<size_t, maximumRank> localStarts{};
+		std::array<size_t, maximumRank> counts{};
+		std::array<size_t, maximumRank> globalSizes{};
+		std::array<size_t, maximumRank> globalStarts{};
 	};
 
 	//Map from mesh name to mesh info
@@ -390,12 +418,10 @@ class writer {
 
 	/**
 	 * @brief common actions for registering any mesh
-	 * @tparam T The type of the mesh
 	 * @param name The name of the mesh
 	 * @throws std::invalid_argument if a mesh with that name is already registered
 	 * @throws std::invalid_argument if the type is not allowed
 	 */
-	template<typename T>
 	void registerMeshCommon(const char* name){
 		//using p = typename use_allowedMeshTypes<primitive>::type;
 		//static_assert(typeInTuple<T, allowedMeshTypes, 0>(), "Type not allowed");
@@ -415,7 +441,6 @@ class writer {
 		}
 	}
 
-	template<typename T>
 	void registerDataCommon(const char* name, const char* meshName){
 		testMeshRegistered(meshName);	
 		if (dataMap[meshName].find(name)!=dataMap[meshName].end()){
@@ -466,6 +491,126 @@ class writer {
 			throw std::logic_error("Data is not uniquely registered");
 		}
 	}	
+
+	/**
+	 * @brief Write a registered mesh, taking the coordinates from the axis registry
+	 * @tparam T_mesh The type of the axes of the mesh
+	 * @param name The name of the mesh
+	 * @param info The information about the mesh
+	 */
+	template<typename T_mesh>
+	void writeRectilinearMeshTyped(const char* name, meshInfo &info){
+		const rlMeshInfo &specificInfo = std::get<rlMeshInfo>(info.specificInfo);
+		//Every rank holds the whole of each axis
+		std::array<portableWrapper::hostArray<T_mesh, 1>, maximumRank> axisArrays;
+		std::array<const T_mesh*, maximumRank> axes{};
+		for (size_t i = 0; i < specificInfo.rank; ++i){
+			h.axisRegistry.fillPPAxis(specificInfo.axisNames[i], axisArrays[i], specificInfo.staggers[i]);
+			axes[i] = &axisArrays[i](h.axisRegistry.getDimension(specificInfo.axisNames[i]).getDomainLB(specificInfo.staggers[i]));
+		}
+		static_cast<T_core*>(this)->writeRectilinearMeshImpl(name, info, axes);
+	}
+
+	/**
+	 * @brief Set the type of a mesh and the function that writes it from the type handle of its axes
+	 * @tparam I The index in the list of allowed mesh types of the type to test
+	 * @param info The information about the mesh
+	 * @param type The type handle of the axes
+	 * @throws std::invalid_argument if the type of the axes cannot be written
+	 */
+	template<size_t I = 0>
+	void setMeshType(meshInfo &info, SAMS::typeHandle type){
+		if constexpr (I >= std::tuple_size_v<defaultAllowedMeshTypes>) {
+			throw std::invalid_argument("Type of mesh axes cannot be written");
+		} else {
+			using T = std::tuple_element_t<I, defaultAllowedMeshTypes>;
+			if (type == SAMS::gettypeRegistry().getTypeID<T>()) {
+				info.type = &typeid(T);
+				info.writeMeshFn = &writer::template writeRectilinearMeshTyped<T>;
+				return;
+			}
+			setMeshType<I + 1>(info, type);
+		}
+	}
+
+	/**
+	 * @brief Set the type of a dataset and the function that writes it from the type handle of its variable
+	 * @tparam I The index in the list of allowed data types of the type to test
+	 * @param info The information about the data
+	 * @param type The type handle of the variable
+	 * @throws std::invalid_argument if the type of the variable cannot be written
+	 */
+	template<size_t I = 0>
+	void setDataType(dataInfo &info, SAMS::typeHandle type){
+		if constexpr (I >= std::tuple_size_v<defaultAllowedDataTypes>) {
+			throw std::invalid_argument("Type of variable cannot be written");
+		} else {
+			using T = std::tuple_element_t<I, defaultAllowedDataTypes>;
+			if (type == SAMS::gettypeRegistry().getTypeID<T>()) {
+				info.elementSize = sizeof(T);
+				info.type = &typeid(T);
+				info.writeFn = &writer::template writeDataTyped<T>;
+				return;
+			}
+			setDataType<I + 1>(info, type);
+		}
+	}
+
+	/**
+	 * @brief Write a registered dataset from its variable in the variable registry
+	 * @tparam T_data The type of the variable
+	 * @param name The name of the data
+	 * @param dInfo The information about the data
+	 * @param mInfo The information about the mesh that the data is on
+	 */
+	template<typename T_data>
+	void writeDataTyped(const char* name, dataInfo &dInfo, meshInfo &mInfo){
+		const SAMS::variableDef &varDef = h.variableRegistry.getVariable(dInfo.varName);
+		blockInfo block;
+		block.rank = static_cast<size_t>(varDef.getRank());
+		for (size_t i = 0; i < block.rank; ++i){
+			const SAMS::dimension &dim = varDef.getDimension(static_cast<int>(i));
+			//The local array is all of the memory of the variable on this rank, including ghost cells
+			block.localSizes[i] = static_cast<size_t>(dim.getLocalUB() - dim.getLocalLB() + 1);
+			block.localStarts[i] = static_cast<size_t>(dim.getLocalDomainLB() - dim.getLocalLB());
+			block.counts[i] = dim.getLocalDomainCount();
+			block.globalSizes[i] = dim.getDomainCount();
+			block.globalStarts[i] = static_cast<size_t>(dim.getGlobalDomainLB() - dim.getDomainLB());
+		}
+		writeDataOnHost<T_data, 1>(name, varDef, block, dInfo, mInfo);
+	}
+
+	/**
+	 * @brief Copy the data of a variable to the host if it is not already there and write it. The copy is released as soon as it is written
+	 * @tparam T_data The type of the data
+	 * @tparam R The rank to test the variable against
+	 * @param name The name of the data
+	 * @param varDef The variable to write
+	 * @param block The part of the variable that this rank writes
+	 * @param dInfo The information about the data
+	 * @param mInfo The information about the mesh that the data is on
+	 */
+	template<typename T_data, int R>
+	void writeDataOnHost(const char* name, const SAMS::variableDef &varDef, const blockInfo &block, dataInfo &dInfo, meshInfo &mInfo){
+		if constexpr (R > SAMS::MAX_RANK) {
+			throw std::runtime_error("Rank of variable is too high to write");
+		} else {
+			if (varDef.getRank() != R) {
+				writeDataOnHost<T_data, R + 1>(name, varDef, block, dInfo, mInfo);
+				return;
+			}
+			if (varDef.getMemorySpace() == portableWrapper::arrayTags::host) {
+				static_cast<T_core*>(this)->writeDataImpl(name, static_cast<const T_data*>(varDef.getDataPtr<T_data>()), block, dInfo, mInfo);
+			} else {
+				portableWrapper::portableArrayManager manager;
+				portableWrapper::portableArray<T_data, R, portableWrapper::arrayTags::accelerated> device;
+				varDef.fillPPArray(device);
+				auto host = manager.makeHostAvailable(device);
+				static_cast<T_core*>(this)->writeDataImpl(name, static_cast<const T_data*>(host.data()), block, dInfo, mInfo);
+				manager.deallocate(host);
+			}
+		}
+	}
 
 	protected:
 	writer(SAMS::harness &h) : h(h) {
@@ -564,77 +709,86 @@ class writer {
 	/**
 	 * @brief Register an ND rectilinear mesh. This should be called before any data is written.
 	 * @param name The name of the mesh
-	 * @param args The number of points in each dimension (must be of integral type)
+	 * @param axis0 The name and staggering of the axis in the first dimension
+	 * @param axis1 - axis7 The name and staggering of the axis in each further dimension. Dimensions that are not used are left with an empty name
+	 * @details The global size of the mesh in each dimension is taken from the axis registry. The type of the mesh is the type of its axes
 	 * @throws std::invalid_argument if the mesh is already registered
+	 * @throws std::invalid_argument if the axes have different types or their type cannot be written
 	 */
-	template<typename T_mesh = double, typename... Args>
-	void registerRectilinearMesh(const char* name, Args... args){
+	void registerRectilinearMesh(const char* name, const meshAxis &axis0, const meshAxis &axis1 = {}, const meshAxis &axis2 = {}, const meshAxis &axis3 = {},
+		const meshAxis &axis4 = {}, const meshAxis &axis5 = {}, const meshAxis &axis6 = {}, const meshAxis &axis7 = {}){
 		startMeshRegister();
-		registerMeshCommon<T_mesh>(name);
-		meshMap[name].specificInfo = rlMeshInfo(static_cast<size_t>(args)...);
-		meshMap[name].type = &typeid(T_mesh);
+		registerMeshCommon(name);
+		const std::array<const meshAxis*, maximumRank> axes = {&axis0, &axis1, &axis2, &axis3, &axis4, &axis5, &axis6, &axis7};
+		rlMeshInfo newInfo;
+		SAMS::typeHandle meshType;
+		for (const meshAxis *axis : axes){
+			if (axis->name.empty()) break;
+			const SAMS::dimension &dim = h.axisRegistry.getDimension(axis->name);
+			//Every axis of the mesh must have the same type
+			const SAMS::typeHandle axisType = h.axisRegistry.getAxis(axis->name).axisData.at(axis->stagger).at(portableWrapper::arrayTags::host).axisType;
+			if (newInfo.rank == 0) {
+				meshType = axisType;
+			} else if (axisType != meshType) {
+				throw std::invalid_argument("Axes of mesh have different types");
+			}
+			newInfo.axisNames[newInfo.rank] = axis->name;
+			newInfo.staggers[newInfo.rank] = axis->stagger;
+			newInfo.sizes[newInfo.rank] = dim.getDomainCount(axis->stagger);
+			newInfo.zones *= newInfo.sizes[newInfo.rank];
+			newInfo.rank++;
+		}
+		meshMap[name].specificInfo = newInfo;
+		setMeshType(meshMap[name], meshType);
 		auto &info = meshMap[name];
 		auto &specificInfo = std::get<rlMeshInfo>(info.specificInfo);
 		meshMap[name].zones = specificInfo.zones;
 
 		//This is the specific call for rectilinear meshes
-		/*if constexpr (has_registerRectilinearMeshImpl<T_core, decltype(name), decltype(specificInfo), decltype(static_cast<size_t>(args))...>) {*/
-			static_cast<T_core*>(this)->registerRectilinearMeshImpl(name, specificInfo, 
-				static_cast<size_t>(args)...);
-		//}
+		static_cast<T_core*>(this)->registerRectilinearMeshImpl(name, specificInfo);
 		//This is a generic call that will be called for any mesh
 		if constexpr(has_registerMeshImpl<T_core, decltype(name), decltype(info)>) {
-			static_cast<T_core*>(this)->registerMeshImpl(name, info, static_cast<size_t>(args)...);
+			static_cast<T_core*>(this)->registerMeshImpl(name, info);
 		}
 	}
 
 	/**
 	 * @brief Write a ND rectilinear mesh. This should be called after the mesh has been registered.
 	 * This it to support writers like NetCDF that require the mesh to be defined before it is written.
+	 * The coordinates of the mesh are taken from the axis registry
 	 * @param name The name of the mesh
-	 * @param args The coordinates of the mesh in each dimension (must be of pointer type). Must be as many arguments as the mesh rank. Must be of arithmetic type and the same type as the mesh when it was registered.
 	 * @throws std::runtime_error if the mesh is not registered
 	 * @throws std::runtime_error if the mesh has already been written
-	 * @throws std::runtime_error if the mesh rank does not match the rank of the mesh when it was registered
 	 */
-
-	template <typename... T_data>
-		void writeRectilinearMesh(const char* name, const T_data... args){
-			static_assert(sizeof...(args) <= maximumRank, "Too many dimensions for rectilinear mesh");
-			static_assert((std::is_arithmetic_v<std::remove_pointer_t<T_data>> && ...), "All arguments must be arithmetic types");
-			static_assert((std::is_pointer_v<T_data> && ...), "All arguments must be pointers");
-			testMeshRegistered(name);
-			auto &meshInfo = meshMap[name];
-			auto &meshSpecificInfo = [&meshInfo]() -> auto& {
-				try {
-					return std::get<rlMeshInfo>(meshInfo.specificInfo);
-				} catch (const std::bad_variant_access&) {
-					throw std::runtime_error("Trying to write a mesh as a different type than at registration");
-				}
-			}();
-			if ((... || (&typeid(std::decay_t<std::remove_pointer_t<T_data>>) != meshInfo.type))) throw std::invalid_argument("Type of mesh when writing does not match type of mesh when registering");
-			if (meshInfo.written) throw std::runtime_error("Mesh has already been written!");
-			if (meshSpecificInfo.rank != sizeof...(args)) throw std::runtime_error("Mesh defined rank and written rank do not match");
-			startMeshWrite();
-			static_cast<T_core*>(this)->writeRectilinearMeshImpl(name, meshInfo, args...);
-			meshInfo.written=true;
-		}
+	void writeRectilinearMesh(const char* name){
+		if (!testMeshRegistered(name)) throw std::runtime_error("Mesh is not registered");
+		auto &meshInfo = meshMap[name];
+		if (meshInfo.written) throw std::runtime_error("Mesh has already been written!");
+		startMeshWrite();
+		(this->*meshInfo.writeMeshFn)(name, meshInfo);
+		meshInfo.written=true;
+	}
 
 	/**
 	 * @brief Register data against a mesh. This should be called before any data is written.
-	 * @template T_data The type of the data. This must be a type that the underlying writer can handle.
-	 * Stick to basic types like int, float, double, etc. and you'll be fine.
+	 * The data is taken from a variable in the variable registry, which also gives its type
 	 * @param name The name of the data
 	 * @param meshName The name of the mesh that the data is associated with
+	 * @param varName The name of the variable in the variable registry
 	 * @throws std::invalid_argument if the data is already registered
-	 * @throws std::runtime_error if the mesh is not registered
-	 * @throws std::runtime_error if the data type does not match the registered type
-	 * @throws std::runtime_error if the mesh is not registered
-	 * @throws std::runtime_error if the data is not registered
+	 * @throws std::invalid_argument if the variable does not lie on the axes of the mesh
+	 * @throws std::invalid_argument if the type of the variable cannot be written
 	 */
-	template<typename T_data=double>
-		void registerData(const char* name, const char* meshName){
-			registerDataCommon<T_data>(name, meshName);
+		void registerData(const char* name, const char* meshName, const char* varName){
+			registerDataCommon(name, meshName);
+			//The variable must lie on the axes of the mesh with the same staggering
+			const SAMS::variableDef &varDef = h.variableRegistry.getVariable(varName);
+			const rlMeshInfo &specificInfo = std::get<rlMeshInfo>(meshMap[meshName].specificInfo);
+			if (static_cast<size_t>(varDef.getRank()) != specificInfo.rank) throw std::invalid_argument("Rank of variable does not match rank of mesh");
+			for (size_t i = 0; i < specificInfo.rank; ++i){
+				const SAMS::dimension &dim = varDef.getDimension(static_cast<int>(i));
+				if (dim.axisName != specificInfo.axisNames[i] || dim.stagger != specificInfo.staggers[i]) throw std::invalid_argument("Axes of variable do not match axes of mesh");
+			}
 			if (dataMap[meshName].find(name)!=dataMap[meshName].end()) throw std::invalid_argument("Data already registered");
 			if constexpr (!supportsPerMeshDataNames) {
 				//If we don't have support for per mesh data names, we need to check that the name is unique across all meshes and throw an exception if it is not
@@ -646,71 +800,47 @@ class writer {
 				pair.first = meshName;
 				pair.second++;
 			} 
-			dataMap[meshName][name] = dataInfo(meshName, sizeof(T_data), &typeid(std::decay_t<T_data>));
+			dataMap[meshName][name] = dataInfo(meshName, varName);
 			auto &dataInfo = dataMap[meshName][name];
 			auto &meshInfo = meshMap[meshName];
+			//The type of the data is the type of the variable
+			setDataType(dataInfo, varDef.getType());
 			startDataRegister();
 			static_cast<T_core*>(this)->registerDataImpl(name, meshName, dataInfo, meshInfo);
 		}
 
 	/**
-	 * @brief Register data with type info provided by a pointer to the data. This should be called before any data is written. DOES NOT WRITE DATA
-	 * @template T_data The type of the data. This must be a type that the underlying writer can handle.
-	 * Stick to basic types like int, float, double, etc. and you'll be fine.
+	 * @brief Write data against a mesh. This should be called after the data has been registered.
+	 * The data is taken from the variable that it was registered with. Each rank writes its own part of the variable
 	 * @param name The name of the data
 	 * @param meshName The name of the mesh that the data is associated with
-	 * @param data A data pointer having the type of the data. This is only used to get the type info for the data.
-	 * @details This is a convenience function that allows you to register data without having to specify the type. The type is determined from the pointer. This is because the "object.template method" syntax is not very clear
+	 * @throws std::invalid_argument if the data is not registered
 	 */
-	template<typename T>
-	void registerData(const char* name, const char* meshName, [[maybe_unused]] T* data)
-	{
-		registerData<T>(name, meshName);
+	void writeData(const char* name, const char* meshName) {
+		testDataOnMesh(meshName, name);
+		auto &dataInfo = dataMap[meshName][name];
+		auto &meshInfo = meshMap[dataInfo.meshName];
+		if (dataInfo.written) {
+			std::cerr << "Data item " << name << " on mesh " << meshName << " has already been written and is being written again!\n";
+		}
+		dataInfo.written=true;
+		startDataWrite();
+		(this->*dataInfo.writeFn)(name, dataInfo, meshInfo);
 	}
 
 	/**
 	 * @brief Write data against a mesh. This should be called after the data has been registered.
-	 * @template T_data The type of the data. This must be a type that the underlying writer can handle.
-	 * Stick to basic types like int, float, double, etc. and you'll be fine.
-	 * @param name The name of the data
-	 * @param meshName The name of the mesh that the data is associated with
-	 * @param data The data to be written
-	 * @throws std::invalid_argument if the data is not registered
-	 * @throws std::runtime_error if the data type does not match the registered type
-	 */
-	template<typename T_data>
-		void writeData(const char* name, const char* meshName, const T_data *data) {
-			testDataOnMesh(meshName, name);
-			auto &dataInfo = dataMap[meshName][name];
-			auto &meshInfo = meshMap[dataInfo.meshName];
-			if (dataInfo.written) {
-				std::cerr << "Data item " << name << " on mesh " << meshName << " has already been written and is being written again!\n";
-			}
-			dataInfo.written=true;
-			if (&typeid(std::decay_t<T_data>)!=dataInfo.type) throw std::invalid_argument("Type of data when writing does not match type of data when registering");
-			startDataWrite();
-			static_cast<T_core*>(this)->writeDataImpl(name, data, dataInfo, meshInfo);
-		}
-
-	/**
-	 * @brief Write data against a mesh. This should be called after the data has been registered.
 	 * This is a convenience function that allows you to write data without having to specify the mesh name. The mesh name is determined from the data name. This is only valid if the data name is unique across all meshes.
-	 * @template T_data The type of the data. This must be a type that the underlying writer can handle.
-	 * Stick to basic types like int, float, double, etc. and you'll be fine.
-	 * This version is a convenience function where the mesh name is not required. It only works if the data name is unique
 	 * @param name The name of the data
-	 * @param data The data to be written
 	 * @throws std::invalid_argument if the data is not registered
-	 * @throws std::runtime_error if the data type does not match the registered type
 	 */
-	template<typename T_data>
-		void writeData(const char* name, const T_data *data) {
-			//Find the mesh name from the data name
-			testDataUnique(name);
-			const auto& pair = dataNameToMeshNameMap[name];
-			std::string meshName = pair.first;
-			writeData(name, meshName.c_str(), data);
-		}
+	void writeData(const char* name) {
+		//Find the mesh name from the data name
+		testDataUnique(name);
+		const auto& pair = dataNameToMeshNameMap[name];
+		std::string meshName = pair.first;
+		writeData(name, meshName.c_str());
+	}
 
 	//Flush file to disk
 	void flushFile() {
@@ -765,6 +895,7 @@ class demoFile : public writer<demoFile> {
 	using writerMeshInfo = writer<demoFile>::meshInfo;
 	using writerRLMeshInfo  = writer<demoFile>::rlMeshInfo;
 	using writerDataInfo = writer<demoFile>::dataInfo;
+	using writerBlockInfo = writer<demoFile>::blockInfo;
 
 	using allowedMeshTypes_impl = std::tuple<float, double>;
 
@@ -773,43 +904,32 @@ class demoFile : public writer<demoFile> {
 	void startRegisterImpl(){}
 	void startWriteImpl(){}
 
-	template<typename... Args>
-	void registerRectilinearMeshImpl(const char* name,[[maybe_unused]] writerRLMeshInfo &info, Args... args){
+	void registerRectilinearMeshImpl(const char* name, const writerRLMeshInfo &info){
 		std::cout << "Rectilinear mesh registration called\n";
-		std::cout << "Registering mesh \"" << name << "\" with rank " << sizeof...(args) << "\n";
-		//Print the sizes using a fold
+		std::cout << "Registering mesh \"" << name << "\" with rank " << info.rank << "\n";
+		//Print the sizes
 		std::cout << "Sizes: ";
-		((std::cout << args << " "), ...);
+		for (size_t i = 0; i < info.rank; ++i) std::cout << info.sizes[i] << " ";
 		std::cout << "\n";
 	}
 
-	template<typename... Args>
-	void registerMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info, Args... args){
+	void registerMeshImpl(const char* name, writerMeshInfo &info){
+		const writerRLMeshInfo &specificInfo = std::get<writerRLMeshInfo>(info.specificInfo);
 		std::cout << "Generic registerMeshImpl called\n";
-		std::cout << "Registering mesh \"" << name << "\" with rank " << sizeof...(args) << "\n";
-		//Print the sizes using a fold
+		std::cout << "Registering mesh \"" << name << "\" with rank " << specificInfo.rank << "\n";
+		//Print the sizes
 		std::cout << "Sizes: ";
-		((std::cout << args << " "), ...);
+		for (size_t i = 0; i < specificInfo.rank; ++i) std::cout << specificInfo.sizes[i] << " ";
 		std::cout << "\n";
 	}
 
-	//Write 3d rectilinear mesh
+	//Write rectilinear mesh of any rank
 	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info, [[maybe_unused]] const T_data *x, [[maybe_unused]] const T_data *y, [[maybe_unused]] const T_data *z){
+		void writeRectilinearMeshImpl(const char* name, writerMeshInfo &info, [[maybe_unused]] const std::array<const T_data*, maximumRank> &axes){
 			auto specificInfo = std::get<rlMeshInfo>(info.specificInfo);
-			std::cout << "Writing mesh \"" << name << "\" " << specificInfo.sizes[0] << "x"<<specificInfo.sizes[1]<<"x"<<specificInfo.sizes[2]<<"\n";
-		}
-	//Write 2d rectilinear mesh
-	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info, [[maybe_unused]] const T_data *x, [[maybe_unused]] const T_data *y) {
-			auto specificInfo = std::get<rlMeshInfo>(info.specificInfo);
-			std::cout << "Writing mesh \"" << name << "\" " << specificInfo.sizes[0] << "x"<<specificInfo.sizes[1]<<"\n";
-		}
-	//Write 1d rectilinear mesh
-	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info, [[maybe_unused]] const T_data *x){
-			auto specificInfo = std::get<rlMeshInfo>(info.specificInfo);
-			std::cout << "Writing mesh \"" << name << "\" " << specificInfo.sizes[0] << "\n";
+			std::cout << "Writing mesh \"" << name << "\" ";
+			for (size_t i = 0; i < specificInfo.rank; ++i) std::cout << (i > 0 ? "x" : "") << specificInfo.sizes[i];
+			std::cout << "\n";
 		}
 
 	void registerDataImpl(const char* name, const char* meshName, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo){
@@ -826,7 +946,7 @@ class demoFile : public writer<demoFile> {
 
 	//Write data against a mesh
 	template<typename T_data>
-		void writeDataImpl(const char* name, [[maybe_unused]] const T_data *data, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo) {
+		void writeDataImpl(const char* name, [[maybe_unused]] const T_data *data, [[maybe_unused]] const writerBlockInfo &block, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo) {
 			auto specificMeshInfo = std::get<rlMeshInfo>(meshInfo.specificInfo);
 			std::cout << "Writing data \"" << name << "\" on mesh \"" << dataInfo.meshName << "\" with size " << specificMeshInfo.sizes[0];
 			if (specificMeshInfo.rank > 1) {

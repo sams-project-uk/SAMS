@@ -28,7 +28,7 @@ namespace LARE
 
     struct idealGas
     {
-        static constexpr SAMS::constexprName name = SAMS::constexprName("");
+        static constexpr auto name = SAMS::makeName("");
         T_dataType gamma;
         FUNCTORMETHODPREFIX INLINE T_dataType getPressure(eosDensity density, eosEnergy energy) const
         {

@@ -31,102 +31,74 @@ namespace LARE
 {
 
     namespace pw = portableWrapper;
-    /**
-     * Get the part of the data that should be written to disk
-     */
-    template<typename T_EOS>
-    inline void LARE3D<T_EOS>::getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host)
-    {
-        using Range = pw::Range;
-        // Copy the data if needed
-        auto fullHost = manager.makeHostAvailable(device);
 
-        // Now allocate memory for just the part we want to write
-        manager.allocate(host, Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-        //Have to copy data since the HDF writer expects contiguous data
-        manager.copyDataHost(host, fullHost(Range(1,data.nx), Range(1,data.ny), Range(1,data.nz)));
-        manager.deallocate(fullHost);
-    }
-
-    
     template<typename T_EOS>
     template<typename T_writer>
-    void LARE3D<T_EOS>::registerOutputMeshes(writer<T_writer> &writer, simulationData &data)
+    void LARE3D<T_EOS>::registerOutputMeshes(writer<T_writer> &writer)
     {
-        writer.template registerRectilinearMesh<T_dataType>("MeshCC", data.nx, data.ny, data.nz);
-
+        using SAMS::staggerType;
+        // One mesh for each combination of staggers of the output variables
+        writer.registerRectilinearMesh("MeshCC", {"X", staggerType::CENTRED}, {"Y", staggerType::CENTRED}, {"Z", staggerType::CENTRED});
+        writer.registerRectilinearMesh("MeshNode", {"X", staggerType::HALF_CELL}, {"Y", staggerType::HALF_CELL}, {"Z", staggerType::HALF_CELL});
+        writer.registerRectilinearMesh("MeshFaceX", {"X", staggerType::HALF_CELL}, {"Y", staggerType::CENTRED}, {"Z", staggerType::CENTRED});
+        writer.registerRectilinearMesh("MeshFaceY", {"X", staggerType::CENTRED}, {"Y", staggerType::HALF_CELL}, {"Z", staggerType::CENTRED});
+        writer.registerRectilinearMesh("MeshFaceZ", {"X", staggerType::CENTRED}, {"Y", staggerType::CENTRED}, {"Z", staggerType::HALF_CELL});
     }
 
     template<typename T_EOS>
     template<typename T_writer>
     void LARE3D<T_EOS>::registerOutputVariables(writer<T_writer> &writer, simulationData &)
     {
-        writer.template registerData<T_dataType>("rho", "MeshCC");
-        writer.template registerData<T_dataType>("energy_electron", "MeshCC");
-        writer.template registerData<T_dataType>("energy_ion", "MeshCC");
-        writer.template registerData<T_dataType>("vx", "MeshCC");
-        writer.template registerData<T_dataType>("vy", "MeshCC");
-        writer.template registerData<T_dataType>("vz", "MeshCC");
-        writer.template registerData<T_dataType>("bx", "MeshCC");
-        writer.template registerData<T_dataType>("by", "MeshCC");
-        writer.template registerData<T_dataType>("bz", "MeshCC");
+        writer.registerData("rho", "MeshCC", "rho");
+        writer.registerData("energy_electron", "MeshCC", "energy_electron");
+        writer.registerData("energy_ion", "MeshCC", "energy_ion");
+        writer.registerData("vx", "MeshNode", "vx");
+        writer.registerData("vy", "MeshNode", "vy");
+        writer.registerData("vz", "MeshNode", "vz");
+        writer.registerData("bx", "MeshFaceX", "bx");
+        writer.registerData("by", "MeshFaceY", "by");
+        writer.registerData("bz", "MeshFaceZ", "bz");
     }
 
     template<typename T_EOS>
     template<typename T_writer>
-    void LARE3D<T_EOS>::writeOutputMeshes(writer<T_writer> &writer, simulationData &data){
-        writer.writeRectilinearMesh("MeshCC", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
+    void LARE3D<T_EOS>::writeOutputMeshes(writer<T_writer> &writer){
+        writer.writeRectilinearMesh("MeshCC");
+        writer.writeRectilinearMesh("MeshNode");
+        writer.writeRectilinearMesh("MeshFaceX");
+        writer.writeRectilinearMesh("MeshFaceY");
+        writer.writeRectilinearMesh("MeshFaceZ");
     }
 
     template<typename T_EOS>
     template<typename T_writer>
-    void LARE3D<T_EOS>::writeOutputVariables(writer<T_writer> &writer, simulationData &data)
+    void LARE3D<T_EOS>::writeOutputVariables(writer<T_writer> &writer)
     {
-        pw::portableArrayManager manager;
-        hostVolumeArray host;
-
-        getHostVersion(data, manager, data.rho, host);
-        writer.writeData("rho", host.data());
-
-        getHostVersion(data, manager, data.energy_electron, host);
-        writer.writeData("energy_electron", host.data());
-
-        getHostVersion(data, manager, data.energy_ion, host);
-        writer.writeData("energy_ion", host.data());
-
-        getHostVersion(data, manager, data.vx, host);
-        writer.writeData("vx", host.data());
-
-        getHostVersion(data, manager, data.vy, host);
-        writer.writeData("vy", host.data());
-
-        getHostVersion(data, manager, data.vz, host);
-        writer.writeData("vz", host.data());
-
-        getHostVersion(data, manager, data.bx, host);
-        writer.writeData("bx", host.data());
-
-        getHostVersion(data, manager, data.by, host);
-        writer.writeData("by", host.data());
-
-        getHostVersion(data, manager, data.bz, host);
-        writer.writeData("bz", host.data());
+        writer.writeData("rho");
+        writer.writeData("energy_electron");
+        writer.writeData("energy_ion");
+        writer.writeData("vx");
+        writer.writeData("vy");
+        writer.writeData("vz");
+        writer.writeData("bx");
+        writer.writeData("by");
+        writer.writeData("bz");
     }
 
 //Need a better solution than this against future additions of writers
 //Perhaps another X macro?
 #if defined(USE_HDF5)
 //Instantiate the templates for HDF5 writer
-    template void LARE3D<LARE::idealGas>::registerOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D<LARE::idealGas>::registerOutputMeshes<HDF5File>(writer<HDF5File> &writer);
     template void LARE3D<LARE::idealGas>::registerOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
-    template void LARE3D<LARE::idealGas>::writeOutputMeshes<HDF5File>(writer<HDF5File> &writer, simulationData &data);
-    template void LARE3D<LARE::idealGas>::writeOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
+    template void LARE3D<LARE::idealGas>::writeOutputMeshes<HDF5File>(writer<HDF5File> &writer);
+    template void LARE3D<LARE::idealGas>::writeOutputVariables<HDF5File>(writer<HDF5File> &writer);
 #else
 //Instantiate the templates for simple writer
-    template void LARE3D<LARE::idealGas>::registerOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D<LARE::idealGas>::registerOutputMeshes<simpleFile>(writer<simpleFile> &writer);
     template void LARE3D<LARE::idealGas>::registerOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
-    template void LARE3D<LARE::idealGas>::writeOutputMeshes<simpleFile>(writer<simpleFile> &writer, simulationData &data);
-    template void LARE3D<LARE::idealGas>::writeOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
+    template void LARE3D<LARE::idealGas>::writeOutputMeshes<simpleFile>(writer<simpleFile> &writer);
+    template void LARE3D<LARE::idealGas>::writeOutputVariables<simpleFile>(writer<simpleFile> &writer);
 #endif
 
     template<typename T_EOS>

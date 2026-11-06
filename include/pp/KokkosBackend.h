@@ -418,7 +418,16 @@ namespace portableWrapper{
             template<typename T1, typename T2>            
             DEVICEPREFIX void And(T1& target, const T2 value)
             {
-                Kokkos::atomic_and(&target, static_cast<T1>(value));
+                if constexpr(std::is_integral_v<T1>) {
+                    Kokkos::atomic_and(&target, static_cast<T1>(value));
+                } else if constexpr(std::is_same_v<T1, float> || std::is_same_v<T1, double>) {
+                    //Get an integer with the same bit length as the floating point type
+                    using intType = std::conditional_t<std::is_same_v<T1, float>, int32_t, int64_t>;
+                    T1 converted = static_cast<T1>(value);
+                    Kokkos::atomic_and(reinterpret_cast<intType*>(&target), *reinterpret_cast<intType*>(&converted));
+                } else {
+                    static_assert(alwaysFalse<T1>::value, "Atomic And not supported for this type");
+                }
             }
 
             /**
@@ -471,7 +480,16 @@ namespace portableWrapper{
             template<typename T1, typename T2>            
             DEVICEPREFIX void Or(T1& target, const T2 value)
             {
-                Kokkos::atomic_or(&target, static_cast<T1>(value));
+                if constexpr(std::is_integral_v<T1>) {
+                    Kokkos::atomic_or(&target, static_cast<T1>(value));
+                } else if constexpr(std::is_same_v<T1, float> || std::is_same_v<T1, double>) {
+                    //Get an integer with the same bit length as the floating point type
+                    using intType = std::conditional_t<std::is_same_v<T1, float>, int32_t, int64_t>;
+                    T1 converted = static_cast<T1>(value);
+                    Kokkos::atomic_or(reinterpret_cast<intType*>(&target), *reinterpret_cast<intType*>(&converted));
+                } else {
+                    static_assert(alwaysFalse<T1>::value, "Atomic Or not supported for this type");
+                }
             }
 
             /**

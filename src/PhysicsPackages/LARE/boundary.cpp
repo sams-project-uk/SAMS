@@ -27,81 +27,82 @@ namespace LARE
     template<typename T_EOS>
     void LARE3D<T_EOS>::boundary_conditions()
     {
-        bfield_bcs();
-        energy_bcs();
-        density_bcs();
-        velocity_bcs();
+        pw::fence();
+        bfield_bcs(false);
+        energy_bcs(false);
+        density_bcs(false);
+        velocity_bcs(false);
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::bfield_bcs()
+    void LARE3D<T_EOS>::bfield_bcs(bool fence)
     {
         auto &varRegistry = harness.variableRegistry;
+        if (fence) pw::fence();
         varRegistry.applyBoundaryConditions("bx");
         varRegistry.applyBoundaryConditions("by");
         varRegistry.applyBoundaryConditions("bz");
-        pw::fence();
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::energy_bcs()
+    void LARE3D<T_EOS>::energy_bcs(bool fence)
     {
         auto &varRegistry = harness.variableRegistry;
+        if (fence) pw::fence();
         varRegistry.applyBoundaryConditions("energy_electron");
         varRegistry.applyBoundaryConditions("energy_ion");
-        pw::fence();
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::density_bcs()
+    void LARE3D<T_EOS>::density_bcs(bool fence)
     {
         auto &varRegistry = harness.variableRegistry;
+        if (fence) pw::fence();
         varRegistry.applyBoundaryConditions("rho");
-        pw::fence();
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::velocity_bcs()
+    void LARE3D<T_EOS>::velocity_bcs(bool fence)
     {
         auto &varRegistry = harness.variableRegistry;
+        if (fence) pw::fence();
         varRegistry.applyBoundaryConditions("vx");
         varRegistry.applyBoundaryConditions("vy");
         varRegistry.applyBoundaryConditions("vz");
-        pw::fence();
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::remap_v_bcs()
+    void LARE3D<T_EOS>::remap_v_bcs(bool fence)
     {
         auto &varRegistry = harness.variableRegistry;
+        if (fence) pw::fence();
         varRegistry.applyBoundaryConditions("LARE/vx1");
         varRegistry.applyBoundaryConditions("LARE/vy1");
         varRegistry.applyBoundaryConditions("LARE/vz1");
-        pw::fence();
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::dm_x_bcs()
+    void LARE3D<T_EOS>::dm_x_bcs(bool fence)
     {
         auto &varRegistry = harness.variableRegistry;
+        if (fence) pw::fence();
         varRegistry.applyBoundaryConditions("LARE/dm", 0); //Apply on X dimension
-        pw::fence();
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::dm_y_bcs()
+    void LARE3D<T_EOS>::dm_y_bcs(bool fence)
     {
         auto &varRegistry = harness.variableRegistry;
+        if (fence) pw::fence();
         varRegistry.applyBoundaryConditions("LARE/dm", 1); //Apply on Y dimension
-        pw::fence();
     }
 
     template<typename T_EOS>
-    void LARE3D<T_EOS>::dm_z_bcs()
+    void LARE3D<T_EOS>::dm_z_bcs(bool fence)
     {
         auto &varRegistry = harness.variableRegistry;
+        if (fence) pw::fence();
         varRegistry.applyBoundaryConditions("LARE/dm", 2); //Apply on Z dimension
-        pw::fence();
     }
 
     #include "./instantiate.h"

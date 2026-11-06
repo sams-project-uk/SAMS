@@ -35,7 +35,7 @@ namespace SAMS
 		using packRefs = SAMS::packRefsOf_t<dataPack>;
 
 		/** @brief The name of the temperature variable */
-		inline static constexpr auto temperatureName = SAMS::constexprName("temperature_") + T_species::name + T_eos::name;
+		inline static constexpr auto temperatureName = SAMS::makeName("temperature_") + T_species::name + T_eos::name;
 
 		/** @brief The conductance of the x edge between cells i and i + 1 */
 		DEVICEPREFIX double faceX(const parameters &pr, const lineArray &dx, const lineArray &dy, const lineArray &dz, size_t i, size_t j, size_t k) const
@@ -130,10 +130,10 @@ namespace SAMS
 		volumeArray rho;
 
 		/** @brief The name of the problem, which includes the species */
-		inline static constexpr auto name = SAMS::constexprName("isotropic_") + T_species::name + T_eos::name;
+		inline static constexpr auto name = SAMS::makeName("isotropic_") + T_species::name + T_eos::name;
 
 		/** @brief The name that the arrays and axes of the problem are registered under, which the species share */
-		inline static constexpr auto memoryName = SAMS::constexprName("isotropic") + T_eos::name;
+		inline static constexpr auto memoryName = SAMS::makeName("isotropic") + T_eos::name;
 
 		/** @brief The name of the variable that is evolved */
 		static constexpr const char *fieldName()

@@ -26,7 +26,7 @@ namespace examples
          */
         void attachBoundaryConditions(const std::string& varName, SAMS::harness &harness);
 
-        inline static constexpr auto nameType = SAMS::constexprName("SodShockTube") + T_EOS::name;
+        inline static constexpr auto nameType = SAMS::makeName("SodShockTube") + T_EOS::name;
 
     public:
         /**

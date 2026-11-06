@@ -30,7 +30,7 @@ namespace LARE{
         static void dm_y_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
         static void dm_z_bcs(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &time, int dimension, SAMS::domain::edges edge);
 
-        inline static constexpr auto nameType = SAMS::constexprName("LARE3DInitialConditions") + T_EOS::name;
+        inline static constexpr auto nameType = SAMS::makeName("LARE3DInitialConditions") + T_EOS::name;
 
         public:
 

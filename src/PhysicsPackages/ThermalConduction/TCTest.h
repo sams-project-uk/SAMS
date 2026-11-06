@@ -17,7 +17,7 @@ namespace SAMS
 	{
 		using T_eos = typename T_problem::eosType;
 
-		inline static constexpr auto nameType = SAMS::constexprName("TCTest_") + T_problem::name;
+		inline static constexpr auto nameType = SAMS::makeName("TCTest_") + T_problem::name;
 		constexpr static std::string_view name = nameType;
 
 		/**
@@ -208,19 +208,18 @@ namespace SAMS
 		template <typename T_writer>
 		void registerOutputVariables(writer<T_writer> &writer)
 		{
-			writer.template registerData<double>(T_problem::species::fieldName(), "MeshCC");
+			writer.registerData(T_problem::species::fieldName(), "MeshCC", T_problem::species::fieldName());
 		}
 
 		/**
 		 * @brief Register the output meshes
 		 * @tparam T_writer The writer type
 		 * @param writer The writer
-		 * @param data The data pack
 		 */
 		template <typename T_writer>
-		void registerOutputMeshes(writer<T_writer> &writer, simulationData &data)
+		void registerOutputMeshes(writer<T_writer> &writer)
 		{
-			writer.template registerRectilinearMesh<double>("MeshCC", data.nx, data.ny, data.nz);
+			writer.registerRectilinearMesh("MeshCC", {"X", SAMS::staggerType::CENTRED}, {"Y", SAMS::staggerType::CENTRED}, {"Z", SAMS::staggerType::CENTRED});
 		}
 
 		/**
@@ -245,31 +244,22 @@ namespace SAMS
 		 * @brief Write the output meshes
 		 * @tparam T_writer The writer type
 		 * @param writer The writer
-		 * @param data The data pack
 		 */
 		template <typename T_writer>
-		void writeOutputMeshes(writer<T_writer> &writer, simulationData &data)
+		void writeOutputMeshes(writer<T_writer> &writer)
 		{
-			writer.writeRectilinearMesh("MeshCC", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
+			writer.writeRectilinearMesh("MeshCC");
 		}
 
 		/**
 		 * @brief Write the output variables
 		 * @tparam T_writer The writer type
 		 * @param writer The writer
-		 * @param harness The harness, which holds the variable registry
-		 * @param data The data pack
 		 */
 		template <typename T_writer>
-		void writeOutputVariables(writer<T_writer> &writer, SAMS::harness &harness, simulationData &data)
+		void writeOutputVariables(writer<T_writer> &writer)
 		{
-			pw::portableArrayManager manager;
-			hostVolumeArray host;
-			volumeArray field;
-			harness.variableRegistry.fillPPArray(T_problem::species::fieldName(), field);
-
-			getHostVersion(data, manager, field, host);
-			writer.writeData(T_problem::species::fieldName(), host.data());
+			writer.writeData(T_problem::species::fieldName());
 		}
 	};
 }

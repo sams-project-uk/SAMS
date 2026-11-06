@@ -7,7 +7,7 @@
 #include "harness.h"
 #include "shared_data.h"
 #ifdef USE_KOKKOS
-#include "LAREKokkos/shared_data.h"
+//#include "LAREKokkos/shared_data.h"
 #endif
 #include "timer.h"
 #include "axisRegistry.h"
@@ -70,7 +70,7 @@ int main(int argc, char *argv[]){
     SAMS::parabolic::petscNoMatrix<SAMS::braginskii<SAMS::ion>> //PETSc solver without a matrix for Braginskii ion equations
 #endif
 #ifdef USE_KOKKOS
-    ,LARE::LARE3DKokkos //LARE3D written directly in Kokkos, to compare with the portable wrapper
+    //,LARE::LARE3DKokkos //LARE3D written directly in Kokkos, to compare with the portable wrapper
 #endif
     > runner;
     runner.initialize(argc, argv);

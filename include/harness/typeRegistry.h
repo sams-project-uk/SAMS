@@ -39,7 +39,11 @@ namespace SAMS {
         TYPE_UINT32 = 4,
         TYPE_UINT64 = 5,
         TYPE_COMPLEX_DOUBLE = 6,
-        TYPE_COMPLEX_FLOAT = 7
+        TYPE_COMPLEX_FLOAT = 7,
+        TYPE_INT8 = 8,
+        TYPE_INT16 = 9,
+        TYPE_UINT8 = 10,
+        TYPE_UINT16 = 11
     };
 
     struct typeHandle{
@@ -60,10 +64,10 @@ namespace SAMS {
 /** Map from a harness typeID to an MPI_Datatype
  * C++ standard requires that std::complex be binary compatible with C complex types, so use the same MPI types
  */
-        std::vector<MPI_Datatype> mpiTypes{MPI_DOUBLE, MPI_FLOAT, MPI_INT32_T, MPI_INT64_T, MPI_UINT32_T, MPI_UINT64_T, MPI_C_DOUBLE_COMPLEX, MPI_C_FLOAT_COMPLEX};
+        std::vector<MPI_Datatype> mpiTypes{MPI_DOUBLE, MPI_FLOAT, MPI_INT32_T, MPI_INT64_T, MPI_UINT32_T, MPI_UINT64_T, MPI_C_DOUBLE_COMPLEX, MPI_C_FLOAT_COMPLEX, MPI_INT8_T, MPI_INT16_T, MPI_UINT8_T, MPI_UINT16_T};
 #endif
-        std::vector<size_t> typeSizes{sizeof(double), sizeof(float), sizeof(int32_t), sizeof(int64_t), sizeof(uint32_t), sizeof(uint64_t), sizeof(std::complex<double>), sizeof(std::complex<float>)};
-        std::vector<std::string> typeNames{"double", "float", "int32_t", "int64_t", "uint32_t", "uint64_t", "complex<double>", "complex<float>"};
+        std::vector<size_t> typeSizes{sizeof(double), sizeof(float), sizeof(int32_t), sizeof(int64_t), sizeof(uint32_t), sizeof(uint64_t), sizeof(std::complex<double>), sizeof(std::complex<float>), sizeof(int8_t), sizeof(int16_t), sizeof(uint8_t), sizeof(uint16_t)};
+        std::vector<std::string> typeNames{"double", "float", "int32_t", "int64_t", "uint32_t", "uint64_t", "complex<double>", "complex<float>", "int8_t", "int16_t", "uint8_t", "uint16_t"};
 
         std::unordered_map<std::type_index, typeID> typeMap{
             {std::type_index(typeid(double)), typeID::TYPE_DOUBLE},
@@ -73,7 +77,11 @@ namespace SAMS {
             {std::type_index(typeid(uint32_t)), typeID::TYPE_UINT32},
             {std::type_index(typeid(uint64_t)), typeID::TYPE_UINT64},
             {std::type_index(typeid(std::complex<double>)), typeID::TYPE_COMPLEX_DOUBLE},
-            {std::type_index(typeid(std::complex<float>)), typeID::TYPE_COMPLEX_FLOAT}
+            {std::type_index(typeid(std::complex<float>)), typeID::TYPE_COMPLEX_FLOAT},
+            {std::type_index(typeid(int8_t)), typeID::TYPE_INT8},
+            {std::type_index(typeid(int16_t)), typeID::TYPE_INT16},
+            {std::type_index(typeid(uint8_t)), typeID::TYPE_UINT8},
+            {std::type_index(typeid(uint16_t)), typeID::TYPE_UINT16}
         };
 
         typeRegistry() = default;

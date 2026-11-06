@@ -531,7 +531,7 @@ namespace SAMS
 			SAMS::debug3 << ")\n";
 		}
 
-		inline static constexpr auto nameType = T::name + SAMS::constexprName("_mg");
+		inline static constexpr auto nameType = T::name + SAMS::makeName("_mg");
 		constexpr static std::string_view name = nameType;
 		constexpr static bool coreSimulation = true;
 		constexpr static bool timeSimulation = true;

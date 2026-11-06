@@ -209,6 +209,11 @@ endif()
 
 find_package(HDF5 REQUIRED COMPONENTS CXX)
 
+#Writing a single HDF5 file from all MPI ranks needs an HDF5 library built with parallel support
+if(MPI AND NOT HDF5_IS_PARALLEL)
+  message(FATAL_ERROR "MPI=ON requires a parallel HDF5 library, but the HDF5 library that was found is not parallel")
+endif()
+
 #Recursively gather all .cpp source files in src/
 file(GLOB_RECURSE SAMS_SOURCES src/*.cpp)
 

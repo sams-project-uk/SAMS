@@ -56,8 +56,6 @@ namespace LARE
                 remap_data.db1(ix, iy, iz) = data.hzc(ix, iy) * data.dzb(iz) + (vzb - vzbm) * data.dt;
             },
             Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-        pw::fence();
-
         // cvc1 = vertex CV before remap
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -67,8 +65,6 @@ namespace LARE
                 remap_data.cvc1(ix, iy, iz) = 0.125 * (data.cv1(ix, iy, iz) + data.cv1(ixp, iy, iz) + data.cv1(ix, iyp, iz) + data.cv1(ixp, iyp, iz) + data.cv1(ix, iy, izp) + data.cv1(ixp, iy, izp) + data.cv1(ix, iyp, izp) + data.cv1(ixp, iyp, izp));
             },
             Range(-1, data.nx + 1), Range(-1, data.ny + 1), Range(-1, data.nz + 1));
-
-        pw::fence();
 
         // Evans and Hawley (ApJ, vol 332, p650, (1988)) constrained transport remap of magnetic fluxes
         vz_bx_flux(data, remap_data);
@@ -87,8 +83,6 @@ namespace LARE
             },
             Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
 
-        pw::fence();
-
         vz_by_flux(data, remap_data); // Flux of by due to vz
 
         pw::applyKernel(
@@ -105,8 +99,6 @@ namespace LARE
             },
             Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
 
-        pw::fence();
-
         z_mass_flux(data, remap_data); // Mass flux in z-direction
         dm_z_bcs();    // Apply boundary conditions to mass flux
 
@@ -116,8 +108,6 @@ namespace LARE
                 data.rho(ix,iy,iz) = (remap_data.rho1(ix,iy,iz) * data.cv1(ix,iy,iz) + data.dm(ix,iy,izm) - data.dm(ix,iy,iz)) / remap_data.cv2(ix,iy,iz);
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-        pw::fence();
-
         z_energy_flux<&simulationData::energy_electron>(data, remap_data);
         
         pw::applyKernel(
@@ -127,8 +117,6 @@ namespace LARE
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 
-        pw::fence();
-
         z_energy_flux<&simulationData::energy_ion>(data, remap_data);
 
         pw::applyKernel(
@@ -137,8 +125,6 @@ namespace LARE
                 data.energy_ion(ix, iy, iz) = (data.energy_ion(ix, iy, iz) * data.cv1(ix, iy, iz) * remap_data.rho1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * data.rho(ix, iy, iz));
             },
         Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
-
-        pw::fence();
 
         // Redefine dyb1, cv1, cv2, dm and vz1 for velocity (vertex) cells.
         // In some of these calculations the flux variable is used as a temporary array
@@ -163,8 +149,6 @@ namespace LARE
                 remap_data.rho_v(ix, iy, iz) *= 0.125 / remap_data.cvc1(ix, iy, iz);
             },
             Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz + 1));
-        pw::fence();
-
         // Move cv2 to vertex using flux array as a temporary
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -176,12 +160,8 @@ namespace LARE
             },
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
 
-        pw::fence();
-
         // Now copy it back to cv2
         pw::assign(remap_data.cv2(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)), remap_data.flux(Range(0, data.nx), Range(0, data.ny), Range(0, data.nz)));
-        pw::fence();
-
         // Move vz1 to z face centred for momentum remap
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -189,12 +169,8 @@ namespace LARE
                 remap_data.flux(ix, iy, iz) = (data.vz1(ix, iy, iz) + data.vz1(ix, iy, izp)) * 0.5;
             },
             Range(0, data.nx), Range(0, data.ny), Range(-2, data.nz + 1));
-
-        pw::fence();
         // And copy it back
         pw::assign(data.vz1(Range(0, data.nx), Range(0, data.ny), Range(-2, data.nz + 1)), remap_data.flux(Range(0, data.nx), Range(0, data.ny), Range(-2, data.nz + 1)));
-        pw::fence();
-
         // Vertex control volume mass change
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -206,12 +182,8 @@ namespace LARE
             },
             Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz));
 
-        pw::fence();
-
         // And copy back to dm
         pw::assign(data.dm(Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz)), remap_data.flux(Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz)));
-
-        pw::fence();
 
         // Calculate vertex density after remap
         pw::applyKernel(
@@ -220,8 +192,6 @@ namespace LARE
                 remap_data.rho_v1(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + data.dm(ix, iy, izm) - data.dm(ix, iy, iz)) /remap_data.cv2(ix, iy, iz);
             },
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-
         z_mom_flux<&simulationData::vx>(data, remap_data); // Momentum flux in x-direction
 
         pw::applyKernel(
@@ -231,8 +201,6 @@ namespace LARE
             },
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
 
-        pw::fence();
-
         z_mom_flux<&simulationData::vy>(data, remap_data); // Momentum flux in y-direction
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -240,19 +208,13 @@ namespace LARE
                 data.vy(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.vy(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
             },
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-
         z_mom_flux<&simulationData::vz>(data, remap_data);  // Momentum flux in z-direction
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType izm = iz -1;
                 data.vz(ix, iy, iz) = (remap_data.rho_v(ix, iy, iz) * data.vz(ix, iy, iz) * remap_data.cvc1(ix, iy, iz) + remap_data.flux(ix, iy, izm) - remap_data.flux(ix, iy, iz)) / (remap_data.cv2(ix, iy, iz) * remap_data.rho_v1(ix, iy, iz));
             },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-        this->boundary_conditions();
-        pw::fence();
-        remap_data.zpass = 0.0;
+            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));        this->boundary_conditions();        remap_data.zpass = 0.0;
     } // END LARE3D::remap_z
 
     // Evans & Hawley constrained transport remap of vz*Bx fluxes
@@ -308,8 +270,6 @@ namespace LARE
             remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
         },
         Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-
-        pw::fence();
     }
 
     // Evans & Hawley constrained transport remap of vz*Bx fluxes
@@ -364,9 +324,7 @@ namespace LARE
 
             remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
         },
-        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-    }
+        Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));    }
 
     template<typename T_EOS>
     void LARE3D<T_EOS>::z_mass_flux(simulationData &data, remapData &remap_data)
@@ -417,8 +375,6 @@ namespace LARE
                 data.dm(ix, iy, iz) = (fu + Di * (1.0 - phi)) * o_v;
             },
             Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz));
-
-        pw::fence();
     }
 
     /**
@@ -479,9 +435,7 @@ namespace LARE
 
                 remap_data.flux(ix, iy, iz) = (fu + Di * (1.0 - dmu)) * data.dm(ix, iy, iz);
             },
-            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
-        pw::fence();
-    }
+            Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));    }
 
     template <typename T_EOS>
     template <auto mPtr>
@@ -534,8 +488,6 @@ namespace LARE
             },
             Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz));
 
-        pw::fence();
-
         // Kinetic energy correction if rke is enabled
         if (data.rke)
         {
@@ -561,13 +513,9 @@ namespace LARE
                 pw::atomic::accelerated::Add(data.delta_ke(ixp, iyp, izp), dk);
             },
             Range(0, data.nx), Range(0, data.ny), Range(0, data.nz - 1));
-        }
-        pw::fence();
-        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        }        pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
             remap_data.flux(ix, iy, iz) *= data.dm(ix, iy, iz);
             },
-            Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz));
-        pw::fence();
-    }
+            Range(0, data.nx), Range(0, data.ny), Range(-1, data.nz));    }
     #include "./instantiate.h"
 }

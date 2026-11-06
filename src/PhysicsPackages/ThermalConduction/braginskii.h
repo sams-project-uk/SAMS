@@ -58,7 +58,7 @@ namespace SAMS
 		volumeArray rho;
 
 		/** @brief The name of the temperature variable */
-		inline static constexpr auto temperatureName = SAMS::constexprName("temperature_") + T_species::name + T_eos::name;
+		inline static constexpr auto temperatureName = SAMS::makeName("temperature_") + T_species::name + T_eos::name;
 
 		/** @brief The conductivity tensor on the edges of each cell. Index i is the edge between cells i and i + 1, so index 0 is the lower edge of the domain. txy is the x flux from the y gradient */
 		struct tensorData
@@ -325,10 +325,10 @@ namespace SAMS
 		}
 
 		/** @brief The name of the problem, which includes the species */
-		inline static constexpr auto name = SAMS::constexprName("Braginskii_") + T_species::name + T_eos::name;
+		inline static constexpr auto name = SAMS::makeName("Braginskii_") + T_species::name + T_eos::name;
 
 		/** @brief The name that the arrays and axes of the problem are registered under, which the species share */
-		inline static constexpr auto memoryName = SAMS::constexprName("Braginskii") + T_eos::name;
+		inline static constexpr auto memoryName = SAMS::makeName("Braginskii") + T_eos::name;
 
 		/** @brief The name of the variable that is evolved */
 		static constexpr const char *fieldName()

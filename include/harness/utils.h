@@ -1,6 +1,8 @@
 #ifndef SAMS_HARNESS_UTILS_H
 #define SAMS_HARNESS_UTILS_H
 
+#include <array>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <functional>
@@ -23,6 +25,15 @@ namespace SAMS{
         // constexpr conversion operator — works on constexpr instances
         constexpr operator std::string_view() const noexcept { return {data.data(), size()}; }
     };
+
+    /**
+     * Make a constexprName from a string literal. Use this instead of deducing the size from the constructor of constexprName,
+     * which some compilers (the CUDA 13.2 front end) fail to do in some places
+     */
+    template <std::size_t N>
+    constexpr constexprName<N> makeName(const char (&s)[N]) {
+        return constexprName<N>(s);
+    }
 
     /**
      * Addition operator for constexprName to allow concatenation of names at compile time.

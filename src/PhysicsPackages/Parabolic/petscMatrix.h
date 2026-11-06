@@ -33,7 +33,7 @@ namespace SAMS
 			pw::Range xcLocalDomainRange, ycLocalDomainRange, zcLocalDomainRange;
 		};
 
-		inline static constexpr auto nameType = T::name + SAMS::constexprName("_petscMatrix");
+		inline static constexpr auto nameType = T::name + SAMS::makeName("_petscMatrix");
 		constexpr static std::string_view name = nameType;
 		constexpr static bool coreSimulation = true;
 		constexpr static bool timeSimulation = true;

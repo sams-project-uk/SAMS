@@ -487,8 +487,20 @@ namespace portableWrapper
             template <typename T, typename T2>            
             HOSTDEVICEPREFIX void And(T& target, const T2 value)
             {
-                #pragma omp atomic
-                target &= value;
+                if constexpr(std::is_integral_v<T>) {
+                    #pragma omp atomic
+                    target &= value;
+                } else if constexpr(std::is_same_v<T, float> || std::is_same_v<T, double>) {
+                    //Get an integer with the same bit length as the floating point type
+                    using intType = std::conditional_t<std::is_same_v<T, float>, int32_t, int64_t>;
+                    T converted = static_cast<T>(value);
+                    intType valueBits = *reinterpret_cast<intType*>(&converted);
+                    intType &targetBits = *reinterpret_cast<intType*>(&target);
+                    #pragma omp atomic
+                    targetBits &= valueBits;
+                } else {
+                    static_assert(alwaysFalse<T>::value, "Atomic And not supported for this type");
+                }
             }
 
             /**
@@ -561,8 +573,20 @@ namespace portableWrapper
             template<typename T, typename T2>            
             HOSTDEVICEPREFIX void Or(T& target, const T2 value)
             {
-                #pragma omp atomic
-                target |= value;
+                if constexpr(std::is_integral_v<T>) {
+                    #pragma omp atomic
+                    target |= value;
+                } else if constexpr(std::is_same_v<T, float> || std::is_same_v<T, double>) {
+                    //Get an integer with the same bit length as the floating point type
+                    using intType = std::conditional_t<std::is_same_v<T, float>, int32_t, int64_t>;
+                    T converted = static_cast<T>(value);
+                    intType valueBits = *reinterpret_cast<intType*>(&converted);
+                    intType &targetBits = *reinterpret_cast<intType*>(&target);
+                    #pragma omp atomic
+                    targetBits |= valueBits;
+                } else {
+                    static_assert(alwaysFalse<T>::value, "Atomic Or not supported for this type");
+                }
             }
 
             /**

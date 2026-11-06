@@ -61,7 +61,7 @@ A hook is called with the arguments that its entry lists, followed by any data p
 `name` is a `static constexpr` `SAMS::constexprName` that identifies the problem:
 
 ```cpp
-inline static constexpr auto name = SAMS::constexprName("diffusion");
+inline static constexpr auto name = SAMS::makeName("diffusion");
 ```
 
 The solver appends its own suffix to make the name of its package.
@@ -71,7 +71,7 @@ The solver appends its own suffix to make the name of its package.
 `memoryName` is a `static constexpr` `SAMS::constexprName` that the arrays and axes of the problem are registered under. Each species has its own `name`, but the solves of different problems do not overlap, so the species can share the arrays by leaving the species out of `memoryName`:
 
 ```cpp
-inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 ```
 
 ### `stencilSize`
@@ -318,8 +318,8 @@ struct diffusion
 {
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{
@@ -356,8 +356,8 @@ struct diffusion
 {
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{
@@ -450,8 +450,8 @@ struct diffusion
 {
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{
@@ -562,8 +562,8 @@ struct diffusion
 {
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{
@@ -707,8 +707,8 @@ struct diffusion
 	using volumeArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 3>;
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{
@@ -736,8 +736,8 @@ struct diffusion
 	using volumeArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 3>;
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{
@@ -814,8 +814,8 @@ struct diffusion
 	using volumeArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 3>;
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{
@@ -920,8 +920,8 @@ struct diffusion
 	using volumeArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 3>;
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{
@@ -1072,8 +1072,8 @@ struct diffusion
 	using volumeArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 3>;
 	using lineArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 1>;
 
-	inline static constexpr auto name = SAMS::constexprName("diffusion");
-	inline static constexpr auto memoryName = SAMS::constexprName("diffusion");
+	inline static constexpr auto name = SAMS::makeName("diffusion");
+	inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 	struct parameters
 	{

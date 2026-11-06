@@ -126,7 +126,7 @@ namespace LARE
         using eosType = T_EOS;
         eosType eos; // Equation of state object
 
-        T_dataType none_zero = std::numeric_limits<T_dataType>::epsilon();  // Smallest non-zero value for T_dataTyp
+        T_dataType none_zero = std::numeric_limits<T_dataType>::epsilon();  // Smallest non-zero value for T_dataType
         T_dataType largest_number = std::numeric_limits<T_dataType>::max(); // Largest number for T_dataType
 
         // Simulation parameters
@@ -266,8 +266,6 @@ namespace LARE
 
         SAMS::harness &harness;
 
-         void getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host);
-
     public:
 
 
@@ -292,39 +290,39 @@ namespace LARE
         /**
          * Boundary conditions for magnetic field
          */
-        void bfield_bcs();
+        void bfield_bcs(bool fence = true);
         /**
          * Boundary conditions for specific internal energy
          */
-        void energy_bcs();
+        void energy_bcs(bool fence = true);
         /**
          * Boundary conditions for density
          */
-        void density_bcs();
+        void density_bcs(bool fence = true);
         /**
          * Boundary conditions for velocity
          */
-        void velocity_bcs();
+        void velocity_bcs(bool fence = true);
         /**
          * Boundary conditions for remap velocity
          * Normally the same as velocity_bcs, but can be different for some LARE3Ds
          */
-        void remap_v_bcs();
+        void remap_v_bcs(bool fence = true);
 
         /**
          * Boundary conditions for remap phase X mass flux
          */
-        void dm_x_bcs();
+        void dm_x_bcs(bool fence = true);
 
         /**
          * Boundary conditions for remap phase Y mass flux
          */
-        void dm_y_bcs();
+        void dm_y_bcs(bool fence = true);
 
         /**
          * Boundary conditions for remap phase Z mass flux
          */
-        void dm_z_bcs();
+        void dm_z_bcs(bool fence = true);
 
         /**
          * Function to perform the X sweep remap
@@ -351,7 +349,7 @@ namespace LARE
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
          */
-        inline static constexpr auto nameType = SAMS::constexprName("LARE3D") + T_EOS::name;
+        inline static constexpr auto nameType = SAMS::makeName("LARE3D") + T_EOS::name;
         constexpr static std::string_view name = nameType;
 
         /**
@@ -469,16 +467,16 @@ namespace LARE
         }
 
         template<typename T>
-        void registerOutputMeshes(writer<T> &writer, simulationData &data);
+        void registerOutputMeshes(writer<T> &writer);
 
         template<typename T>
         void registerOutputVariables(writer<T> &writer, simulationData &data);
 
         template<typename T>
-        void writeOutputMeshes(writer<T> &writer, simulationData &data);
+        void writeOutputMeshes(writer<T> &writer);
 
         template<typename T>
-        void writeOutputVariables(writer<T> &writer, simulationData &data);
+        void writeOutputVariables(writer<T> &writer);
 
         /**
          * Allocate the LARE3D data arrays
@@ -487,7 +485,7 @@ namespace LARE
          * This function allocates the arrays in the simulationData struct.
          * It uses the portableArrayManager to handle the memory allocation and deallocation.
          */
-        void allocate(SAMS::harness &harness, simulationData &data);
+        __attribute__((cold)) void allocate(SAMS::harness &harness, simulationData &data);
 
         /**
          * Allocate permanent arrays for remap
@@ -495,7 +493,7 @@ namespace LARE
          * @param data Remap data struct
          * It uses the portableArrayManager to handle the memory allocation and deallocation.
          */
-        void allocate_remap(SAMS::harness &harness, simulationData &data, remapData &remap_data);
+        __attribute__((cold)) void allocate_remap(SAMS::harness &harness, simulationData &data, remapData &remap_data);
 
         /**
          * Setup the LARE3D data
@@ -510,7 +508,7 @@ namespace LARE
          * @param data Simulation data struct
          * This function sets up the grid for the LARE3D, including the cell sizes and coordinates. Automatically creates for the specified geometry.
          */
-        void grid(simulationData &data);
+        __attribute__((cold)) void grid(simulationData &data);
 
         /**
          * Call all the boundary condition functions
@@ -520,7 +518,7 @@ namespace LARE
          */
         void boundary_conditions();
 
-				void initializeBoundaryConditions() {boundary_conditions();}
+        void initializeBoundaryConditions() {boundary_conditions();}
 
         void shock_viscosity(simulationData &data);
         void resistive_effects(simulationData &data);

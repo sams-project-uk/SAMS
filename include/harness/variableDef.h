@@ -493,7 +493,7 @@ namespace SAMS {
             static_assert(std::is_base_of<boundaryConditions, T>::value, "Error: variableDef emplaceBoundaryCondition bc must be derived from boundaryConditions");
             if constexpr (std::is_constructible_v<T, Args...>) {
                 //Can construct just from the args
-                return addBoundaryCondition(dim, edge, std::make_shared<T>(args...));
+                return addBoundaryCondition(dim, edge, std::make_shared<T>(std::forward<Args>(args)...));
             } else if constexpr (std::is_constructible_v<T, variableDef&, Args...>) {
                 //Need to pass variableDef as first argument
                 return addBoundaryCondition(dim, edge, std::make_shared<T>(*this, std::forward<Args>(args)...));
@@ -512,7 +512,7 @@ namespace SAMS {
         template<typename T, typename... Args>
         std::shared_ptr<boundaryConditions> emplaceBoundaryCondition(int dim, Args&&... args){
             std::shared_ptr<boundaryConditions> bc_ptr = emplaceBoundaryCondition<T>(dim, SAMS::domain::edges::lower, std::forward<Args>(args)...);
-            addBoundaryCondition<T>(dim, SAMS::domain::edges::upper, bc_ptr);
+            addBoundaryCondition(dim, SAMS::domain::edges::upper, bc_ptr);
             return bc_ptr;
         }
 
@@ -526,7 +526,7 @@ namespace SAMS {
         std::shared_ptr<boundaryConditions> emplaceBoundaryCondition(Args&&... args){
             std::shared_ptr<boundaryConditions> bc_ptr = emplaceBoundaryCondition<T>(0, std::forward<Args>(args)...);
             for(int dim=1; dim<rank; dim++){
-                addBoundaryCondition<T>(dim, bc_ptr);
+                addBoundaryCondition(dim, bc_ptr);
             }
             return bc_ptr;
         }
@@ -570,7 +570,7 @@ namespace SAMS {
 
         /**
          * Call all boundary conditions on a specified dimension
-         * @param dim The dimension to call the boundary conditions on (0 to rank-1
+         * @param dim The dimension to call the boundary conditions on (0 to rank-1)
          */
         void applyBoundaryConditions(int dim){
             applyBoundaryConditions(dim, SAMS::domain::edges::lower);
