@@ -1,0 +1,44 @@
+diff --git a/shock_tube_ion.f90 b/shock_tube_ion.f90
+index ee4a6d7..3be5491 100644
+--- a/shock_tube_ion.f90
++++ b/shock_tube_ion.f90
+@@ -33,6 +33,11 @@ subroutine shock_tube_ion
+   ! .true.: sharp current sheet at x = 0 (Snow & Hillier 2021 eq. 80, and the SAMS snow_hillier_2021
+   ! problem); .false.: the original tanh transition over ~10 cells
+   logical,parameter :: sharp_interface=.true.
++  ! .true.: half domain x in [0, 150] with a symmetry plane at x = 0 (flag_bnd(1) = 3: v_x, B_y and v_z
++  ! odd), as in the original set-up and the SAMS snow_hillier_2021 problem with sh21.half_domain = true.
++  ! Use ix = 2048 in setting.txt for the same cells as the full-domain run with ix = 4096.
++  ! .false.: full domain [-150, 150], open at both ends.
++  logical,parameter :: half_domain=.false.
+ 
+   !Find the equilibrium neutral fraction
+   if(flag_IR .eq. 4) then
+@@ -133,14 +138,25 @@ call expintread
+   ! (sh21.x_half = 150). Use ix = 4096 in setting.txt for the same cell size (dx = 300/4096).
+   ! (Previously a half domain, start(1)=0.0d0 ;end(1)=100000.0d0, with the current sheet as the
+   ! x = 0 boundary condition.)
+-  start(1)=-150.0d0 ;end(1)=150.0d0
++  if (half_domain) then
++     start(1)=0.0d0 ;end(1)=150.0d0
++  else
++     start(1)=-150.0d0 ;end(1)=150.0d0
++  endif
+   start(2)=-1.0d0 ;end(2)=1.0d0
+   start(3)=-1.0d0 ;end(3)=1.0d0
+   call set_coordinate(start,end)
+   !---------------------------------------
+   
+   !!default boundary condition----------------------
+-  if (flag_bnd(1) .eq.-1) flag_bnd(1)=10   ! open at both x ends (was 3: the current sheet on a half domain)
++  if (half_domain) then
++     ! The x = 0 edge IS the current sheet: it must be the symmetry plane, whatever setting.txt says
++     if (flag_bnd(1).ne.3 .and. flag_bnd(1).ne.-1 .and. my_rank.eq.0) &
++          print*,'half_domain: overriding flag_bnd_x_l =',flag_bnd(1),' with 3 (symmetry plane at x = 0)'
++     flag_bnd(1)=3
++  else if (flag_bnd(1) .eq.-1) then
++     flag_bnd(1)=10   ! open
++  endif
+   if (flag_bnd(2) .eq.-1) flag_bnd(2)=10
+   if (flag_bnd(3) .eq.-1) flag_bnd(3)=10
+   if (flag_bnd(4) .eq.-1) flag_bnd(4)=10
