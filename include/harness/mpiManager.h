@@ -1130,7 +1130,10 @@ namespace SAMS
                 {
                     if (i == axis) {
                         //In the direction being created, only send the last real cells
-                        LB[i] = dims[i].getLocalDomainLB();
+                        //A staggered (HALF_CELL) axis shares its edge point with the neighbour (this rank's
+                        //point 0 is the lower neighbour's point n), so skip that shared point: the neighbour's
+                        //first ghost must hold the point one in from the shared one (ghostAdjust = 1; 0 if centred)
+                        LB[i] = dims[i].getLocalDomainLB() + getstaggerRegistry().getGhostAdjust(dims[i].stagger);
                         //Note! Sending lower bounds so need to send number matching upper ghosts
                         UB[i] = LB[i] + dims[i].upperGhosts-1;
                     } else {
@@ -1148,8 +1151,9 @@ namespace SAMS
                     if  (i == axis) {
                         //In the direction being created send the last real cells
                         //Note we are sending at top of domain so count must be for LOWER ghosts
-                        LB[i] = dims[i].getLocalDomainUB() - dims[i].lowerGhosts+1;
-                        UB[i] = dims[i].getLocalDomainUB();
+                        //Skip the shared edge point of a staggered axis, as for the lower send above
+                        UB[i] = dims[i].getLocalDomainUB() - getstaggerRegistry().getGhostAdjust(dims[i].stagger);
+                        LB[i] = UB[i] - dims[i].lowerGhosts+1;
                     } else {
                         //In other directions, send the whole local domain
                         LB[i] = dims[i].getLocalLB();
