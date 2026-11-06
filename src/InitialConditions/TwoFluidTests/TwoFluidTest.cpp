@@ -142,9 +142,9 @@ namespace examples
                 plasma_source.rho_ref = sh21.rho_t;
                 plasma_source.P_ref = 0.5 * sh21.beta * sh21.B0 * sh21.B0;
                 plasma_source.collisions = sh21.coupling;
-                plasma_source.ion_rec_empirical = sh21.coupling;
+                plasma_source.ion_rec_empirical = sh21.coupling && sh21.ionisation_recombination;
                 plasma_source.ion_rec_nlevel = false;
-                plasma_source.ionisation_potential = sh21.coupling && sh21.ionisation_potential;
+                plasma_source.ionisation_potential = sh21.coupling && sh21.ionisation_recombination && sh21.ionisation_potential;
                 // Mirror parity of B_y for the symmetry check: odd across the sheet, even for a uniform field
                 plasma_source.symmetry_by_odd = (problem == "snow_hillier_2021");
                 if (!sh21.shock_viscosity) {
@@ -152,18 +152,22 @@ namespace examples
                     dataNeutral.visc1 = 0.0; dataNeutral.visc2 = 0.0;
                     printf("snow_hillier_2021 / symmetric_pulse: SHOCK VISCOSITY OFF (sh21.shock_viscosity = false)\n");
                 }
+                if (sh21.coupling && !sh21.ionisation_recombination) {
+                    printf("snow_hillier_2021 / symmetric_pulse: COLLISIONS ONLY (sh21.ionisation_recombination = false): "
+                           "no ionisation, recombination or ionisation potential\n");
+                }
                 if (!sh21.coupling) {
                     printf("snow_hillier_2021 / symmetric_pulse: TWO-FLUID COUPLING OFF (sh21.coupling = false): "
                            "no collisions, ionisation, recombination or ionisation potential\n");
                 }
 
                 printf("Snow & Hillier (2021) slow-mode shock: setting T0 = %g K, t_ir = %g, alpha0 = %g,\n"
-                       "  rho_ref = %g, P_ref = %g, collisions and empirical rates %s, n-level rates off, %s model\n",
+                       "  rho_ref = %g, P_ref = %g, collisions %s, empirical rates %s, n-level rates off, %s model\n",
                        static_cast<double>(plasma_source.T0), static_cast<double>(plasma_source.t_ir),
                        static_cast<double>(plasma_source.alpha0), static_cast<double>(plasma_source.rho_ref),
                        static_cast<double>(plasma_source.P_ref),
-                       sh21.coupling ? "on" : "OFF",
-                       plasma_source.ionisation_potential ? "IRIP" : "IR");
+                       sh21.coupling ? "on" : "OFF", plasma_source.ion_rec_empirical ? "on" : "OFF",
+                       !plasma_source.ion_rec_empirical ? "collisions-only" : plasma_source.ionisation_potential ? "IRIP" : "IR");
             }
         }
 
