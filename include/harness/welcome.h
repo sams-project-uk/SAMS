@@ -24,6 +24,8 @@ namespace SAMS {
     inline const int majorVersion = 0;
     inline const int minorVersion = 0;
     inline const int patchVersion = 3;
+    inline const char versionString[] = "";
+    inline const int logoWidth = 52;
 
     #include <unistd.h>
 
@@ -55,6 +57,7 @@ namespace SAMS {
     inline void printWelcomeMessage() {
 
         std::string versionStr = "Version " + std::to_string(majorVersion) + "." + std::to_string(minorVersion) + "." + std::to_string(patchVersion);
+        if (versionString[0] != '\0') versionStr += std::string(" - ") + versionString;
 
         //Logo from https://www.asciiart.eu/text-to-ascii-art
         //REPLACE BEFORE FULL RELEASE
@@ -69,19 +72,19 @@ namespace SAMS {
         SAMS::cout << R"(   |\_________\|__|\|__|\|__|     \|__|\_________\ )" << std::endl;
         SAMS::cout << R"(   \|_________|                       \|_________| )" << std::endl;
         SAMS::cout << colorSet(VT100Red);
-        SAMS::cout << centrePrint(versionStr, 52) << std::endl;
+        SAMS::cout << centrePrint(versionStr, logoWidth) << std::endl;
         SAMS::cout << colorSet(VT100Reset);
-        SAMS::cout <<  "====================================================" << std::endl;
+        SAMS::cout <<  std::string(logoWidth, '=') << std::endl;
         SAMS::cout <<  colorSet(VT100Cyan);
-        SAMS::cout << centrePrint("Solar Atmospheric Modeling Suite (SAMS)", 52) << std::endl;
-        SAMS::cout << centrePrint("Released under the Apache 2.0 License", 52) << std::endl;
+        SAMS::cout << centrePrint("Solar Atmospheric Modeling Suite (SAMS)", logoWidth) << std::endl;
+        SAMS::cout << centrePrint("Released under the Apache 2.0 License", logoWidth) << std::endl;
         //Construct the version string and centre it
         SAMS::cout << colorSet(VT100Reset);
-        SAMS::cout << "=====================================================" << std::endl;
+        SAMS::cout << std::string(logoWidth + 1, '=') << std::endl;
         SAMS::cout << "Run information:" << std::endl;
-        SAMS::cout << "=====================================================" << std::endl;
+        SAMS::cout << std::string(logoWidth + 1, '=') << std::endl;
         portableWrapper::printParallelizationInfo();
-        SAMS::cout << "=====================================================" << std::endl;
+        SAMS::cout << std::string(logoWidth + 1, '=') << std::endl;
         SAMS::debug1 <<"Debug level 1 output enabled\n";
         SAMS::debug2 <<"Debug level 2 output enabled\n";
         SAMS::debug3 <<"Debug level 3 output enabled\n";
@@ -89,7 +92,7 @@ namespace SAMS {
     }
 
     inline void finishWelcomeMessage() {
-        SAMS::cout << "=====================================================" << std::endl;
+        SAMS::cout << std::string(logoWidth + 1, '=') << std::endl;
     }
 
 } //namespace SAMS
