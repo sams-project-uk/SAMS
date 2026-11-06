@@ -91,7 +91,8 @@ namespace SAMS
         using T_runnerData = std::tuple<harness&, timeState&, controlFunctions>;
         /**Data packs requested by simulations */
         using T_dataPacks = dataPackTuple_t<Packages...>;
-        using T_combined = tupleUnion_t<T_packages, T_runnerData, T_dataPacks>;
+        /** Packages and data packs are held by pointer, and only allocated if they are used */
+        using T_combined = tupleUnion_t<toPointerTuple_t<T_packages>, T_runnerData, toPointerTuple_t<T_dataPacks>>;
         T_combined runnerData = initializeTuple(harnessData, timeStateData);
 
         struct internalPackageInfo{
@@ -239,15 +240,15 @@ namespace SAMS
         template<int level=0>
         internalPackageInfo buildPackageInfo(){
             internalPackageInfo info;
-            info.name = hasParamType_name<std::tuple_element_t<level, T_combined>>::value;
+            info.name = hasParamType_name<std::tuple_element_t<level, T_packages>>::value;
             info.level = level;
-            if constexpr (std::is_void_v<typename hasParamType_coreSimulation<std::tuple_element_t<level, T_combined>>::type> == false){
-                info.isCoreSimulation = hasParamType_coreSimulation<std::tuple_element_t<level, T_combined>>::value;
+            if constexpr (std::is_void_v<typename hasParamType_coreSimulation<std::tuple_element_t<level, T_packages>>::type> == false){
+                info.isCoreSimulation = hasParamType_coreSimulation<std::tuple_element_t<level, T_packages>>::value;
             } else {
                 info.isCoreSimulation = false;
             }
-            if constexpr (std::is_void_v<typename hasParamType_timeSimulation<std::tuple_element_t<level, T_combined>>::type> == false){
-                info.timeSimulation = hasParamType_timeSimulation<std::tuple_element_t<level, T_combined>>::value;
+            if constexpr (std::is_void_v<typename hasParamType_timeSimulation<std::tuple_element_t<level, T_packages>>::type> == false){
+                info.timeSimulation = hasParamType_timeSimulation<std::tuple_element_t<level, T_packages>>::value;
             } else {
                 info.timeSimulation = false;
             }
@@ -259,8 +260,8 @@ namespace SAMS
          */
         template<int level=0>
         void buildInfo(){
-            if constexpr (std::is_void_v<typename hasParamType_name<std::tuple_element_t<level, T_combined>>::type> == false){
-                std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_combined>>::value);
+            if constexpr (std::is_void_v<typename hasParamType_name<std::tuple_element_t<level, T_packages>>::type> == false){
+                std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_packages>>::value);
                 simulationInfoMap[name] = buildPackageInfo<level>();
             } else {
                 std::stringstream ss;
@@ -358,12 +359,7 @@ namespace SAMS
          */
         template<typename T>
         constexpr bool isPackageType(){
-            constexpr int64_t index = tupleTypeIndex_v<T, T_combined>;
-            if constexpr (index < 0 || index >= sizeof...(Packages)){
-                return false;
-            } else {
-                return true;
-            }
+            return tupleTypeIndex_v<T, T_packages> >= 0;
         }
 
         /**
@@ -372,12 +368,7 @@ namespace SAMS
          */
         template<typename T>
         constexpr bool isRunnerDataType(){
-            constexpr int64_t index = tupleTypeIndex_v<T, T_combined>;
-            if constexpr (index < 0 || index < sizeof...(Packages) || index >= sizeof...(Packages) + std::tuple_size_v<T_runnerData>){
-                return false;
-            } else {
-                return true;;
-            }
+            return tupleTypeIndex_v<T, T_runnerData> >= 0;
         }
 
         /**
@@ -386,12 +377,7 @@ namespace SAMS
          */
         template<typename T>
         constexpr bool isDataPackType(){
-            constexpr int64_t index = tupleTypeIndex_v<T, T_combined>;
-            if constexpr (index < 0 || index >= sizeof...(Packages) + std::tuple_size_v<T_runnerData>){
-                return false;
-            } else {
-                return true;
-            }
+            return tupleTypeIndex_v<T, T_dataPacks> >= 0;
         }
 
         /**
@@ -403,7 +389,7 @@ namespace SAMS
         T_sim& getPackage()
         {
             static_assert(isPackageType<T_sim>(), "Error: T_sim is not a package type managed by this runner.");
-            return std::get<T_sim>(runnerData);
+            return *std::get<T_sim*>(runnerData);
         }
 
         /**
@@ -424,7 +410,7 @@ namespace SAMS
         T_dataPack& getDataPack()
         {
             static_assert(isDataPackType<T_dataPack>(), "Error: T_dataPack is not a data pack type managed by this runner.");
-            return std::get<T_dataPack>(runnerData);
+            return *std::get<T_dataPack*>(runnerData);
         }
 
 
@@ -465,6 +451,59 @@ namespace SAMS
             varReg.allocateAll();
         }
 
+        /**
+         * Allocate a package or data pack. A package that has constructorParameters is constructed from those, taken from the runner
+         * data by type. Otherwise it is default constructed if possible, or constructed from the harness or the time state
+         */
+        template<typename T>
+        T* allocateRunnerElement()
+        {
+            if constexpr (isPackageType<T>() && !std::is_void_v<getConstructorParametersType_t<T>>) {
+                auto parameters = getCallTupleElements<getConstructorParametersType_t<T>>(runnerData);
+                return std::apply([](auto&&... arguments){ return new T(std::forward<decltype(arguments)>(arguments)...); }, parameters);
+            } else if constexpr (std::is_default_constructible_v<T>) {
+                return new T{};
+            } else if constexpr (std::is_constructible_v<T, harness&>) {
+                return new T{getHarness()};
+            } else if constexpr (std::is_constructible_v<T, timeState&>) {
+                return new T{std::get<timeState&>(runnerData)};
+            } else {
+                static_assert(portableWrapper::alwaysFalse<T>::value,
+                              "Error: Package or data pack type is not default constructible or constructible from a harness reference.");
+            }
+        }
+
+        /**
+         * Allocate the active packages and the data packs that they use. The data packs are allocated first, and anything that is already allocated is left as it is
+         */
+        void allocateActive()
+        {
+            //The types are passed as null pointers of those types
+            auto allocateSlot = [this](auto *&slot){
+                using T = std::remove_pointer_t<std::remove_reference_t<decltype(slot)>>;
+                if (!slot) slot = allocateRunnerElement<T>();
+            };
+            auto allocatePack = [&](auto *packTag){
+                using T_pack = std::remove_pointer_t<decltype(packTag)>;
+                //A data pack that is also runner data already exists
+                if constexpr (tupleTypeIndex_v<T_pack, T_runnerData> < 0){
+                    allocateSlot(std::get<T_pack*>(runnerData));
+                }
+            };
+            auto allocatePacksOf = [&](auto *packageTag){
+                using T_package = std::remove_pointer_t<decltype(packageTag)>;
+                if (!simulationActiveFlags[tupleTypeIndex_v<T_package, T_packages>]) return;
+                std::apply([&](auto*... packTags){ (allocatePack(packTags), ...); },
+                           toPointerTuple_t<uniqueTuple_t<getDataPackType_t<T_package>>>{});
+            };
+            auto allocatePackage = [&](auto *packageTag){
+                using T_package = std::remove_pointer_t<decltype(packageTag)>;
+                if (simulationActiveFlags[tupleTypeIndex_v<T_package, T_packages>]) allocateSlot(std::get<T_package*>(runnerData));
+            };
+            std::apply([&](auto*... packageTags){ (allocatePacksOf(packageTags), ...); }, toPointerTuple_t<T_packages>{});
+            std::apply([&](auto*... packageTags){ (allocatePackage(packageTags), ...); }, toPointerTuple_t<T_packages>{});
+        }
+
 
         //Iniitialize all active simulations
         void pkgInit()
@@ -501,6 +540,7 @@ namespace SAMS
                     SAMS::cout << colorSet(VT100Reset) << std::endl;
                 }
             }
+            allocateActive();
             callCore_initialize();
         }
 
@@ -548,6 +588,7 @@ namespace SAMS
         }
 
         void initializePackages(){
+            allocateActive(); //Allocate the active packages and their data packs
             runnerInteraction<runner>(*this); //Allow user to interact with the runner before initialization (e.g. to activate simulations)
             pkgInit(); //Initialize active packages
             registerAxes(); //Tell packages to register axes
@@ -608,6 +649,15 @@ namespace SAMS
             printTimer_halfTimestep();
             printTimer_endOfTimestep();
             printTimer_calculateTimestep();
+
+            //Delete the packages and then the data packs. The rest of the runner data is not allocated by the runner
+            auto release = [](auto &element){
+                if constexpr (std::is_pointer_v<std::remove_reference_t<decltype(element)>>){
+                    delete element;
+                    element = nullptr;
+                }
+            };
+            std::apply([&](auto&... elements){ (release(elements), ...); }, runnerData);
 
             harness& h = getHarness();
             h.finalize();

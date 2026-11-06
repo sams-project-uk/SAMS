@@ -38,7 +38,7 @@ public: \
 }; \
     template<int level, typename... T_spec> \
     struct hasMethod_##X { \
-        using type = std::tuple_element_t<level, T_combined>; \
+        using type = std::tuple_element_t<level, T_packages>; \
         using helper = hasMethodHelper_##X<type, T_spec...>; \
         static constexpr bool value = helper::value; \
         using params = typename helper::params; \
@@ -63,8 +63,8 @@ public: \
         template<bool ifActive = true, bool recursive = true, int level=0>\
         T_sizeType countParam_##X(){\
             T_sizeType count;\
-            if constexpr(!std::is_void_v<typename hasParam_##X<std::tuple_element_t<level, T_combined>>::type>){\
-                using type = typename hasParamType_##X<std::tuple_element_t<level, T_combined>>::type;\
+            if constexpr(!std::is_void_v<typename hasParam_##X<std::tuple_element_t<level, T_packages>>::type>){\
+                using type = typename hasParamType_##X<std::tuple_element_t<level, T_packages>>::type;\
                 static_assert(std::is_convertible_v<type, REQ>, "Error: Parameter " #X " does not match the required type."); \
                 T_sizeType shouldCount = ifActive ? simulationActiveFlags[level] : true;\
                 count = shouldCount ? 1:0;\
@@ -97,8 +97,8 @@ public: \
         template<bool ifActive = true, bool recursive = true, int level=0>\
         T_sizeType countParam_##X(){\
             T_sizeType count;\
-            if constexpr(!std::is_void_v<typename hasParamType_##X<std::tuple_element_t<level, T_combined>>::type>){\
-                using type = typename hasParamType_##X<std::tuple_element_t<level, T_combined>>::type;\
+            if constexpr(!std::is_void_v<typename hasParamType_##X<std::tuple_element_t<level, T_packages>>::type>){\
+                using type = typename hasParamType_##X<std::tuple_element_t<level, T_packages>>::type;\
                 static_assert(std::is_convertible_v<type, REQ>, "Error: Parameter " #X " does not match the required type."); \
                 T_sizeType shouldCount = ifActive ? simulationActiveFlags[level] : true;\
                 count = shouldCount ? 1:0;\
@@ -114,7 +114,7 @@ public: \
     #define TIMER_X(X)\
         template<int level=0>\
         auto nameTimers_##X(){\
-            std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_combined>>::value); \
+            std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_packages>>::value); \
             if constexpr(level < sizeof...(Packages)-1){\
                 return std::tuple_cat( \
                     std::make_tuple(timer(TOSTRING(X) + " " + name + "_" + std::to_string(level))), \
@@ -133,7 +133,7 @@ public: \
         void printTimer_##X(){\
             timer& t = std::get<level>(X##_timers);\
             if (simulationActiveFlags[level] && t.everRun()) {\
-                std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_combined>>::value); \
+                std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_packages>>::value); \
                 SAMS::cout << "Timer " << TOSTRING(X) << " for simulation " << name << " (level " << level << "): " << t.end_silent() << " seconds." << std::endl;\
             }\
             if constexpr(level < sizeof...(Packages)-1){\
@@ -158,7 +158,7 @@ public: \
             if constexpr(hasMethod_##X<level, T_spec...>::value){\
                 using rtype = typename hasMethod_##X<level, T_spec...>::params; \
                 using outerParams = tupleTail_t<sizeof...(T), rtype>; \
-                bool shouldRun = ifActive ? simulationActiveFlags[level] : true;\
+                bool shouldRun = ifActive ? (std::get<level>(runnerData) != nullptr) : true;\
                 if (shouldRun) {\
                     toggleTimer_##X<level>();\
                     auto cTuple = std::tuple_cat( \
@@ -169,15 +169,15 @@ public: \
                         try {\
                             if constexpr(sizeof...(T_spec)>0){\
                                 std::apply([&](auto&&... cargs) {\
-                                    std::get<level>(runnerData).template X<T_spec...>(std::forward<decltype(cargs)>(cargs)...);\
+                                    std::get<level>(runnerData)->template X<T_spec...>(std::forward<decltype(cargs)>(cargs)...);\
                                 }, cTuple);\
                             } else {\
                                 std::apply([&](auto&&... cargs) {\
-                                    std::get<level>(runnerData).X(std::forward<decltype(cargs)>(cargs)...);\
+                                    std::get<level>(runnerData)->X(std::forward<decltype(cargs)>(cargs)...);\
                                 }, cTuple);\
                             }\
                         } catch (const std::exception& e) {\
-                            std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_combined>>::value); \
+                            std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_packages>>::value); \
                             std::stringstream ss;\
                             ss << "Error in simulation " << name << " (level " << level << ") during call to " << TOSTRING(X) << ": " << e.what() << std::endl;\
                             abort(ss.str(), false);\
@@ -185,11 +185,11 @@ public: \
                     } else {\
                         if constexpr(sizeof...(T_spec)>0){\
                             std::apply([&](auto&&... cargs) {\
-                                std::get<level>(runnerData).template X<T_spec...>(std::forward<decltype(cargs)>(cargs)...);\
+                                std::get<level>(runnerData)->template X<T_spec...>(std::forward<decltype(cargs)>(cargs)...);\
                             }, cTuple);\
                         } else {\
                             std::apply([&](auto&&... cargs) {\
-                                std::get<level>(runnerData).X(std::forward<decltype(cargs)>(cargs)...);\
+                                std::get<level>(runnerData)->X(std::forward<decltype(cargs)>(cargs)...);\
                             }, cTuple);\
                         }\
                     }\

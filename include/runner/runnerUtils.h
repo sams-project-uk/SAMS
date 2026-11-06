@@ -67,6 +67,27 @@ namespace SAMS{
     using getDataPackType_t = typename getDataPackType<T>::type;
 
     /**
+     * Helper class to find out if a class has a member type called constructorParameters, which is a std::tuple of the parameters of its constructor. If so get its type. If not return void.
+     */
+    template<typename T, typename = void>
+    struct getConstructorParametersType {
+        using type = void;
+    };
+    /**
+     * Specialisation when T has a constructorParameters member
+     */
+    template<typename T>
+    struct getConstructorParametersType<T, std::void_t<typename T::constructorParameters>> {
+        using type = typename T::constructorParameters;
+    };
+
+    /**
+     * Alias for getConstructorParametersType::type
+     */
+    template<typename T>
+    using getConstructorParametersType_t = typename getConstructorParametersType<T>::type;
+
+    /**
      * A std::tuple of the types in a list, with dataPacks::multiPack unpacked and void types ignored
      */
     template<typename... T>
@@ -216,6 +237,20 @@ namespace SAMS{
     using dataPackTuple_t = typename dataPackTuple<Sims...>::type;
 
     /**
+     * A std::tuple of pointers to the types in a std::tuple
+     */
+    template<typename T_tuple>
+    struct toPointerTuple;
+
+    template<typename... Ts>
+    struct toPointerTuple<std::tuple<Ts...>> {
+        using type = std::tuple<Ts*...>;
+    };
+
+    template<typename T_tuple>
+    using toPointerTuple_t = typename toPointerTuple<T_tuple>::type;
+
+    /**
      * Helper class to return a tuple type lacking the first N elements
      */
     template<std::size_t N, typename T_tuple, typename=void>
@@ -299,10 +334,13 @@ namespace SAMS{
 
         constexpr int64_t indexref = tupleTypeIndex_v<Tref, T_src>;
         constexpr int64_t indexvalue = tupleTypeIndex_v<Tvalue, T_src>;
+        constexpr int64_t indexpointer = tupleTypeIndex_v<Tvalue*, T_src>;
         if constexpr (indexref >= 0){
             return std::get<static_cast<std::size_t>(indexref)>(src);
         } else if constexpr (indexvalue >= 0){
             return std::get<static_cast<std::size_t>(indexvalue)>(src);
+        } else if constexpr (indexpointer >= 0){
+            return *std::get<static_cast<std::size_t>(indexpointer)>(src);
         } else {
             if constexpr (sizeof...(T_others) > 0){
                 return getItemFromTuple<T>(std::forward<T_others>(others)...);
