@@ -448,9 +448,12 @@ This run was started before the `rke` test's result was known. It only matters i
 **SAMS:**
 - **Binaries:** `runs/scaling/sams_scan_a{0,0.1,1,10,100}`, built by `runs/scan/build_variant.sh`. That script edits the `sh21` settings temporarily, builds in `build-mpi`, then restores the source from git.
 - **α0 = 0** uses `sh21.coupling = false`.
-- **Run directories:** `runs/scan/sams_a<α0>/` in the order 0, 1, 0.1, 10, 100.
+- **Run directories:** `runs/scan/sams_a<α0>/`, run in the order 1, 0.1, 10, 100, then 0.
 - **Queue:** `runs/scan/sams_scan.sh`, with its log in `runs/scan/sams_scan.log`. It prints `SAMS_SCAN_DONE` at the end.
-- **Time step, uncoupled case:** at t = 0.03 the step was 8×10⁻⁵, about 20× below the coupled run's settled value. If it stays that small, α0 = 0 alone takes about a day.
+- **Uncoupled case moved to the end:** its time step kept falling (5×10⁻⁵ by t = 0.04, about 30× below the coupled run's settled value), so it was stopped after 400 steps and re-queued last.
+  - It now runs from `runs/scan/sams_a0_last.sh` (log `sams_a0_last.log`, ends with `SAMS_A0_DONE`) once `SAMS_SCAN_DONE` appears.
+  - The stopped attempt is in `runs/scan/sams_a0_aborted_reordered`; ignore it. Its `sams_scan.log` entry says "a0 done", but that run was stopped, not finished.
+  - If the time step stays that small, this run alone takes a day or more. It may not finish by Monday.
 - **Time step, α0 = 100:** check the explicit collisional limit doesn't make it impractically small.
 
 **PIP:**
@@ -471,6 +474,6 @@ It prints the slow-shock positions and the inner-plateau ρ\_p, T\_p and B\_y fo
 ### Checks on Monday
 
 1. `tail -3 runs/sams_L2000_dx004_rke_t20/run.log`, then `runs/rke_test_compare.sh`. The result decides whether `runs/sams_L2000_dx002_rke_mpi10` is the new production run.
-2. `cat runs/scan/pip_scan.log runs/scan/pip_a0_retry.log runs/scan/sams_scan.log`. Each run should end with `exit=0` (PIP) or a `s wall` line (SAMS). A SAMS exit status of 1 is the known `MPI_Abort`; check for "Simulation complete".
+2. `cat runs/scan/pip_scan.log runs/scan/pip_a0_retry.log runs/scan/sams_scan.log runs/scan/sams_a0_last.log`. Each run should end with `exit=0` (PIP) or a `s wall` line (SAMS). A SAMS exit status of 1 is the known `MPI_Abort`; check for "Simulation complete".
 3. `runs/scan/scan_compare.sh`, then decide whether the problem is in LARE or in the sources (above).
 4. If useful, write the exact MHD Riemann solver for the α0 = 0 and α0 → ∞ limits.
