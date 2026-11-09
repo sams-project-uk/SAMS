@@ -128,7 +128,7 @@ namespace TWOFLUID
         bool check_conservation=false;
         bool check_source=false;
         
-	bool implicit=true; // flag for using the implicit solvers from PETSc
+	bool implicit=false; // flag for using the implicit solvers from PETSc
         // Start-up time step: the first step is startup_dt_fraction times the step the CFL and source
         // limits would allow (relative, so it adapts to the grid and the problem), and afterwards dt may
         // grow by at most a factor dt_max_growth per step until those limits are reached. This ramps up

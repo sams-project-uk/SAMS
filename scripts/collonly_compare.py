@@ -48,7 +48,8 @@ def load_sams(path):
     found and joined in x order (each rank writes its own x range)."""
     import glob, re
     files = sorted(glob.glob(re.sub(r"_rank\d+\.h5$", "_rank*.h5", path)),
-                   key=lambda p: int(re.search(r"_rank(\d+)\.h5$", p).group(1))) or [path]
+                   key=lambda p: int(re.search(r"_rank(\d+)\.h5$", p).group(1))) \
+            or [re.sub(r"_rank\d+\.h5$", ".h5", path)]                    # serial run: diagnostics_NNNNN.h5
     fs = [h5py.File(p, "r") for p in files]
     fs.sort(key=lambda f: float(np.array(f["MeshCC/x"])[0]))
     m = lambda k: np.concatenate([np.array(f[k]).mean(axis=(1, 2)) for f in fs])
