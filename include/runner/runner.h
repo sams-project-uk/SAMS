@@ -10,6 +10,10 @@
 #include "welcome.h"
 #include <tuple>
 #include <sstream>
+#include <cstdlib>
+#include <array>
+#include <string>
+#include <type_traits>
 #include <chrono>
 #include <ctime>
 #include <cstdio>
@@ -591,7 +595,28 @@ namespace SAMS
             //Initialize the harness
             getHarness().initialize(argc, argv);
             //This Must be changed so that there is more control over decomposition
-            getHarness().MPIManager.autoDecomposition({false,false,false});
+            //Optional override: SAMS_DECOMPOSITION="nx,ny,nz" (processors per axis, 0 = let MPI_Dims_create
+            //choose), e.g. "0,1,1" to split only in x. Unset: fully automatic, as before.
+            {
+                using mpiManagerType = std::remove_reference_t<decltype(getHarness().MPIManager)>;
+                const char *decompEnv = nullptr;
+#ifdef USE_MPI
+                decompEnv = std::getenv("SAMS_DECOMPOSITION");
+#endif
+                if (decompEnv && *decompEnv) {
+                    std::array<int, mpiManagerType::Dims> decomposition;
+                    decomposition.fill(1);
+                    std::stringstream ss(decompEnv);
+                    std::string item;
+                    for (int i = 0; i < mpiManagerType::Dims && std::getline(ss, item, ','); i++)
+                        decomposition[i] = std::stoi(item);
+                    std::array<bool, mpiManagerType::Dims> periodic;
+                    periodic.fill(false);
+                    getHarness().MPIManager.setDecomposition(decomposition, periodic);
+                } else {
+                    getHarness().MPIManager.autoDecomposition({false,false,false});
+                }
+            }
             //Bind the control functions
             auto& ctrlFuncs = SAMS::getItemFromTuple<controlFunctions>(runnerData);
             ctrlFuncs.bind(this);

@@ -76,7 +76,7 @@ namespace examples
             // false (with coupling = true): collisional coupling only (momentum and thermal exchange,
             // alpha_c = alpha0 sqrt((T_p + T_n)/2T0)); no ionisation, recombination or ionisation potential.
             // The ionisation fraction stays at its initial (equilibrium at T0) value. PIP: flag_IR = 0.
-            bool ionisation_recombination = true;
+            bool ionisation_recombination = false;
             // Half domain x in [0, x_half] with a symmetry plane at x = 0 (the current sheet), as in PIP's
             // original shock_tube_ion set-up (flag_bnd(1) = 3). The mirror symmetry is then exact by
             // construction. nx is halved so the cell size stays 2 x_half / sh21.nx; use the same cells in
@@ -87,9 +87,9 @@ namespace examples
             // open boundaries, 11 outputs). The paper's equilibrium figures are at t = 40000 with 256000
             // cells; scale x_half with t_end (fast-mode signals travel at ~1.05 in these units) and nx to
             // keep dx, and change both codes together.
-            SAMS::T_dataType t_end = 0.1;
-            SAMS::T_dataType x_half = 10.0; // domain is [-x_half, x_half]
-            SAMS::T_indexType nx = 4096;     // dx = 0.073
+            SAMS::T_dataType t_end = 100.0;
+            SAMS::T_dataType x_half = 2000.0; // domain is [-x_half, x_half]
+            SAMS::T_indexType nx = 200000; // dx = 0.02
         } sh21;
 
         /**

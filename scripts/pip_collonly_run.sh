@@ -7,10 +7,10 @@
 #                             pip_half_domain.patch applied (left unchanged; a copy is built)
 #   <ix>: total number of cells on [0, x_half] (PIP splits them over the MPI ranks)
 # Creates ./pip_<name>/ with the build, run.log and the snapshots in ./pip_<name>/out/ (t0000..t0010.h5).
-# Environment overrides for quick tests: TEND (default 100), DTOUT (default 10).
+# Environment overrides: TEND (default 100), DTOUT (default 10), COL (alpha0, default 1.0).
 set -euo pipefail
 SRC=$(cd "$1" && pwd); XH=$2; IX=$3; NAME=$4; ORDER=${5:-1}; NP=${6:-1}
-TEND=${TEND:-100.0}; DTOUT=${DTOUT:-10.0}
+TEND=${TEND:-100.0}; DTOUT=${DTOUT:-10.0}; COL=${COL:-1.0}
 D=$(pwd)/pip_$NAME
 rm -rf "$D"; mkdir -p "$D"
 cp "$SRC"/*.f90 "$SRC"/Makefile "$SRC"/setting.txt "$D"/
@@ -29,7 +29,7 @@ sed -i -E "s/^[0-9.eEd+-]+:dtout;.*/${DTOUT}:dtout; output period/" setting.txt
 sed -i -E "s/^[0-9.eEd+-]+:tend;.*/${TEND}:tend; end time/" setting.txt
 sed -i -E "s/^[0-9]+:flag_IR;.*/0:flag_IR; no ionisation\/recombination (collisions only)/" setting.txt
 sed -i -E "s/^[0-9]+:flag_col;.*/2:flag_col; alpha0*sqrt((Tn+Tp)\/2\/Tinit), Alfven units/" setting.txt
-sed -i -E "s/^[0-9.]+ *:col;.*/1.0:col; alpha0/" setting.txt
+sed -i -E "s/^[0-9.eEd+-]+ *:col;.*/${COL}:col; alpha0/" setting.txt
 sed -i -E "s/^[0-9]+:s_order;.*/${ORDER}:s_order;order of space for HLL branch (1, 2)/" setting.txt
 sed -i -E "s/^[0-9]+ +:mpi_x;.*/${NP}     :mpi_x;node number for x-direction/" setting.txt
 for k in ix dtout tend flag_IR flag_col s_order mpi_x; do grep -E "^[^;]*:${k};" setting.txt; done
