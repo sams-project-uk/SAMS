@@ -152,6 +152,22 @@ namespace portableWrapper
 #endif
     };
 
+    enum class arrayOrdering
+    {
+        rowMajor = 1, // The last axis is fastest
+        columnMajor = 2, // The first axis is fastest
+    };
+
+    // The ordering of arrays with a tag. Accelerated arrays are column major with the Kokkos GPU backends
+    constexpr arrayOrdering getOrdering([[maybe_unused]] arrayTags tag)
+    {
+#if defined(USE_KOKKOS) && (defined(KOKKOS_CUDA) || defined(KOKKOS_HIP))
+        return tag == arrayTags::accelerated ? arrayOrdering::columnMajor : arrayOrdering::rowMajor;
+#else
+        return arrayOrdering::rowMajor;
+#endif
+    }
+
     template <typename T, int i_rank, arrayTags tag = arrayTags::accelerated>
     class portableArray;
 }

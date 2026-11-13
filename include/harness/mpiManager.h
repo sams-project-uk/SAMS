@@ -10,6 +10,7 @@
 #include "dimension.h"
 #include "typeRegistry.h"
 #include "mpiDefaultTypes.h"
+#include "pp/parallelWrapper.h"
 #include <map>
 #include <unordered_map>
 #include <string>
@@ -71,12 +72,12 @@ namespace SAMS
                     }
                 }
             }
-#ifdef MPI_ERRORS_RETURN
+#ifdef SAMS_MPI_ERRORS_RETURN
             // Set error handler to return errors
             MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
 #else
             // Explicitly set to fatal errors
-            MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_FATAL);
+            MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_ARE_FATAL);
 #endif
             //Set the rank for the SAMS output streams
             //Only rank 0 will output anything
@@ -107,11 +108,59 @@ namespace SAMS
 
     }
 
+    /**
+     * Functor that copies a face of a variable to or from a contiguous buffer, element by element
+     */
+    struct haloPacker
+    {
+        char *data;
+        char *buffer;
+        int rank;
+        int elementSize;
+        portableWrapper::arrayOrdering ordering;
+        SIGNED_INDEX_TYPE sizes[MAX_RANK];
+        SIGNED_INDEX_TYPE subsizes[MAX_RANK];
+        SIGNED_INDEX_TYPE starts[MAX_RANK];
+        bool unpack;
+
+        FUNCTORMETHODPREFIX INLINE void operator()(SIGNED_INDEX_TYPE n) const
+        {
+            //Split the index into the position on the face, fastest axis first, and find the element in the variable
+            SIGNED_INDEX_TYPE remaining = n, offset = 0, stride = 1;
+            for (int j = 0; j < rank; ++j)
+            {
+                const int axis = ordering == portableWrapper::arrayOrdering::columnMajor ? j : rank - 1 - j;
+                offset += (starts[axis] + remaining % subsizes[axis]) * stride;
+                remaining /= subsizes[axis];
+                stride *= sizes[axis];
+            }
+            char *element = data + offset * elementSize;
+            char *packed = buffer + n * elementSize;
+            for (int b = 0; b < elementSize; ++b)
+            {
+                if (unpack) element[b] = packed[b];
+                else packed[b] = element[b];
+            }
+        }
+    };
+
     template <int i_Dims = 3>
     class MPIManager
     {
     public:
     static const int Dims = i_Dims;
+
+        /**
+         * The arguments that a subarray MPI_Datatype was created with
+         */
+        struct subarrayInfo
+        {
+            int rank = 0;
+            std::array<int, MAX_RANK> sizes{};
+            std::array<int, MAX_RANK> subsizes{};
+            std::array<int, MAX_RANK> starts{};
+            portableWrapper::arrayOrdering ordering = portableWrapper::arrayOrdering::rowMajor;
+        };
     private:
 
         #ifdef USE_MPI
@@ -134,7 +183,7 @@ namespace SAMS
           };
           #endif
 
-#ifdef MPI_ERRORS_RETURN
+#if defined(USE_MPI) && defined(SAMS_MPI_ERRORS_RETURN)
 #define checkMPIError(fn) checkMPIErrorCore(fn, __FILE__, __LINE__)
         inline void checkMPIErrorCore(int errcode, const char *file, int line) const
         {
@@ -160,6 +209,35 @@ namespace SAMS
         std::array<int, MAX_RANK> periods;
 
         std::array<int, 2 * Dims> neighbors;
+
+        //How the decomposition was chosen, for printing
+        const char *decompositionType = "specified";
+
+        /**
+         * Build the functor that copies a face of a variable to or from a contiguous buffer
+         */
+        haloPacker makePacker(void *data, char *buffer, const subarrayInfo &info, int elementSize, bool unpack) const
+        {
+            haloPacker packer;
+            packer.data = static_cast<char*>(data);
+            packer.buffer = buffer;
+            packer.rank = info.rank;
+            packer.elementSize = elementSize;
+            packer.ordering = info.ordering;
+            for (int i = 0; i < info.rank; ++i)
+            {
+                packer.sizes[i] = info.sizes[i];
+                packer.subsizes[i] = info.subsizes[i];
+                packer.starts[i] = info.starts[i];
+            }
+            packer.unpack = unpack;
+            return packer;
+        }
+
+        //Manager of the device buffers that halos of accelerated variables are packed into
+        portableWrapper::portableArrayManager bufferManager;
+        //Device buffers that halos of accelerated variables are sent from and received into. They only grow
+        portableWrapper::portableArray<char, 1, portableWrapper::arrayTags::accelerated> sendBuffer, recvBuffer;
 
         /**
          * Initialise the MPIManager with default values but a custom communicator
@@ -190,12 +268,12 @@ namespace SAMS
             if (!init) throw std::runtime_error("Error: MPI environment not initialized before MPIManager initialization\n");
             checkMPIError(MPI_Comm_rank(rootComm, &rank));
             checkMPIError(MPI_Comm_size(rootComm, &size));
-#ifdef MPI_ERRORS_RETURN
+#ifdef SAMS_MPI_ERRORS_RETURN
             // Set error handler to return errors
             checkMPIError(MPI_Comm_set_errhandler(comm, MPI_ERRORS_RETURN));
 #else
             // Explicitly set to fatal errors
-            checkMPIError(MPI_Comm_set_errhandler(comm, MPI_ERRORS_FATAL));
+            checkMPIError(MPI_Comm_set_errhandler(comm, MPI_ERRORS_ARE_FATAL));
 #endif
 #endif
         }
@@ -209,6 +287,7 @@ namespace SAMS
             COUNT_TYPE refCount=1;
             MPI_Datatype mpiType = MPI_DATATYPE_NULL;
             std::string Name=""; //Name here is just used for debug output
+            subarrayInfo subarray; //The arguments of a subarray type. Rank 0 for other types
 
             /*
             * Release the MPI_Datatype
@@ -229,7 +308,7 @@ namespace SAMS
 
             //Move constructor to allow "normal" operation in containers
             MPITypeHolder(MPITypeHolder &&other) noexcept
-                : refCount(other.refCount), mpiType(other.mpiType), Name(std::move(other.Name))
+                : refCount(other.refCount), mpiType(other.mpiType), Name(std::move(other.Name)), subarray(other.subarray)
             {
                 other.mpiType = MPI_DATATYPE_NULL;
                 other.refCount = 0;
@@ -394,7 +473,7 @@ namespace SAMS
             std::strncpy(truncatedName, name.c_str(), MPI_MAX_OBJECT_NAME-1);
             //Always null terminating is quicker than checking length first
             truncatedName[MPI_MAX_OBJECT_NAME-1] = '\0';
-            checkMPIError(MPI_Type_set_name(mpiType, name.c_str()));
+            checkMPIError(MPI_Type_set_name(mpiType, truncatedName));
             #endif
         }
 
@@ -407,8 +486,9 @@ namespace SAMS
          * @param LB Array of size rank specifying the lower bounds of the slice
          * @param UB Array of size rank specifying the upper bounds of the slice
          * @param baseType The base MPI_Datatype of the variable
+         * @param ordering The ordering of the variable in memory
          */
-        MPI_Datatype createArraySliceType([[maybe_unused]] int rank, [[maybe_unused]] SIGNED_INDEX_TYPE *domainLB, [[maybe_unused]] SIGNED_INDEX_TYPE *domainUB, [[maybe_unused]] SIGNED_INDEX_TYPE *LB, [[maybe_unused]] SIGNED_INDEX_TYPE *UB, [[maybe_unused]] MPI_Datatype baseType){
+        MPI_Datatype createArraySliceType([[maybe_unused]] int rank, [[maybe_unused]] const SIGNED_INDEX_TYPE *domainLB, [[maybe_unused]] const SIGNED_INDEX_TYPE *domainUB, [[maybe_unused]] SIGNED_INDEX_TYPE *LB, [[maybe_unused]] SIGNED_INDEX_TYPE *UB, [[maybe_unused]] MPI_Datatype baseType, [[maybe_unused]] portableWrapper::arrayOrdering ordering = portableWrapper::arrayOrdering::rowMajor){
             #ifdef USE_MPI
             int starts[MAX_RANK], sizes[MAX_RANK], subsizes[MAX_RANK];
             for (int i = 0; i < rank; i++)
@@ -418,7 +498,7 @@ namespace SAMS
                 starts[i] = LB[i] - domainLB[i];
             }
             //Add the type to the cache or get existing type
-            return createMPISubarrayType(rank, sizes, subsizes, starts, baseType, MPI_ORDER_C);
+            return createMPISubarrayType(rank, sizes, subsizes, starts, baseType, ordering);
             #else
             return MPI_DATATYPE_NULL;
             #endif
@@ -427,14 +507,14 @@ namespace SAMS
         /**
          * Build an MPI datatype for a slice of a variable defined by lower and upper bounds in each dimension
          */
-        MPI_Datatype createArraySliceType(int rank, dimension* dims, SIGNED_INDEX_TYPE *LB, SIGNED_INDEX_TYPE *UB, MPI_Datatype baseType){
+        MPI_Datatype createArraySliceType(int rank, dimension* dims, SIGNED_INDEX_TYPE *LB, SIGNED_INDEX_TYPE *UB, MPI_Datatype baseType, portableWrapper::arrayOrdering ordering = portableWrapper::arrayOrdering::rowMajor){
 
             SIGNED_INDEX_TYPE domainLB[MAX_RANK], domainUB[MAX_RANK];
             for(int i=0; i<rank; i++){
             domainLB[i] = dims[i].getLocalLB();
             domainUB[i] = dims[i].getLocalUB();
             }
-            return createArraySliceType(rank, domainLB, domainUB, LB, UB, baseType);
+            return createArraySliceType(rank, domainLB, domainUB, LB, UB, baseType, ordering);
 
         }
 
@@ -447,36 +527,35 @@ namespace SAMS
         bool deleteMPIType([[maybe_unused]] MPI_Datatype mpiType, [[maybe_unused]] bool forceDelete = false)
         {
             #ifdef USE_MPI
-            try{
-                std::string info = buildMPIGenericName(mpiType);
-                auto itF = mpiSubarrayTypeCache.find(info);
-                MPITypeHolder& typeHolder = itF->second;
-                COUNT_TYPE newRefCount = typeHolder.decRef();
-                if ((newRefCount == 0) || forceDelete){
-                    SAMS::debugAll3 << "Releasing MPI subarray type: " << info << std::endl;
-                    //Delete it from the forward cache
-                    mpiSubarrayTypeCache.erase(itF);
-                    return true;
-                } else {
-                    SAMS::debugAll3 << "Decremented reference count for MPI type: " << info << " to " << newRefCount << std::endl;
-                    return false;
-                }
-                //MPI_Type_free is called in the destructor of MPITypeHolder
-            } catch (const std::runtime_error& e){
+            std::string info = buildMPIGenericName(mpiType);
+            auto itF = mpiSubarrayTypeCache.find(info);
+            if (itF == mpiSubarrayTypeCache.end()){
                 SAMS::debugAll3 << "*** WARNING *** Freeing unregistered MPI type!. Type is freed, but this is probably an error." << std::endl;
                 MPI_Type_free(&mpiType); //Just free it directly
                 return true;
             }
+            MPITypeHolder& typeHolder = itF->second;
+            COUNT_TYPE newRefCount = typeHolder.decRef();
+            if ((newRefCount == 0) || forceDelete){
+                SAMS::debugAll3 << "Releasing MPI subarray type: " << info << std::endl;
+                //Delete it from the forward cache
+                mpiSubarrayTypeCache.erase(itF);
+                return true;
+            } else {
+                SAMS::debugAll3 << "Decremented reference count for MPI type: " << info << " to " << newRefCount << std::endl;
+                return false;
+            }
+            //MPI_Type_free is called in the destructor of MPITypeHolder
             #else
             return true;
             #endif
         }
 
 
-        void registerMPIType([[maybe_unused]] MPI_Datatype mpiType, [[maybe_unused]] const std::string &name)
+        void registerMPIType([[maybe_unused]] MPI_Datatype mpiType, [[maybe_unused]] const std::string &name, [[maybe_unused]] const subarrayInfo &subarray = subarrayInfo())
         {
             #ifdef USE_MPI
-            mpiSubarrayTypeCache.emplace(name, MPITypeHolder(mpiType, name));
+            mpiSubarrayTypeCache.emplace(name, MPITypeHolder(mpiType, name)).first->second.subarray = subarray;
             setMPITypeName(mpiType, name);
             SAMS::debugAll3 << "Registered new MPI type: " << name << std::endl;
             #endif
@@ -544,7 +623,7 @@ namespace SAMS
         }
 
 
-        MPI_Datatype cacheType([[maybe_unused]] MPI_Datatype newType){
+        MPI_Datatype cacheType([[maybe_unused]] MPI_Datatype newType, [[maybe_unused]] const subarrayInfo &subarray = subarrayInfo()){
             #ifdef USE_MPI
             std::string Name = buildMPIGenericName(newType);
             //If type already in cache, return existing type
@@ -555,7 +634,7 @@ namespace SAMS
             }
             //Otherwise create new type
             checkMPIError(MPI_Type_commit(&newType));
-            registerMPIType(newType, Name);
+            registerMPIType(newType, Name, subarray);
             return newType;
             #else
             return MPI_DATATYPE_NULL;
@@ -579,7 +658,6 @@ namespace SAMS
                 periods[i] = isPeriodic[i]? 1 : 0;
             }
             #ifdef USE_MPI
-            int totalProcs = 1;
             bool anyZero = false;
             bool allZero = true;
             for (int i = 0; i < Dims; i++)
@@ -592,44 +670,10 @@ namespace SAMS
                 }
             }
             if (anyZero){
-                if (allZero){
-                    SAMS::cout << "Using automatic MPI decomposition : ";
-                } else {
-                    SAMS::cout << "Using partially automatic MPI decomposition : ";
-                }
+                decompositionType = allZero ? "automatic" : "partially automatic";
                 checkMPIError(MPI_Dims_create(size, Dims, dims.data()));
             } else {
-                SAMS::cout << "Using specified MPI decomposition: " << totalProcs;
-            }
-            for (int i = 0; i < Dims; i++) totalProcs *= dims[i];
-            //Not really necessary but I do hate it when codes pluralise incorrectly
-            if (totalProcs > 1){
-                SAMS::cout << " processors (";
-            } else {
-                SAMS::cout << " processor (";
-            }
-            for (int i = 0; i < Dims; i++) {
-                SAMS::cout << dims[i];
-                if (i < Dims - 1)
-                    SAMS::cout << " x ";
-            }
-            SAMS::cout << ")" << std::endl;
-            if (totalProcs != size)
-            {
-                if (rank == 0)
-                {
-                    SAMS::cerr << "Not all processors are used in the decomposition" << std::endl;
-                    SAMS::cerr << "Processors available " << size << ", processors used " << totalProcs << std::endl;
-                    SAMS::cerr << "Processors in decomposition: " << totalProcs << " (";
-                    for (int i = 0; i < Dims; i++)
-                    {
-                        SAMS::cerr << dims[i];
-                        if (i < Dims - 1)
-                            SAMS::cerr << " x ";
-                    }
-                    SAMS::cerr << ")" << std::endl;
-                    SAMS::cerr << "Wasted processors : " << size - totalProcs << std::endl;
-                }
+                decompositionType = "specified";
             }
             // Create the Cartesian communicator
             checkMPIError(MPI_Cart_create(rootComm, Dims, dims.data(), periods.data(), 1, &comm));
@@ -650,8 +694,6 @@ namespace SAMS
                 neighbors[2 * i + 1] = MPI_PROC_NULL;
                 dims[i] = 1;
             }
-            SAMS::cout << "Running without MPI parallelism" << std::endl;
-            SAMS::cout << "DO NOT TRY TO RUN THIS VERSION OF SAMS ACROSS NODES!" << std::endl;
 #endif
         }
 
@@ -671,6 +713,58 @@ namespace SAMS
             for (int i = 0; i < Dims; i++) decomposition[i] = 1; //Without MPI just use 1
 #endif
             setDecomposition(decomposition, isPeriodic);
+        }
+
+        /**
+         * Print the MPI information, including the decomposition, as its own section of the run information
+         */
+        void printMPIInformation() const
+        {
+            //The section before ends with a separator
+            SAMS::cout << "MPI information:" << std::endl;
+            SAMS::cout << "=====================================================" << std::endl;
+#ifdef USE_MPI
+            char library[MPI_MAX_LIBRARY_VERSION_STRING];
+            int length;
+            checkMPIError(MPI_Get_library_version(library, &length));
+            const std::string libraryString(library, length);
+            SAMS::cout << "MPI library: " << libraryString.substr(0, libraryString.find('\n')) << std::endl;
+            int version, subversion;
+            checkMPIError(MPI_Get_version(&version, &subversion));
+            SAMS::cout << "MPI standard: " << version << "." << subversion << std::endl;
+            SAMS::cout << "Number of ranks: " << size << std::endl;
+            int totalRanks = 1;
+            for (int i = 0; i < Dims; i++) totalRanks *= dims[i];
+            //Not really necessary but I do hate it when codes pluralise incorrectly
+            SAMS::cout << "Using " << decompositionType << " MPI decomposition: " << totalRanks << (totalRanks > 1 ? " ranks (" : " rank (");
+            for (int i = 0; i < Dims; i++) {
+                SAMS::cout << dims[i];
+                if (i < Dims - 1)
+                    SAMS::cout << " x ";
+            }
+            SAMS::cout << ")" << std::endl;
+            SAMS::cout << "Periodic:";
+            for (int i = 0; i < Dims; i++) SAMS::cout << (periods[i] ? " T" : " F");
+            SAMS::cout << std::endl;
+            if (totalRanks != size)
+            {
+                SAMS::cerr << "Not all ranks are used in the decomposition" << std::endl;
+                SAMS::cerr << "Ranks available " << size << ", ranks used " << totalRanks << std::endl;
+                SAMS::cerr << "Ranks in decomposition: " << totalRanks << " (";
+                for (int i = 0; i < Dims; i++)
+                {
+                    SAMS::cerr << dims[i];
+                    if (i < Dims - 1)
+                        SAMS::cerr << " x ";
+                }
+                SAMS::cerr << ")" << std::endl;
+                SAMS::cerr << "Wasted ranks : " << size - totalRanks << std::endl;
+            }
+#else
+            SAMS::cout << "Running without MPI parallelism" << std::endl;
+            SAMS::cout << "DO NOT TRY TO RUN THIS VERSION OF SAMS ACROSS NODES!" << std::endl;
+#endif
+            SAMS::cout << "=====================================================" << std::endl;
         }
 
 
@@ -794,9 +888,9 @@ namespace SAMS
          * @param subsizes Array of sizes of the subarray
          * @param starts Array of starting indices of the subarray
          * @param baseType The base MPI_Datatype
-         * @param layout The layout of the array (default MPI_ORDER_C)
+         * @param ordering The ordering of the array in memory (default row major)
          */
-        MPI_Datatype createMPISubarrayType([[maybe_unused]] int rank, [[maybe_unused]] const int* sizes, [[maybe_unused]] const int* subsizes, [[maybe_unused]] const int* starts, [[maybe_unused]] MPI_Datatype baseType, [[maybe_unused]] int layout=MPI_ORDER_C)
+        MPI_Datatype createMPISubarrayType([[maybe_unused]] int rank, [[maybe_unused]] const int* sizes, [[maybe_unused]] const int* subsizes, [[maybe_unused]] const int* starts, [[maybe_unused]] MPI_Datatype baseType, [[maybe_unused]] portableWrapper::arrayOrdering ordering = portableWrapper::arrayOrdering::rowMajor)
         {
             #ifdef USE_MPI
             MPI_Datatype newType;
@@ -805,12 +899,33 @@ namespace SAMS
                 sizes,
                 subsizes,
                 starts,
-                layout, 
+                ordering == portableWrapper::arrayOrdering::columnMajor ? MPI_ORDER_FORTRAN : MPI_ORDER_C,
                 baseType,
                 &newType));
-                return cacheType(newType);
+            subarrayInfo subarray;
+            subarray.rank = rank;
+            subarray.ordering = ordering;
+            for (int i = 0; i < rank; i++){
+                subarray.sizes[i] = sizes[i];
+                subarray.subsizes[i] = subsizes[i];
+                subarray.starts[i] = starts[i];
+            }
+                return cacheType(newType, subarray);
             #else
             return MPI_DATATYPE_NULL;
+            #endif
+        }
+
+        /**
+         * Get the arguments that a subarray MPI_Datatype was created with. The rank is 0 for a type that is not a subarray
+         * @param mpiType The MPI_Datatype
+         */
+        subarrayInfo getSubarrayInfo([[maybe_unused]] MPI_Datatype mpiType)
+        {
+            #ifdef USE_MPI
+            return mpiSubarrayTypeCache.at(buildMPIGenericName(mpiType)).subarray;
+            #else
+            return subarrayInfo();
             #endif
         }
 
@@ -820,13 +935,13 @@ namespace SAMS
          * @param subsizes Array of sizes of the subarray
          * @param starts Array of starting indices of the subarray
          * @param baseType The base MPI_Datatype
-         * @param layout The layout of the array (default MPI_ORDER_C)
+         * @param ordering The ordering of the array in memory (default row major)
          */
         template<int N>
-        MPI_Datatype createMPISubarrayType([[maybe_unused]] const std::array<int,N> &sizes, [[maybe_unused]] const std::array<int,N> &subsizes, [[maybe_unused]] const std::array<int,N> &starts, [[maybe_unused]] MPI_Datatype baseType, [[maybe_unused]] int layout=MPI_ORDER_C)
+        MPI_Datatype createMPISubarrayType([[maybe_unused]] const std::array<int,N> &sizes, [[maybe_unused]] const std::array<int,N> &subsizes, [[maybe_unused]] const std::array<int,N> &starts, [[maybe_unused]] MPI_Datatype baseType, [[maybe_unused]] portableWrapper::arrayOrdering ordering = portableWrapper::arrayOrdering::rowMajor)
         {
             #ifdef USE_MPI
-            return createMPISubarrayType(N, sizes.data(), subsizes.data(), starts.data(), baseType, layout);
+            return createMPISubarrayType(N, sizes.data(), subsizes.data(), starts.data(), baseType, ordering);
             #else
             return MPI_DATATYPE_NULL;
             #endif
@@ -852,7 +967,7 @@ namespace SAMS
                 LB[i] = rangeArray[i].lower_bound;
                 UB[i] = rangeArray[i].upper_bound;
             }
-            return createArraySliceType(rank, arrayVar.getLowerBounds(), arrayVar.getUpperBound(), LB, UB, gettypeRegistry().getMPIType<T>());
+            return createArraySliceType(rank, arrayVar.getLowerBounds(), arrayVar.getUpperBounds(), LB, UB, gettypeRegistry().getMPIType<T>());
             #else
             return MPI_DATATYPE_NULL;
             #endif
@@ -1084,10 +1199,12 @@ namespace SAMS
          * @param mpiSend Array to store the send MPI_Datatypes (size 2*rank)
          * @param mpiRecv Array to store the receive MPI_Datatypes (size 2*rank)
          * @param baseType The base MPI_Datatype of the variable
+         * @param memSpace The memory space of the variable, which sets its ordering
          */
-        void assignVariableMPITypes([[maybe_unused]] int rank, [[maybe_unused]] dimension* dims, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] MPI_Datatype baseType)
+        void assignVariableMPITypes([[maybe_unused]] int rank, [[maybe_unused]] dimension* dims, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] MPI_Datatype baseType, [[maybe_unused]] portableWrapper::arrayTags memSpace)
         {
             #ifdef USE_MPI
+            const portableWrapper::arrayOrdering ordering = portableWrapper::getOrdering(memSpace);
             SIGNED_INDEX_TYPE LB[MAX_RANK], UB[MAX_RANK];
             for (int axis = 0; axis < rank; axis++)
             {
@@ -1116,7 +1233,7 @@ namespace SAMS
                     }
                 }
                 SAMS::debugAll3 << "Creating lower send type on axis " << axis << std::endl;
-                mpiSend[axis*2] = createArraySliceType(rank, dims, LB, UB, baseType);
+                mpiSend[axis*2] = createArraySliceType(rank, dims, LB, UB, baseType, ordering);
 
                 //Send on upper edges
                 for (int i = 0; i < rank; i++)
@@ -1133,7 +1250,7 @@ namespace SAMS
                         UB[i] = dims[i].getLocalUB();
                     }
                 }
-                mpiSend[axis*2+1] = createArraySliceType(rank, dims, LB, UB, baseType);
+                mpiSend[axis*2+1] = createArraySliceType(rank, dims, LB, UB, baseType, ordering);
 
                 //Receive types
                 //Receive on lower edges
@@ -1148,7 +1265,7 @@ namespace SAMS
                         UB[i] = dims[i].getLocalUB();
                     }
                 }
-                mpiRecv[axis*2] = createArraySliceType(rank, dims, LB, UB, baseType);
+                mpiRecv[axis*2] = createArraySliceType(rank, dims, LB, UB, baseType, ordering);
 
                 //Receive on upper edges
                 for (int i = 0; i < rank; i++)
@@ -1164,7 +1281,7 @@ namespace SAMS
                         UB[i] = dims[i].getLocalUB();
                     }
                 }
-                mpiRecv[axis*2+1] = createArraySliceType(rank, dims, LB, UB, baseType);
+                mpiRecv[axis*2+1] = createArraySliceType(rank, dims, LB, UB, baseType, ordering);
             }
             #else
             //If not using MPI, set all types to MPI_DATATYPE_NULL
@@ -1207,36 +1324,66 @@ namespace SAMS
             }
         } 
 
-        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] int axis, [[maybe_unused]] SAMS::domain::edges edgeType)
+        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] int axis, [[maybe_unused]] SAMS::domain::edges edgeType, [[maybe_unused]] portableWrapper::arrayTags memSpace)
         {
 #ifdef USE_MPI
             int sendIndex = (edgeType == SAMS::domain::edges::lower ? axis*2 : axis*2+1);
             int recvIndex = (edgeType == SAMS::domain::edges::lower ? axis*2+1 : axis*2);
 
-            //Send to specified neighbor, receive from specified neighbor
-            //Use precreated MPI datatypes for the variable slices
-            checkMPIError(MPI_Sendrecv(static_cast<char*>(data), 1, mpiSend[sendIndex], neighbors[sendIndex], 0, static_cast<char*>(data), 1, mpiRecv[recvIndex], neighbors[recvIndex], 0, comm, MPI_STATUS_IGNORE));
+            if (memSpace == portableWrapper::arrayTags::host)
+            {
+                //Send to specified neighbor, receive from specified neighbor
+                //Use precreated MPI datatypes for the variable slices
+                checkMPIError(MPI_Sendrecv(static_cast<char*>(data), 1, mpiSend[sendIndex], neighbors[sendIndex], 0, static_cast<char*>(data), 1, mpiRecv[recvIndex], neighbors[recvIndex], 0, comm, MPI_STATUS_IGNORE));
+            }
+            else
+            {
+                //Accelerated variables are packed into contiguous buffers on the device, because MPI copies strided device memory a piece at a time
+                const subarrayInfo sendInfo = getSubarrayInfo(mpiSend[sendIndex]);
+                const subarrayInfo recvInfo = getSubarrayInfo(mpiRecv[recvIndex]);
+                int sendBytes, recvBytes;
+                checkMPIError(MPI_Type_size(mpiSend[sendIndex], &sendBytes));
+                checkMPIError(MPI_Type_size(mpiRecv[recvIndex], &recvBytes));
+                SIGNED_INDEX_TYPE sendElements = 1, recvElements = 1;
+                for (int i = 0; i < sendInfo.rank; ++i) sendElements *= sendInfo.subsizes[i];
+                for (int i = 0; i < recvInfo.rank; ++i) recvElements *= recvInfo.subsizes[i];
+                if (sendBuffer.getElements() < static_cast<size_t>(sendBytes)) bufferManager.allocate(sendBuffer, portableWrapper::Range(0, sendBytes - 1));
+                if (recvBuffer.getElements() < static_cast<size_t>(recvBytes)) bufferManager.allocate(recvBuffer, portableWrapper::Range(0, recvBytes - 1));
+                //Nothing is packed for a neighbour that does not exist
+                if (neighbors[sendIndex] != MPI_PROC_NULL)
+                {
+                    portableWrapper::applyKernel(makePacker(data, sendBuffer.data(), sendInfo, sendBytes / static_cast<int>(sendElements), false), portableWrapper::Range(0, sendElements - 1));
+                    portableWrapper::fence();
+                }
+                checkMPIError(MPI_Sendrecv(sendBuffer.data(), sendBytes, MPI_BYTE, neighbors[sendIndex], 0, recvBuffer.data(), recvBytes, MPI_BYTE, neighbors[recvIndex], 0, comm, MPI_STATUS_IGNORE));
+                //Nothing is received from a neighbour that does not exist, so the ghost cells are left for the boundary conditions
+                if (neighbors[recvIndex] != MPI_PROC_NULL)
+                {
+                    portableWrapper::applyKernel(makePacker(data, recvBuffer.data(), recvInfo, recvBytes / static_cast<int>(recvElements), true), portableWrapper::Range(0, recvElements - 1));
+                    portableWrapper::fence();
+                }
+            }
             SAMS::debugAll3 << "Completed halo exchange on axis " << axis << std::endl;
 #endif
         }
 
-        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] int axis)
+        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] int axis, [[maybe_unused]] portableWrapper::arrayTags memSpace)
         {
 #ifdef USE_MPI
-            haloExchange(data, rank, mpiSend, mpiRecv, axis, SAMS::domain::edges::lower);
-            haloExchange(data, rank, mpiSend, mpiRecv, axis, SAMS::domain::edges::upper);
+            haloExchange(data, rank, mpiSend, mpiRecv, axis, SAMS::domain::edges::lower, memSpace);
+            haloExchange(data, rank, mpiSend, mpiRecv, axis, SAMS::domain::edges::upper, memSpace);
 #endif
         }
 
         /**
-         * 
+         *
          */
-        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv)
+        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] portableWrapper::arrayTags memSpace)
         {
 #ifdef USE_MPI
             for (int axis = 0; axis < rank; axis++)
             {
-                haloExchange(data, rank, mpiSend, mpiRecv, axis);
+                haloExchange(data, rank, mpiSend, mpiRecv, axis, memSpace);
             }
             SAMS::debugAll3 << "Completed halo exchange" << std::endl;
 #endif
@@ -1258,6 +1405,8 @@ namespace SAMS
 
         void finalize()
         {
+            //Free the halo buffers
+            bufferManager.clear();
             #ifdef USE_MPI
             if (comm != rootComm && comm != MPI_COMM_NULL) {
                 checkMPIError(MPI_Comm_free(&comm));

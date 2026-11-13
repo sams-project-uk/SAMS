@@ -76,7 +76,7 @@ namespace SAMS {
          * Create the MPI datatypes for this variable
          */
         void buildMPITypes(){
-            mpiMgr.assignVariableMPITypes(rank, dimensions.data(), mpiSend, mpiRecv, mpiType);
+            mpiMgr.assignVariableMPITypes(rank, dimensions.data(), mpiSend, mpiRecv, mpiType, memSpace);
         }
 
         /**
@@ -269,29 +269,29 @@ namespace SAMS {
         }
 
         void haloExchange(){
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, memSpace);
         }
 
         void haloExchange(int axis){
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, memSpace);
         }
 
         void haloExchange(std::string axisName){
             int axis = axisReg.getMPIAxis(axisName);
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, memSpace);
         }
 
         void haloExchange(int axis, SAMS::domain::edges edgeType){
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, edgeType);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, edgeType, memSpace);
         }
 
         void haloExchange(std::string axisName, SAMS::domain::edges edgeType){
             int axis = axisReg.getMPIAxis(axisName);
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, edgeType);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, edgeType, memSpace);
         }
 
         void haloExchange(SAMS::MPIManager<MPI_DECOMPOSITION_RANK>& customMPIManager){
-            customMPIManager.haloExchange(dataPtr, rank, mpiSend, mpiRecv);
+            customMPIManager.haloExchange(dataPtr, rank, mpiSend, mpiRecv, memSpace);
         }
 
 
