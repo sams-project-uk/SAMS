@@ -53,6 +53,10 @@ namespace SAMS {
         MPI_Datatype mpiType;
         MPI_Datatype mpiSend[2*MAX_RANK]; //Array of MPI_Datatypes for sending in each dimension (lower and upper)
         MPI_Datatype mpiRecv[2*MAX_RANK]; //Array of MPI_Datatypes for receiving in each dimension (lower and upper)
+        MPI_Datatype mpiSendPacked[2*MAX_RANK]; //Array of contiguous MPI_Datatypes for sending packed faces of accelerated variables
+        MPI_Datatype mpiRecvPacked[2*MAX_RANK]; //Array of contiguous MPI_Datatypes for receiving packed faces of accelerated variables
+        MPIManager<MPI_DECOMPOSITION_RANK>::subarrayInfo sendInfo[2*MAX_RANK]; //The faces that are sent, for packing accelerated variables
+        MPIManager<MPI_DECOMPOSITION_RANK>::subarrayInfo recvInfo[2*MAX_RANK]; //The faces that are received, for unpacking accelerated variables
         std::array<std::array<std::vector<std::shared_ptr<boundaryConditions>>, 2>, MAX_RANK> boundaryConditionList;
 
         /**
@@ -76,14 +80,14 @@ namespace SAMS {
          * Create the MPI datatypes for this variable
          */
         void buildMPITypes(){
-            mpiMgr.assignVariableMPITypes(rank, dimensions.data(), mpiSend, mpiRecv, mpiType, memSpace);
+            mpiMgr.assignVariableMPITypes(rank, dimensions.data(), mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, mpiType, memSpace);
         }
 
         /**
          * Clear the MPI type arrays
          */
         void clearMPITypeArrays(){
-            mpiMgr.releaseVariableMPITypes(rank, mpiSend, mpiRecv);     
+            mpiMgr.releaseVariableMPITypes(rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked);
         }
 
         /**
@@ -93,6 +97,8 @@ namespace SAMS {
             for(int i=0; i<2*MAX_RANK; i++){
                 mpiSend[i] = MPI_DATATYPE_NULL;
                 mpiRecv[i] = MPI_DATATYPE_NULL;
+                mpiSendPacked[i] = MPI_DATATYPE_NULL;
+                mpiRecvPacked[i] = MPI_DATATYPE_NULL;
             }
         }
 
@@ -269,29 +275,29 @@ namespace SAMS {
         }
 
         void haloExchange(){
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, memSpace);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, memSpace);
         }
 
         void haloExchange(int axis){
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, memSpace);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, axis, memSpace);
         }
 
         void haloExchange(std::string axisName){
             int axis = axisReg.getMPIAxis(axisName);
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, memSpace);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, axis, memSpace);
         }
 
         void haloExchange(int axis, SAMS::domain::edges edgeType){
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, edgeType, memSpace);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, axis, edgeType, memSpace);
         }
 
         void haloExchange(std::string axisName, SAMS::domain::edges edgeType){
             int axis = axisReg.getMPIAxis(axisName);
-            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, axis, edgeType, memSpace);
+            mpiMgr.haloExchange(dataPtr, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, axis, edgeType, memSpace);
         }
 
         void haloExchange(SAMS::MPIManager<MPI_DECOMPOSITION_RANK>& customMPIManager){
-            customMPIManager.haloExchange(dataPtr, rank, mpiSend, mpiRecv, memSpace);
+            customMPIManager.haloExchange(dataPtr, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, memSpace);
         }
 
 

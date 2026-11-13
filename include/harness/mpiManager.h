@@ -160,6 +160,8 @@ namespace SAMS
             std::array<int, MAX_RANK> subsizes{};
             std::array<int, MAX_RANK> starts{};
             portableWrapper::arrayOrdering ordering = portableWrapper::arrayOrdering::rowMajor;
+            //The size in bytes of an element of the base type
+            int elementSize = 0;
         };
     private:
 
@@ -449,6 +451,10 @@ namespace SAMS
             for (int i = 0; i < ntypes; i++){
                 //Convert MPI_Datatype to type name
                 Name += buildMPIGenericName(array_of_types[i]);
+                //MPI_Type_get_contents returns new handles for derived types, which must be freed
+                int typeInts, typeAddresses, typeTypes, typeCombiner;
+                checkMPIError(MPI_Type_get_envelope(array_of_types[i], &typeInts, &typeAddresses, &typeTypes, &typeCombiner));
+                if (typeCombiner != MPI_COMBINER_NAMED) checkMPIError(MPI_Type_free(&array_of_types[i]));
                 if (i < ntypes - 1){
                     Name += ",";
                 }
@@ -905,6 +911,7 @@ namespace SAMS
             subarrayInfo subarray;
             subarray.rank = rank;
             subarray.ordering = ordering;
+            checkMPIError(MPI_Type_size(baseType, &subarray.elementSize));
             for (int i = 0; i < rank; i++){
                 subarray.sizes[i] = sizes[i];
                 subarray.subsizes[i] = subsizes[i];
@@ -1065,18 +1072,40 @@ namespace SAMS
         }
 
         /**
-         * Create an MPI_Type_contiguous type for a specified base type and count
+         * Create an MPI_Type_contiguous type for a specified base type and count. A count too large for an int is built from chunks of just under 2GiB
          * @param count The number of elements in the contiguous type
          * @param baseType The base MPI_Datatype
          */
-        MPI_Datatype createMPIContiguousType([[maybe_unused]] int count, [[maybe_unused]] MPI_Datatype baseType)
+        MPI_Datatype createMPIContiguousType([[maybe_unused]] size_t count, [[maybe_unused]] MPI_Datatype baseType)
         {
             #ifdef USE_MPI
-            MPI_Datatype newType;            
-            checkMPIError(MPI_Type_contiguous(
-                count,
-                baseType,
-                &newType));
+            MPI_Datatype newType;
+            int baseSize;
+            checkMPIError(MPI_Type_size(baseType, &baseSize));
+            //The number of elements in a chunk
+            const size_t chunkElements = static_cast<size_t>(std::numeric_limits<int>::max()) / baseSize;
+            if (count <= chunkElements)
+            {
+                checkMPIError(MPI_Type_contiguous(
+                    static_cast<int>(count),
+                    baseType,
+                    &newType));
+            }
+            else
+            {
+                //Whole chunks, followed by the elements that are left over
+                MPI_Datatype chunkType;
+                const size_t remainder = count % chunkElements;
+                checkMPIError(MPI_Type_contiguous(static_cast<int>(chunkElements), baseType, &chunkType));
+                MPI_Aint lowerBound, extent;
+                checkMPIError(MPI_Type_get_extent(baseType, &lowerBound, &extent));
+                int blocklengths[2] = {static_cast<int>(count / chunkElements), static_cast<int>(remainder)};
+                MPI_Aint displacements[2] = {0, static_cast<MPI_Aint>(count - remainder) * extent};
+                MPI_Datatype types[2] = {chunkType, baseType};
+                checkMPIError(MPI_Type_create_struct(2, blocklengths, displacements, types, &newType));
+                //The chunk type is kept by the combined type
+                checkMPIError(MPI_Type_free(&chunkType));
+            }
             std::string Name = buildMPIGenericName(newType);
             //If type already in cache, return existing type
             return cacheType(newType);
@@ -1198,10 +1227,14 @@ namespace SAMS
          * @param dims Array of dimensions for the variable
          * @param mpiSend Array to store the send MPI_Datatypes (size 2*rank)
          * @param mpiRecv Array to store the receive MPI_Datatypes (size 2*rank)
+         * @param mpiSendPacked Array to store the contiguous send MPI_Datatypes of accelerated variables (size 2*rank)
+         * @param mpiRecvPacked Array to store the contiguous receive MPI_Datatypes of accelerated variables (size 2*rank)
+         * @param sendInfo Array to store the subarray information of the send types of accelerated variables (size 2*rank)
+         * @param recvInfo Array to store the subarray information of the receive types of accelerated variables (size 2*rank)
          * @param baseType The base MPI_Datatype of the variable
          * @param memSpace The memory space of the variable, which sets its ordering
          */
-        void assignVariableMPITypes([[maybe_unused]] int rank, [[maybe_unused]] dimension* dims, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] MPI_Datatype baseType, [[maybe_unused]] portableWrapper::arrayTags memSpace)
+        void assignVariableMPITypes([[maybe_unused]] int rank, [[maybe_unused]] dimension* dims, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] MPI_Datatype* mpiSendPacked, [[maybe_unused]] MPI_Datatype* mpiRecvPacked, [[maybe_unused]] subarrayInfo* sendInfo, [[maybe_unused]] subarrayInfo* recvInfo, [[maybe_unused]] MPI_Datatype baseType, [[maybe_unused]] portableWrapper::arrayTags memSpace)
         {
             #ifdef USE_MPI
             const portableWrapper::arrayOrdering ordering = portableWrapper::getOrdering(memSpace);
@@ -1283,6 +1316,23 @@ namespace SAMS
                 }
                 mpiRecv[axis*2+1] = createArraySliceType(rank, dims, LB, UB, baseType, ordering);
             }
+#ifndef SAMS_DEVICE_NO_CONTIGUOUS_HALO
+            //Accelerated variables are packed into contiguous buffers, so they need the contiguous form of each face
+            if (memSpace != portableWrapper::arrayTags::host)
+            {
+                for (int i = 0; i < 2 * rank; i++)
+                {
+                    if (mpiSend[i] == MPI_DATATYPE_NULL) continue;
+                    sendInfo[i] = getSubarrayInfo(mpiSend[i]);
+                    recvInfo[i] = getSubarrayInfo(mpiRecv[i]);
+                    size_t sendElements = 1, recvElements = 1;
+                    for (int j = 0; j < sendInfo[i].rank; j++) sendElements *= sendInfo[i].subsizes[j];
+                    for (int j = 0; j < recvInfo[i].rank; j++) recvElements *= recvInfo[i].subsizes[j];
+                    mpiSendPacked[i] = createMPIContiguousType(sendElements, baseType);
+                    mpiRecvPacked[i] = createMPIContiguousType(recvElements, baseType);
+                }
+            }
+#endif
             #else
             //If not using MPI, set all types to MPI_DATATYPE_NULL
             for (int axis = 0; axis < rank; axis++)
@@ -1300,9 +1350,22 @@ namespace SAMS
          * @param rank The rank of the variable
          * @param mpiSend Array of send MPI_Datatypes (size 2*rank)
          * @param mpiRecv Array of receive MPI_Datatypes (size 2*rank)
+         * @param mpiSendPacked Array of contiguous send MPI_Datatypes (size 2*rank)
+         * @param mpiRecvPacked Array of contiguous receive MPI_Datatypes (size 2*rank)
          */
-        void releaseVariableMPITypes(int rank, MPI_Datatype* mpiSend, MPI_Datatype* mpiRecv)
+        void releaseVariableMPITypes(int rank, MPI_Datatype* mpiSend, MPI_Datatype* mpiRecv, MPI_Datatype* mpiSendPacked, MPI_Datatype* mpiRecvPacked)
         {
+            for (int i = 0; i < 2 * rank; i++)
+            {
+                if (mpiSendPacked[i] != MPI_DATATYPE_NULL) {
+                    deleteMPIType(mpiSendPacked[i]);
+                    mpiSendPacked[i] = MPI_DATATYPE_NULL;
+                }
+                if (mpiRecvPacked[i] != MPI_DATATYPE_NULL) {
+                    deleteMPIType(mpiRecvPacked[i]);
+                    mpiRecvPacked[i] = MPI_DATATYPE_NULL;
+                }
+            }
             for (int axis = 0; axis < rank; axis++)
             {
                 if (mpiSend[axis*2] != MPI_DATATYPE_NULL) {
@@ -1324,13 +1387,19 @@ namespace SAMS
             }
         } 
 
-        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] int axis, [[maybe_unused]] SAMS::domain::edges edgeType, [[maybe_unused]] portableWrapper::arrayTags memSpace)
+        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] MPI_Datatype* mpiSendPacked, [[maybe_unused]] MPI_Datatype* mpiRecvPacked, [[maybe_unused]] const subarrayInfo* sendInfo, [[maybe_unused]] const subarrayInfo* recvInfo, [[maybe_unused]] int axis, [[maybe_unused]] SAMS::domain::edges edgeType, [[maybe_unused]] portableWrapper::arrayTags memSpace)
         {
 #ifdef USE_MPI
             int sendIndex = (edgeType == SAMS::domain::edges::lower ? axis*2 : axis*2+1);
             int recvIndex = (edgeType == SAMS::domain::edges::lower ? axis*2+1 : axis*2);
 
-            if (memSpace == portableWrapper::arrayTags::host)
+#ifdef SAMS_DEVICE_NO_CONTIGUOUS_HALO
+            //Accelerated variables are not packed on the device, so every variable is exchanged with its MPI datatypes
+            const bool packed = false;
+#else
+            const bool packed = memSpace != portableWrapper::arrayTags::host;
+#endif
+            if (!packed)
             {
                 //Send to specified neighbor, receive from specified neighbor
                 //Use precreated MPI datatypes for the variable slices
@@ -1339,27 +1408,27 @@ namespace SAMS
             else
             {
                 //Accelerated variables are packed into contiguous buffers on the device, because MPI copies strided device memory a piece at a time
-                const subarrayInfo sendInfo = getSubarrayInfo(mpiSend[sendIndex]);
-                const subarrayInfo recvInfo = getSubarrayInfo(mpiRecv[recvIndex]);
-                int sendBytes, recvBytes;
-                checkMPIError(MPI_Type_size(mpiSend[sendIndex], &sendBytes));
-                checkMPIError(MPI_Type_size(mpiRecv[recvIndex], &recvBytes));
-                SIGNED_INDEX_TYPE sendElements = 1, recvElements = 1;
-                for (int i = 0; i < sendInfo.rank; ++i) sendElements *= sendInfo.subsizes[i];
-                for (int i = 0; i < recvInfo.rank; ++i) recvElements *= recvInfo.subsizes[i];
-                if (sendBuffer.getElements() < static_cast<size_t>(sendBytes)) bufferManager.allocate(sendBuffer, portableWrapper::Range(0, sendBytes - 1));
-                if (recvBuffer.getElements() < static_cast<size_t>(recvBytes)) bufferManager.allocate(recvBuffer, portableWrapper::Range(0, recvBytes - 1));
+                const subarrayInfo &send = sendInfo[sendIndex];
+                const subarrayInfo &recv = recvInfo[recvIndex];
+                size_t sendElements = 1, recvElements = 1;
+                for (int i = 0; i < send.rank; ++i) sendElements *= send.subsizes[i];
+                for (int i = 0; i < recv.rank; ++i) recvElements *= recv.subsizes[i];
+                const size_t sendBytes = sendElements * send.elementSize;
+                const size_t recvBytes = recvElements * recv.elementSize;
+                if (sendBuffer.getElements() < sendBytes) bufferManager.allocate(sendBuffer, portableWrapper::Range(0, static_cast<SIGNED_INDEX_TYPE>(sendBytes) - 1));
+                if (recvBuffer.getElements() < recvBytes) bufferManager.allocate(recvBuffer, portableWrapper::Range(0, static_cast<SIGNED_INDEX_TYPE>(recvBytes) - 1));
                 //Nothing is packed for a neighbour that does not exist
                 if (neighbors[sendIndex] != MPI_PROC_NULL)
                 {
-                    portableWrapper::applyKernel(makePacker(data, sendBuffer.data(), sendInfo, sendBytes / static_cast<int>(sendElements), false), portableWrapper::Range(0, sendElements - 1));
+                    portableWrapper::applyKernel(makePacker(data, sendBuffer.data(), send, send.elementSize, false), portableWrapper::Range(0, static_cast<SIGNED_INDEX_TYPE>(sendElements) - 1));
                     portableWrapper::fence();
                 }
-                checkMPIError(MPI_Sendrecv(sendBuffer.data(), sendBytes, MPI_BYTE, neighbors[sendIndex], 0, recvBuffer.data(), recvBytes, MPI_BYTE, neighbors[recvIndex], 0, comm, MPI_STATUS_IGNORE));
+                //The contiguous types are counted in elements of the base type, so they are not limited to 2GiB
+                checkMPIError(MPI_Sendrecv(sendBuffer.data(), 1, mpiSendPacked[sendIndex], neighbors[sendIndex], 0, recvBuffer.data(), 1, mpiRecvPacked[recvIndex], neighbors[recvIndex], 0, comm, MPI_STATUS_IGNORE));
                 //Nothing is received from a neighbour that does not exist, so the ghost cells are left for the boundary conditions
                 if (neighbors[recvIndex] != MPI_PROC_NULL)
                 {
-                    portableWrapper::applyKernel(makePacker(data, recvBuffer.data(), recvInfo, recvBytes / static_cast<int>(recvElements), true), portableWrapper::Range(0, recvElements - 1));
+                    portableWrapper::applyKernel(makePacker(data, recvBuffer.data(), recv, recv.elementSize, true), portableWrapper::Range(0, static_cast<SIGNED_INDEX_TYPE>(recvElements) - 1));
                     portableWrapper::fence();
                 }
             }
@@ -1367,23 +1436,23 @@ namespace SAMS
 #endif
         }
 
-        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] int axis, [[maybe_unused]] portableWrapper::arrayTags memSpace)
+        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] MPI_Datatype* mpiSendPacked, [[maybe_unused]] MPI_Datatype* mpiRecvPacked, [[maybe_unused]] const subarrayInfo* sendInfo, [[maybe_unused]] const subarrayInfo* recvInfo, [[maybe_unused]] int axis, [[maybe_unused]] portableWrapper::arrayTags memSpace)
         {
 #ifdef USE_MPI
-            haloExchange(data, rank, mpiSend, mpiRecv, axis, SAMS::domain::edges::lower, memSpace);
-            haloExchange(data, rank, mpiSend, mpiRecv, axis, SAMS::domain::edges::upper, memSpace);
+            haloExchange(data, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, axis, SAMS::domain::edges::lower, memSpace);
+            haloExchange(data, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, axis, SAMS::domain::edges::upper, memSpace);
 #endif
         }
 
         /**
          *
          */
-        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] portableWrapper::arrayTags memSpace)
+        void haloExchange([[maybe_unused]] void* data, [[maybe_unused]] int rank, [[maybe_unused]] MPI_Datatype* mpiSend, [[maybe_unused]] MPI_Datatype* mpiRecv, [[maybe_unused]] MPI_Datatype* mpiSendPacked, [[maybe_unused]] MPI_Datatype* mpiRecvPacked, [[maybe_unused]] const subarrayInfo* sendInfo, [[maybe_unused]] const subarrayInfo* recvInfo, [[maybe_unused]] portableWrapper::arrayTags memSpace)
         {
 #ifdef USE_MPI
             for (int axis = 0; axis < rank; axis++)
             {
-                haloExchange(data, rank, mpiSend, mpiRecv, axis, memSpace);
+                haloExchange(data, rank, mpiSend, mpiRecv, mpiSendPacked, mpiRecvPacked, sendInfo, recvInfo, axis, memSpace);
             }
             SAMS::debugAll3 << "Completed halo exchange" << std::endl;
 #endif
