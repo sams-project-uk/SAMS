@@ -1068,33 +1068,57 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
 //Assuming normalisation to the sound speed
     template<typename T_EOS> 
 void PIP<T_EOS>::set_dt_collisional(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source) {
-    // Explicit-source time step limit: dt <= 0.1 dt_multiplier / (fastest relative rate of change), per
-    // interior cell. The rates are relative to the quantity being changed:
-    //   alpha (rho_n + rho_p)     momentum (and thermal) relaxation of the two fluids
-    //   |dm/dt| / rho             ionisation / recombination, each fluid
-    //   |de/dt| / e               heating (thermal exchange, friction, ionisation potential), each fluid
-    // The earlier limit used the absolute rates (1/|source| for every source array, including ghost
-    // cell 0), which mixes units (specific energies ~100 against velocities ~1) and limited dt to well
-    // below the CFL step (3.5e-4 against 1.6e-3 at alpha0 = 1 with vertex_frictional_heating). With the
-    // exchange terms off (collisions = false) nothing is applied, so there is no limit.
+    // Explicit-source time step limit: dt <= dt_multiplier / (fastest rate), with every rate relative to what
+    // it changes (the explicit momentum exchange is stable for dt a (rho_n + rho_p) < 2):
+    //   momentum_rate (vertices)  the momentum exchange dv_p/dt = a rho_n (v_n - v_p), dv_n/dt = -a rho_p (v_n - v_p)
+    //                             leaves the centre-of-mass velocity fixed and relaxes the drift v_n - v_p at
+    //                             a (rho_n + rho_p): the stiffness of the exchange (explicit update stable for
+    //                             dt a (rho_n + rho_p) < 2). Evaluated with the same vertex values the exchange
+    //                             uses (rho_n_ac_vertex + rho_p_ac_vertex with vertex_rates, otherwise the
+    //                             8-cell averages of a and rho), over the vertices it updates. |dv/dt| / |v| is
+    //                             not used: v can be zero (symmetry plane, gas at rest) and it is not
+    //                             Galilean invariant.
+    //   mass_rate (cells)         |dm/dt| / rho, each fluid (ionisation / recombination)
+    //   energy_rate (cells)       |de/dt| / e, each fluid (thermal exchange, friction, ionisation potential);
+    //                             this also covers the thermal relaxation, ~ a (rho_p + rho_n / 2).
+    // The earlier limit used absolute rates (1/|source| for every source array, including ghost cell 0),
+    // which mixes units (specific energies ~100 against velocities ~1) and limited dt to well below the CFL
+    // step (3.5e-4 against 1.6e-3 at alpha0 = 1 with vertex_frictional_heating). With the exchange terms off
+    // (collisions = false) nothing is applied, so there is no limit.
     using Range = portableWrapper::Range;
     if (!plasma_source.collisions) {
         plasma_source.two_fluid_timestep = data.largest_number;
         return;
     }
-    plasma_source.two_fluid_timestep = 0.1*data.dt_multiplier /
-    portableWrapper::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        const SAMS::T_dataType rho_p = data.rho(ix,iy,iz), rho_n = dataNeutral.rho(ix,iy,iz);
-        SAMS::T_dataType r = plasma_source.ac(ix,iy,iz)*(rho_n + rho_p);
-        r = std::max(r, std::abs(plasma_source.source_mass(ix,iy,iz))/rho_p);
-        r = std::max(r, std::abs(plasma_source.source_mass_n(ix,iy,iz))/rho_n);
-        r = std::max(r, std::abs(plasma_source.source_energy(ix,iy,iz))/data.energy_ion(ix,iy,iz));
-        r = std::max(r, std::abs(plasma_source.source_energy_n(ix,iy,iz))/dataNeutral.energy(ix,iy,iz));
-        return r;
-    }, LAMBDA(SAMS::T_dataType &a, const SAMS::T_dataType &b) {
-        a = portableWrapper::max(a, b);
-    }, SAMS::T_dataType(1.0e-30),
-    Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+    auto maxOp = LAMBDA(SAMS::T_dataType &a, const SAMS::T_dataType &b) { a = portableWrapper::max(a, b); };
+
+    // Momentum exchange, at the vertices it updates (0..n, as apply_two_fluid_source)
+    SAMS::T_dataType momentum_rate;
+    if (plasma_source.vertex_rates) {
+        momentum_rate = portableWrapper::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            return plasma_source.rho_n_ac_vertex(ix,iy,iz) + plasma_source.rho_p_ac_vertex(ix,iy,iz);
+        }, maxOp, SAMS::T_dataType(0.0), Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    } else {
+        momentum_rate = portableWrapper::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+            SAMS::T_dataType ac_v = 0.0, rho_v = 0.0;   // 8-cell averages, as get_collisional_source_terms
+            for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c) {
+                ac_v  += plasma_source.ac(ix + a, iy + b, iz + c);
+                rho_v += data.rho(ix + a, iy + b, iz + c) + dataNeutral.rho(ix + a, iy + b, iz + c);
+            }
+            return 0.125*ac_v * 0.125*rho_v;
+        }, maxOp, SAMS::T_dataType(0.0), Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+    }
+
+    // Mass and energy exchange, at the interior cells
+    const SAMS::T_dataType cell_rate = portableWrapper::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+        const SAMS::T_dataType mass_rate = std::max(std::abs(plasma_source.source_mass(ix,iy,iz))/data.rho(ix,iy,iz),
+                                                    std::abs(plasma_source.source_mass_n(ix,iy,iz))/dataNeutral.rho(ix,iy,iz));
+        const SAMS::T_dataType energy_rate = std::max(std::abs(plasma_source.source_energy(ix,iy,iz))/data.energy_ion(ix,iy,iz),
+                                                      std::abs(plasma_source.source_energy_n(ix,iy,iz))/dataNeutral.energy(ix,iy,iz));
+        return std::max(mass_rate, energy_rate);
+    }, maxOp, SAMS::T_dataType(0.0), Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+
+    plasma_source.two_fluid_timestep = data.dt_multiplier / std::max({momentum_rate, cell_rate, SAMS::T_dataType(1.0e-30)});
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template<typename T_EOS> 
