@@ -667,3 +667,34 @@ The run finished at 12:06 on 16 Nov ("Simulation complete", 3531 s). At t = 1 th
 2. Report to the LARE developers: the energy defect at the MHD slow shock (5%, independent of resolution), with this Riemann problem and `scripts/mhd_riemann_exact.py` as the test.
 3. Optional: fix the uncoupled dt bug in `twofluid.h` for PIP-mode uncoupled runs.
 4. Then return to the coupling terms and the stall at α0 = 100.
+
+## Status update, 16 Nov 2026 (14:30): pure-MHD tests: the remaining error is magnetic dissipation in the remap
+
+**Runs:** the pure-MHD sheet at t = 1 (`sams LARE3D Hillier`; L = 25, dx = 0.02 unless stated; one rank each, about 3 min).
+- **Built and launched by** `runs/mhd_tests.sh`.
+- **`runs/mhd_sheet_build.sh`** now takes `VISC1=`, `ETA=` and `RKE=upstream|fix` from the environment. `RKE=fix` temporarily ports LARE3DST's `rke_3d_fix` to base LARE: a 0.25 share in the x, y and z remaps, and `energy_bcs()` after `energy_correction`. Sources are restored after every build.
+- **Summary:** `python3 runs/mhd_tests_summary.py runs/<run> ...` gives one line per run: shock against exact, plateau errors, the energy flux missing at the shock, and global E − E0 as a percentage of the magnetic energy released. On the baseline its snapshot energy (−5.78%) agrees with the in-code `LARE3DST` budget (−5.65%).
+
+| Run | Shock / exact | Inner ρ | Inner T | Energy flux missing at shock | E − E0 (% of released) | y-z mode |
+| --- | --- | --- | --- | --- | --- | --- |
+| baseline (`mhdsheet_L25_dx002_t1`) | 0.915 | +9.8% | −10.1% | 4.8% | −5.78% | 3×10⁻¹⁰ |
+| dx = 0.01 (`mhd_dx001`) | 0.921 | +10.1% | −10.2% | 4.9% | −5.78% | 1×10⁻⁶ |
+| `visc1` = 0.8 (`mhd_visc08`) | 0.965 | +6.7% | −7.0% | 3.4% | −4.07% | 4×10⁻¹² |
+| `rke` as upstream (`mhd_rke_up`) | 1.015 | −0.7% | +0.4% | 0.4% | −0.26% | **5×10⁻³** |
+| `rke` + `rke_3d_fix` (`mhd_rke_fix`) | **0.965** | +4.2% | −4.7% | 2.1% | **−2.74%** | 1×10⁻¹⁰ |
+| resistive, η = 10⁻³ or 4×10⁻³ | crashed on step 0 | | | | | |
+
+**Findings:**
+- **Resolution doesn't matter.** Halving dx changes neither the energy loss (−5.78% in both) nor the shock position.
+- **With `rke` fixed, the kinetic part is returned exactly.** Half the error goes: the loss drops from 5.8% to 2.7%, and the shock moves from 0.915 to 0.965. What remains, 2.7%, is the **magnetic energy dissipated by the remap**. That is the same 2.6–2.7% the in-code budget measured for the x-pass, and the loss that the first handoff called "the only loss `rke` cannot return".
+- **Upstream `rke` looks perfect for the wrong reason.** It hits the shock speed (1.015) only because it returns twice the kinetic loss (about 6%), which happens to cancel the magnetic loss (about 2.7%). It also breaks y-z uniformity (5×10⁻³): this is the ghost-cell bug.
+- **More shock viscosity helps** (`visc1 = 0.8`: 0.965). More of the jump is dissipated in the Lagrangian step, where the energy correctly becomes heat, and less is left for the remap to lose.
+- **Resistivity in base LARE is broken.** `resistive_effects` (`LARE/lagran.cpp:484`) does `pw::assign(data.bx1, data.bx)`, but `bx` is face-staggered and `bx1` is allocated cell-centred (`LARE/setup.cpp:194`), so it throws "Source and destination arrays must have the same number of elements". The sub-step count also divides by `dtr`, which is 0 on step 0.
+- **The coupled runs behave differently.** At α0 = 1 (two-fluid, dx = 0.04), `rke` + `rke_3d_fix` only recovered 1.5 points of the 17% temperature deficit, against 5 of 10 points here. The coupled lag (19%) therefore has a large part that does not come from the plasma remap.
+
+### Next steps
+
+1. **Magnetic-energy correction in the remap,** analogous to `rke`, behind a flag that defaults off. Return the magnetic energy each remap pass dissipates to the internal energy of the cells involved. Test it in pure MHD: with `rke` + `rke_3d_fix` the target is shock/exact → 1.00 and E − E0 → 0. Agree it with the LARE developers.
+2. Optional: fix base LARE's resistive path (face/cell array mismatch, and the dt on step 0) to test resistive smoothing of the B\_y jump.
+3. Report to the LARE developers: the energy defect at the MHD slow shock (−5.8% of released, 4.8% of the flux through the shock; resolution-independent), the `rke` 3D bugs, and the resistive crash.
+4. Then the two-fluid part of the lag: at α0 = 1 most of it does not come from the plasma remap. Look at the neutral fluid's remap (`LARE3DNF`) and the collisional heating.
