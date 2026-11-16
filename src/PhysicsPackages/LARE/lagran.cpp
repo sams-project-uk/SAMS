@@ -81,16 +81,13 @@ namespace LARE
 
         // All of the arrays are deallocated when lagranManager goes out of scope
         //  Initialize bx1, by1, bz1, p_e, p_i, pressure
-        T_dataType gas_gamma = data.gas_gamma;
         volumeArray bxl = data.bx;
         volumeArray byl = data.by;
         volumeArray bzl = data.bz;
         volumeArray cvl = data.cv;
-        volumeArray energy_el = data.energy_electron;
-        volumeArray energy_il = data.energy_ion;
 
     
-        if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>)
+        if constexpr (std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosMass>)
         {
             pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 auto &d = data;
@@ -102,12 +99,12 @@ namespace LARE
                 d.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
                 d.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
                 d.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
-                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz)));
-                d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)));
+                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz)), eosMass(d.mf * d.mh / d.kb));
+                d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz)), eosMass(d.mf * d.mh / d.kb));
                 d.pressure(ix, iy, iz) = d.p_e(ix, iy, iz) + d.p_i(ix, iy, iz);
             },
                             data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
-        } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>){
+        } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosMass, eosIndex, eosIndex, eosIndex>){
             pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 auto &d = data;
                 auto &energy_el  = data.energy_electron;
@@ -118,8 +115,8 @@ namespace LARE
                 d.bx1(ix, iy, iz) = 0.5 * (bxl(ix, iy, iz) + bxl(ixm, iy, iz));
                 d.by1(ix, iy, iz) = 0.5 * (byl(ix, iy, iz) + byl(ix, iym, iz));
                 d.bz1(ix, iy, iz) = 0.5 * (bzl(ix, iy, iz) + bzl(ix, iy, izm));
-                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz), eosIndex(ix), eosIndex(iy), eosIndex(iz)));
-                d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz), eosIndex(ix), eosIndex(iy), eosIndex(iz)));
+                d.p_e(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_el(ix, iy, iz), eosMass(d.mf * d.mh / d.kb), eosIndex(ix), eosIndex(iy), eosIndex(iz)));
+                d.p_i(ix, iy, iz) = d.eos.getPressure(eosDensity(d.rho(ix, iy, iz)), eosEnergy(energy_il(ix, iy, iz), eosMass(d.mf * d.mh / d.kb), eosIndex(ix), eosIndex(iy), eosIndex(iz)));
                 d.pressure(ix, iy, iz) = d.p_e(ix, iy, iz) + d.p_i(ix, iy, iz);
             },
                             data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);
@@ -202,8 +199,8 @@ namespace LARE
         T_dataType b2 = data.bx1(ix, iy, iz) * data.bx1(ix, iy, iz) +
                         data.by1(ix, iy, iz) * data.by1(ix, iy, iz) +
                         data.bz1(ix, iy, iz) * data.bz1(ix, iy, iz);
-        T_dataType p = data.pressure(ix, iy, iz);
-        cs(ix, iy, iz) = std::sqrt((data.gas_gamma * p + b2) / rmin); }, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);        // Compute cs_v
+        T_dataType cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)), eosMass(data.mf * data.mh / data.kb));
+        cs(ix, iy, iz) = std::sqrt(cs2 + b2 / data.mu0 / rmin); }, data.xcLocalRange, data.ycLocalRange, data.zcLocalRange);        // Compute cs_v
         pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
         T_indexType izp = iz + 1;
         T_indexType iyp = iy + 1;
@@ -380,10 +377,10 @@ namespace LARE
     template<typename T_EOS>
     void LARE3D<T_EOS>::set_dt(simulationData &data)
     {
-        if constexpr(std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy>)
+        if constexpr(std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosMass>)
         {
             set_dt_no_index(data);
-        } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>){
+        } else if constexpr(std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosMass, eosIndex, eosIndex, eosIndex>){
             set_dt_no_index(data);
         } else {
             static_assert(pw::alwaysFalse<T_EOS>::value, "T_EOS must have a getSoundSpeedSquared method for either density/energy or density with energy and indices");
@@ -393,7 +390,7 @@ namespace LARE
     template<typename T_EOS>
     void LARE3D<T_EOS>::set_dt_no_index(simulationData &data)
     {
-        if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy>)
+        if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosMass>)
         {
             using Range = pw::Range;
 
@@ -416,7 +413,7 @@ namespace LARE
             T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
 
             T_dataType cs2;
-            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)));
+            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)), eosMass(data.mf * data.mh / data.kb));
 
             T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
                             data.by(ix, iy, iz) * data.by(ix, iy, iz) +
@@ -464,7 +461,7 @@ namespace LARE
     template<typename T_EOS>
     void LARE3D<T_EOS>::set_dt_with_index(simulationData &data)
     {
-        if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosIndex, eosIndex, eosIndex>) {
+        if constexpr (std::is_invocable_v<decltype(&T_EOS::getSoundSpeedSquared), T_EOS, eosDensity, eosEnergy, eosMass, eosIndex, eosIndex, eosIndex>) {
             using Range = pw::Range;
 
             int i0 = data.geometry == geometryType::Cartesian ? 0 : 1;
@@ -486,7 +483,7 @@ namespace LARE
             T_dataType rho0 = pw::max(data.rho(ix, iy, iz), data.none_zero);
 
             T_dataType cs2;
-            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+            cs2 = data.eos.getSoundSpeedSquared(eosDensity(data.rho(ix, iy, iz)), eosEnergy(data.energy_ion(ix, iy, iz) + data.energy_electron(ix, iy, iz)), eosMass(data.mf * data.mh / data.kb), eosIndex(ix), eosIndex(iy), eosIndex(iz));
 
             T_dataType w1 = (data.bx(ix, iy, iz) * data.bx(ix, iy, iz) +
                             data.by(ix, iy, iz) * data.by(ix, iy, iz) +
@@ -686,7 +683,7 @@ namespace LARE
         data.by1(ix,iy,iz)*=data.cv1(ix,iy,iz);
         data.bz1(ix,iy,iz)*=data.cv1(ix,iy,iz); }, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
 
-        if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy>) {
+        if constexpr(std::is_invocable_v<decltype(&T_EOS::getPressure), T_EOS, eosDensity, eosEnergy, eosMass>) {
             // Predictor step for energy and pressure
             pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_dataType dv = data.cv1(ix, iy, iz) / data.cv(ix, iy, iz) - 1.0;
@@ -694,8 +691,8 @@ namespace LARE
                 T_dataType e1_i = data.energy_ion(ix, iy, iz) - data.p_i(ix, iy, iz) * dv / data.rho(ix, iy, iz);
                 e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
 
-                data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e));
-                data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i));
+                data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e), eosMass(data.mf * data.mh / data.kb));
+                data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i), eosMass(data.mf * data.mh / data.kb));
 
                 data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
             },
@@ -708,8 +705,8 @@ namespace LARE
                 T_dataType e1_i = data.energy_ion(ix, iy, iz) - data.p_i(ix, iy, iz) * dv / data.rho(ix, iy, iz);
                 e1_i += data.visc_heat(ix, iy, iz) * data.dt / 2.0 / data.rho(ix, iy, iz);
 
-                data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e), eosIndex(ix), eosIndex(iy), eosIndex(iz));
-                data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+                data.p_e(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_e), eosMass(data.mf * data.mh / data.kb), eosIndex(ix), eosIndex(iy), eosIndex(iz));
+                data.p_i(ix,iy,iz) = data.eos.getPressure(eosDensity(data.rho(ix,iy,iz)*data.cv(ix,iy,iz)/data.cv1(ix,iy,iz)), eosEnergy(e1_i), eosMass(data.mf * data.mh / data.kb), eosIndex(ix), eosIndex(iy), eosIndex(iz));
 
                 data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
             },

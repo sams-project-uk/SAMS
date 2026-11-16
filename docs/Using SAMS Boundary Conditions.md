@@ -6,7 +6,7 @@ It is assumed that you have already read the `Developing SAMS Packages` document
 
 ## Theory of boundary conditions
 
-This is covered in more depth in the document on `Developing SAMS Boundary Conditions`, but the general principle is that boundary condition objects are descended from a base class called `boundaryCondition` and they have to implement a single virtual method called `apply`. There is nothing else specific to a boundary condition and a developer of a boundary condition has a lot of freedom in how to implement them. 
+This is covered in more depth in the document on `Developing SAMS Boundary Conditions`, but the general principle is that boundary condition objects are descended from a base class called `SAMS::boundaryConditions` and they have to implement a single virtual method called `apply`. There is nothing else specific to a boundary condition and a developer of a boundary condition has a lot of freedom in how to implement them. 
 
 From the perspective of a non-boundary condition developer most of this doesn't matter. There are only two elements that you need to know
 
@@ -25,22 +25,22 @@ To actually add a boundary condition you have three options:
 ```cpp
 void setBoundaryConditions(SAMS::harness& harness){
     {
-        auto& varDef = harness.getVariableRegistry().getVariableDefinition("rho");
-        auto bc = SAMS::simpleClamp<double,3,SAMS::arrayTags::accelerated>(varDef, 1.0);
+        auto& varDef = harness.variableRegistry.getVariable("rho");
+        auto bc = SAMS::simpleClamp<double,3,portableWrapper::arrayTags::accelerated>(varDef, 1.0);
         //Attach to the lower X edge (0 is the X direction, lower is the lower edge)
-        varDef.addBoundaryCondition(0, SAMS::boundaryConditions::edge::lower, bc);
+        varDef.addBoundaryCondition(0, SAMS::domain::edges::lower, bc);
     }
 
     {
-        auto& varDef = harness.getVariableRegistry().getVariableDefinition("vx");
-        auto bc = SAMS::simpleClamp<double,3,SAMS::arrayTags::accelerated>(varDef, 0.0);
+        auto& varDef = harness.variableRegistry.getVariable("vx");
+        auto bc = SAMS::simpleClamp<double,3,portableWrapper::arrayTags::accelerated>(varDef, 0.0);
         //Attach to both edges in the Y direction
         varDef.addBoundaryCondition(1, bc);
     }
 
     {
-        auto& varDef = harness.getVariableRegistry().getVariableDefinition("vz");
-        auto bc = SAMS::simpleClamp<double,3,SAMS::arrayTags::accelerated>(varDef, 0.0);
+        auto& varDef = harness.variableRegistry.getVariable("vz");
+        auto bc = SAMS::simpleClamp<double,3,portableWrapper::arrayTags::accelerated>(varDef, 0.0);
         //Attach to all edges
         varDef.addBoundaryCondition(bc);
     }
@@ -59,20 +59,20 @@ varDef.addBoundaryCondition(1, bc);
 is not exactly the same as
 
 ```cpp
-varDef.addBoundaryCondition(1, SAMS::boundaryConditions::edge::lower, bc);
-varDef.addBoundaryCondition(1, SAMS::boundaryConditions::edge::upper, bc);
+varDef.addBoundaryCondition(1, SAMS::domain::edges::lower, bc);
+varDef.addBoundaryCondition(1, SAMS::domain::edges::upper, bc);
 ```
 
 The first version adds the same boundary condition object to both edges, while the second version creates two copies of the boundary condition object and addes them to each edge. Again, for the built in boundary conditions this doesn't matter in the least, but it can be important for large boundary conditions or boundary conditions that rely on tracking state since the first version will have a single state that is shared between both edges, while the second version will have two separate states.
 
-If you wish to deliberately add the same boundary condition object on multiple edges then you should capture the return value from the `addBoundaryCondition` method. The result will be a shared_ptr to a base `boundaryCondition` object that is the boundary condition that was added to the variable definition. You can then use this shared pointer to add the same boundary condition to multiple edges, and you can also use it to modify the boundary condition after it has been added to the variable definition if you need to.
+If you wish to deliberately add the same boundary condition object on multiple edges then you should capture the return value from the `addBoundaryCondition` method. The result will be a shared_ptr to a base `SAMS::boundaryConditions` object that is the boundary condition that was added to the variable definition. You can then use this shared pointer to add the same boundary condition to multiple edges, and you can also use it to modify the boundary condition after it has been added to the variable definition if you need to.
 
 ```cpp
 void setBoundaryConditions(SAMS::harness& harness){
-    auto& varDef = harness.getVariableRegistry().getVariableDefinition("rho");
-    auto bc = SAMS::simpleClamp<double,3,SAMS::arrayTags::accelerated>(varDef, 1.0);
-    std::shared_ptr<boundaryCondition> bcPtr = varDef.addBoundaryCondition(0, SAMS::boundaryConditions::edge::lower, bc);
-    varDef.addBoundaryCondition(0, SAMS::boundaryConditions::edge::upper, bcPtr);
+    auto& varDef = harness.variableRegistry.getVariable("rho");
+    auto bc = SAMS::simpleClamp<double,3,portableWrapper::arrayTags::accelerated>(varDef, 1.0);
+    std::shared_ptr<SAMS::boundaryConditions> bcPtr = varDef.addBoundaryCondition(0, SAMS::domain::edges::lower, bc);
+    varDef.addBoundaryCondition(0, SAMS::domain::edges::upper, bcPtr);
 }
 ```
 
@@ -82,10 +82,10 @@ This also shows the second way in which you can add boundary conditions
 
 ```cpp
 void setBoundaryConditions(SAMS::harness& harness){
-    auto& varDef = harness.getVariableRegistry().getVariableDefinition("rho");
-    std::shared_ptr<boundaryCondition> bcPtr = std::make_shared<SAMS::simpleClamp<double,3,SAMS::arrayTags::accelerated>>(varDef, 1.0);
-    varDef.addBoundaryCondition(0, SAMS::boundaryConditions::edge::lower, bcPtr);
-    varDef.addBoundaryCondition(0, SAMS::boundaryConditions::edge::upper, bcPtr);
+    auto& varDef = harness.variableRegistry.getVariable("rho");
+    std::shared_ptr<SAMS::boundaryConditions> bcPtr = std::make_shared<SAMS::simpleClamp<double,3,portableWrapper::arrayTags::accelerated>>(varDef, 1.0);
+    varDef.addBoundaryCondition(0, SAMS::domain::edges::lower, bcPtr);
+    varDef.addBoundaryCondition(0, SAMS::domain::edges::upper, bcPtr);
 }
 ```
 
@@ -99,9 +99,9 @@ As well as avoiding unnecessary copying of boundary condition objects, this meth
 
 ```cpp
 void setBoundaryConditions(SAMS::harness& harness){
-    auto& varDef = harness.getVariableRegistry().getVariableDefinition("rho");
-    varDef.emplaceBoundaryCondition<SAMS::simpleClamp<double,3,SAMS::arrayTags::accelerated>>(0, SAMS::boundaryConditions::edge::lower, varDef, 1.0);
-    varDef.emplaceBoundaryCondition<SAMS::simpleClamp<double,3,SAMS::arrayTags::accelerated>>(0, SAMS::boundaryConditions::edge::upper, varDef, 1.0);
+    auto& varDef = harness.variableRegistry.getVariable("rho");
+    varDef.emplaceBoundaryCondition<SAMS::simpleClamp<double,3,portableWrapper::arrayTags::accelerated>>(0, SAMS::domain::edges::lower, varDef, 1.0);
+    varDef.emplaceBoundaryCondition<SAMS::simpleClamp<double,3,portableWrapper::arrayTags::accelerated>>(0, SAMS::domain::edges::upper, varDef, 1.0);
 }
 ```
 
@@ -109,7 +109,7 @@ void setBoundaryConditions(SAMS::harness& harness){
 
 ## Built in boundary conditions
 
-There are four built in boundary conditions currently provided with SAMS. All of them work for any type, rank and memory space having any grid staggering so long as they are appropriately templated.
+There are six built in boundary conditions currently provided with SAMS. All of them work for any type, rank and memory space having any grid staggering so long as they are appropriately templated.
 
 ### simpleClamp
 
@@ -119,12 +119,28 @@ Clamp all boundary values to a specified value. The type is
 SAMS::simpleClamp<valueType, rank, memorySpace> (variableDefinition, clampValue);
 ```
 
-### simpleMirrorBC
+### fixedMirrorBC
 
-Calculate the value on the boundary edge and mirror ghost cells across the boundary edge. The type is
+Reflect the ghost cells about a specified value on the boundary edge. If the boundary edge is on a grid point then that point is set to the value. The type is
 
 ```cpp
-SAMS::simpleMirrorBC<valueType, rank, memorySpace> (variableDefinition);
+SAMS::fixedMirrorBC<valueType, rank, memorySpace> (variableDefinition, mirrorValue);
+```
+
+### floatingMirrorBC
+
+Reflect the ghost cells about the value on the boundary edge, which is found from the domain. If the boundary edge is on a grid point then that point keeps its value, otherwise the value is extrapolated linearly from the last two domain points. The type is
+
+```cpp
+SAMS::floatingMirrorBC<valueType, rank, memorySpace> (variableDefinition);
+```
+
+### simpleSymmetricBC
+
+Copy the values in the domain symmetrically across the boundary edge into the ghost cells. The type is
+
+```cpp
+SAMS::simpleSymmetricBC<valueType, rank, memorySpace> (variableDefinition);
 ```
 
 ### simpleZeroGradientBC
@@ -149,7 +165,7 @@ SAMS::simplePeriodicBC<valueType, rank, memorySpace> (variableDefinition);
 Within your package it is very easy to apply a boundary condition. If you have the variable definition for the variable that you want to apply the boundary condition to then you can just call the `applyBoundaryConditions` method on the variable definition and it will apply all of the boundary conditions that are attached to that variable definition.
 
 ```cpp
-auto& varDef = harness.variableRegistry.getVariableDefinition("rho"); // Take care not to forget the reference specifier '&' here
+auto& varDef = harness.variableRegistry.getVariable("rho"); // Take care not to forget the reference specifier '&' here
 varDef.applyBoundaryConditions();
 ```
 
@@ -163,7 +179,7 @@ If you wish to apply the boundary conditions to only specific dimensions or even
 
 ```cpp
 varDef.applyBoundaryConditions(0);
-varDef.applyBoundaryConditions(0, SAMS::boundaryConditions::edge::lower);
+varDef.applyBoundaryConditions(0, SAMS::domain::edges::lower);
 ```
 
 Applying the boundary conditions automatically calls the MPI communication routines as needed to deal with MPI interprocessor boundaries while applying boundary conditions to real edges. This means that if MPI periodic dimensions are set up no boundary conditions will be applied on any MPI periodic edge.

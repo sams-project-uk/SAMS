@@ -1,5 +1,12 @@
 
 #include "OrszagTang3D.h"
+#include "../../Operations/OutputControl/defaultSchedule.h"
+#include "uniformDomain.h"
+#include "io/writers.h"
+#include "io/readers.h"
+#include <iomanip>
+#include <limits>
+#include <sstream>
 
 namespace examples
 {
@@ -21,68 +28,77 @@ namespace examples
     }
 
     /**
+     * Set the deck keys that the deck does not set
+     * @param kvs The key value store
+     */
+    template<typename T_EOS>
+    void OrszagTang3D<T_EOS>::defaultDeck(SAMS::KVS &kvs)
+    {
+        // Run with normalised units
+        kvs.setDefaultPath("/LARE/units", "normalised");
+        // Periodic in all directions
+        kvs.setDefaultPath("/domain/MPI_periodic", SAMS::KVS::Array{true, true, true});
+        // End time of the simulation
+        kvs.setDefaultPath(SAMS::deckKeys::endTime, 3.0);
+        // Domain
+        kvs.setDefaultPath(SAMS::deckKeys::nx, 128);
+        kvs.setDefaultPath(SAMS::deckKeys::ny, 128);
+        kvs.setDefaultPath(SAMS::deckKeys::nz, 128);
+        kvs.setDefaultPath(SAMS::deckKeys::xMin, 0.0);
+        kvs.setDefaultPath(SAMS::deckKeys::xMax, 2.0 * M_PI);
+        kvs.setDefaultPath(SAMS::deckKeys::yMin, 0.0);
+        kvs.setDefaultPath(SAMS::deckKeys::yMax, 2.0 * M_PI);
+        kvs.setDefaultPath(SAMS::deckKeys::zMin, 0.0);
+        kvs.setDefaultPath(SAMS::deckKeys::zMax, 2.0 * M_PI);
+        // Write the default collection 10 times over the run if the deck has no output schedules
+        SAMS::addDefaultSchedule(kvs, kvs.getReal(SAMS::deckKeys::endTime) / 10.0);
+    }
+
+    /**
      * Set up the LARE style simulation control variables
      * @note This should later be moved to a more general approach
      * when we have multiple core solvers.
      * @param data LARE3D simulation data
      */
     template<typename T_EOS>
-    void OrszagTang3D<T_EOS>::controlVariables(typename LARE::LARE3D<T_EOS>::simulationData &data)
+    void OrszagTang3D<T_EOS>::controlVariables(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::KVS &kvs)
     {
 
-        data.t_end = 3.0; // End time of the simulation
-        data.dt_snapshots = data.t_end / 10;
+        data.t_end = kvs.getReal(SAMS::deckKeys::endTime, 3.0); // End time of the simulation
 
-        data.nx = 128;
-        data.ny = 128;
-        data.nz = 128;
-
-        data.x_min = 0.0;
-        data.x_max = 2.0 * M_PI;
-        data.y_min = 0.0;
-        data.y_max = 2.0 * M_PI;
-        data.z_min = 0.0;
-        data.z_max = 2.0 * M_PI;
-
-        data.dt_multiplier = 0.8; // Default multiplier for time step
-        // Geometry options: cartesian, cylindrical, spherical
-        data.geometry = LARE::geometryType::Cartesian;
+        data.dt_multiplier = kvs.getReal("/LARE/dt_multiplier", 0.8); // Default multiplier for time step
         // Shock viscosity coefficients
-        data.visc1 = 0.1;
-        data.visc2 = 1.0;
+        data.visc1 = kvs.getReal("/LARE/visc1", 0.1);
+        data.visc2 = kvs.getReal("/LARE/visc2", 1.0);
 
         // Ratio of specific heat capacities
-        data.gas_gamma = 5.0 / 3.0;
+        data.gas_gamma = kvs.getReal("/LARE/gas_gamma", 5.0 / 3.0);
 
         // Average mass of an ion in proton masses
-        data.mf = 1.2;
-
-        // Run with normalised mu0
-        data.mu0 = 1.0;
+        data.mf = kvs.getReal("/LARE/mf", 1.2);
 
         // Resistive MHD options
-        data.resistiveMHD = false;
-        data.eta_background = 1.e-10;
-        data.j_max = 1.0;
-        data.eta0 = 2.e-10;
+        data.resistiveMHD = kvs.getBool("/LARE/resistiveMHD", false);
+        data.eta_background = kvs.getReal("/LARE/eta_background", 1.e-10);
+        data.j_max = kvs.getReal("/LARE/j_max", 1.0);
+        data.eta0 = kvs.getReal("/LARE/eta0", 2.e-10);
 
         // Remap kinetic energy correction
-        data.rke = false;
+        data.rke = kvs.getBool("/LARE/rke", false);
+
+        // Amplitude of the velocity perturbation that varies in z
+        epsilon = kvs.getReal("/OrszagTang3D/epsilon", 0.2);
     }
 
     /**
      * Set up the simulation domain
      * @param harness SAMS harness
-     * @param data LARE3D simulation data
+     * @param kvs The key value store
      */
     template<typename T_EOS>
-    void OrszagTang3D<T_EOS>::setDomain(SAMS::harness &harness, typename LARE::LARE3D<T_EOS>::simulationData &data)
+    void OrszagTang3D<T_EOS>::setDomain(SAMS::harness &harness, SAMS::KVS &kvs)
     {
-        auto &axisReg = harness.axisRegistry;
-        // Just hard code the domain for the Sod Shock Tube
-        axisReg.setDomain("X", data.nx, data.x_min, data.x_max);
-        axisReg.setDomain("Y", data.ny, data.y_min, data.y_max);
-        axisReg.setDomain("Z", data.nz, data.z_min, data.z_max);
+        SAMS::setUniformDomain(harness, kvs);
     }
 
     /**
@@ -142,15 +158,19 @@ namespace examples
         varRegistry.fillPPArray("by", by);
         varRegistry.fillPPArray("bz", bz);
 
+        // Copied so that the kernel does not capture this
+        const SAMS::T_dataType amplitude = epsilon;
         pw::applyKernel(
             LAMBDA(SAMS::T_indexType ix, SAMS::T_indexType iy, SAMS::T_indexType iz) {
                 using T_dataType = SAMS::T_dataType;
                 T_dataType pressure = data.gas_gamma;
+                // The 2D Orszag-Tang vortex with a velocity perturbation that varies in z, so that the problem is genuinely three dimensional
+                const T_dataType perturbation = amplitude * std::sin(zb(iz));
 
                 rho(ix, iy, iz) = data.gas_gamma * data.gas_gamma;
-                vx(ix, iy, iz) = -std::sin(yb(iy));
-                vy(ix, iy, iz) = std::sin(xb(ix));
-                vz(ix, iy, iz) = 0.0;
+                vx(ix, iy, iz) = -(1.0 + perturbation) * std::sin(yb(iy));
+                vy(ix, iy, iz) = (1.0 + perturbation) * std::sin(xb(ix));
+                vz(ix, iy, iz) = perturbation;
                 bx(ix, iy, iz) = -std::sin(yc(iy));
                 by(ix, iy, iz) = std::sin(2.0 * xc(ix));
                 bz(ix, iy, iz) = 0.0;
@@ -160,40 +180,6 @@ namespace examples
                 energy_ion(ix, iy, iz) = pressure / ((data.gas_gamma - 1.0) * rho(ix, iy, iz)) / 2.0;
             },
             rho.getRange(0), rho.getRange(1), rho.getRange(2));
-    }
-
-    /**
-     * Check whether to terminate the simulation
-     * @param terminate Boolean flag to set to true to terminate the simulation
-     * @param data LARE3D simulation data
-     * This function checks whether the simulation should terminate based on LARE3D data.
-     * It sets the terminate flag to true if the simulation should end.
-     */
-    template<typename T_EOS>
-    void OrszagTang3D<T_EOS>::queryTerminate(bool &terminate, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData)
-    {
-        // End at correct time for Sod Shock Tube (ends at t=0.2)
-        if (tData.time >= data.t_end)
-        {
-            terminate |= true;
-        }
-    }
-
-    /**
-     * Check whether to output data to disk
-     * @param shouldOutput Boolean flag to set to true to output data
-     * @param data LARE3D simulation data
-     * This function checks whether data should be output to disk based on LARE3D data.
-     * It returns true if data should be output.
-     */
-    template<typename T_EOS>
-    void OrszagTang3D<T_EOS>::queryOutput(bool &shouldOutput, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData)
-    {
-            static double nextOutputTime = data.dt_snapshots;
-            if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
-                shouldOutput |= true;
-                nextOutputTime += data.dt_snapshots;
-            }
     }
 
     #define EOS_DEF(value) template class OrszagTang3D<value>;

@@ -6,6 +6,7 @@
 #include "LARE/shared_data.h"
 #include "braginskii.h"
 #include "isotropic.h"
+#include <cmath>
 
 namespace SAMS
 {
@@ -25,6 +26,11 @@ namespace SAMS
 		 */
 		constexpr static bool timeSimulation = false;
 
+		/**
+		 * The thermal conduction test is a core simulation
+		 */
+		constexpr static bool coreSimulation = true;
+
 		using volumeArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 3>;
 		using hostVolumeArray = portableWrapper::hostArray<SAMS::T_dataType, 3>;
 		using hostLineArray = portableWrapper::hostArray<SAMS::T_dataType, 1>;
@@ -41,15 +47,35 @@ namespace SAMS
 		using dataPack = simulationData;
 
 		/**
+		 * @brief Deactivate the packages that are active by default. The test ends and writes its output itself
+		 * @param runnerRef The runner
+		 */
+		template <typename T_runner>
+		void runnerInteraction(T_runner &runnerRef)
+		{
+			runnerRef.deactivatePackage();
+		}
+
+		/**
+		 * @brief Set the deck keys that the deck does not set
+		 * @param kvs The key value store
+		 */
+		void defaultDeck(SAMS::KVS &kvs)
+		{
+			// Not periodic in any direction
+			kvs.setDefaultPath("/domain/MPI_periodic", SAMS::KVS::Array{false, false, false});
+		}
+
+		/**
 		 * @brief Set the domain
 		 * @param harness The harness, which holds the axis registry
 		 */
 		void setDomain(SAMS::harness &harness)
 		{
 			auto &axisReg = harness.axisRegistry;
-			axisReg.setDomain("X", 100, -1.0, 1.0);
-			axisReg.setDomain("Y", 100, -1.0, 1.0);
-			axisReg.setDomain("Z", 100, -1.0, 1.0);
+			axisReg.setDomain("X", 128, -1.0, 1.0);
+			axisReg.setDomain("Y", 128, -1.0, 1.0);
+			axisReg.setDomain("Z", 128, -1.0, 1.0);
 		}
 
 		/**
@@ -72,7 +98,10 @@ namespace SAMS
 		{
 			auto &varRegistry = harness.variableRegistry;
 			const int ghosts = 1;
-			varRegistry.registerVariable<SAMS::T_dataType>(T_problem::species::fieldName(), pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+			for (const char *name : {SAMS::electron::fieldName(), SAMS::ion::fieldName()})
+			{
+				varRegistry.registerVariable<SAMS::T_dataType>(name, pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
+			}
 			varRegistry.registerVariable<SAMS::T_dataType>("rho", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
 			// Each component of B is staggered by half a cell in the direction that it points
 			varRegistry.registerVariable<SAMS::T_dataType>("bx", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
@@ -88,11 +117,15 @@ namespace SAMS
 		{
 			auto &varRegistry = harness.variableRegistry;
 			using clamp = SAMS::simpleClamp<SAMS::T_dataType, 3>;
-			SAMS::variableDef &energy = varRegistry.getVariable(T_problem::species::fieldName());
-			for (int dim = 0; dim < 3; ++dim)
+			// The energy is shared equally between the species
+			for (const char *name : {SAMS::electron::fieldName(), SAMS::ion::fieldName()})
 			{
-				varRegistry.addBoundaryCondition(T_problem::species::fieldName(), dim, SAMS::domain::edges::lower, std::make_shared<clamp>(energy, dim == 0 ? 5.0 : 1.0));
-				varRegistry.addBoundaryCondition(T_problem::species::fieldName(), dim, SAMS::domain::edges::upper, std::make_shared<clamp>(energy, 1.0));
+				SAMS::variableDef &energy = varRegistry.getVariable(name);
+				for (int dim = 0; dim < 3; ++dim)
+				{
+					varRegistry.addBoundaryCondition(name, dim, SAMS::domain::edges::lower, std::make_shared<clamp>(energy, dim == 0 ? 2.5 : 0.5));
+					varRegistry.addBoundaryCondition(name, dim, SAMS::domain::edges::upper, std::make_shared<clamp>(energy, 0.5));
+				}
 			}
 
 			for (const char *name : {"bx", "by", "bz"})
@@ -106,43 +139,57 @@ namespace SAMS
 		 * @brief Set the initial conditions
 		 * @param harness The harness, which holds the variable registry
 		 * @param lare LARE3D Parameter pack
-		 * @param params The parameters of the problem
+		 * @param braginskiiParams The parameters of Braginskii conduction, null if it is not active
+		 * @param isotropicParams The parameters of isotropic conduction, null if it is not active
+		 * @param kvs The key value store
 		 */
-		void initialConditions(SAMS::harness &harness, typename T_problem::lareData &lare, typename T_problem::parameters &params)
+		void initialConditions(SAMS::harness &harness, typename T_problem::lareData &lare, typename SAMS::braginskii<T_eos>::parameters *braginskiiParams,
+			typename SAMS::isotropic<T_eos>::parameters *isotropicParams, SAMS::KVS &kvs)
 		{
 			auto &varRegistry = harness.variableRegistry;
-			volumeArray field, bx, by, bz, rho;
-			varRegistry.fillPPArray(T_problem::species::fieldName(), field);
+			volumeArray electronEnergy, ionEnergy, bx, by, bz, rho;
+			varRegistry.fillPPArray(SAMS::electron::fieldName(), electronEnergy);
+			varRegistry.fillPPArray(SAMS::ion::fieldName(), ionEnergy);
 			varRegistry.fillPPArray("bx", bx);
 			varRegistry.fillPPArray("by", by);
 			varRegistry.fillPPArray("bz", bz);
 			varRegistry.fillPPArray("rho", rho);
 
-			pw::assign(field, 1.0);
-			pw::assign(bx, 1.0);
-			pw::assign(by, 1.0);
-			pw::assign(bz, 0.0);
+			// The energy is shared equally between the species
+			pw::assign(electronEnergy, 0.5);
+			pw::assign(ionEnergy, 0.5);
+			// Direction of the field, in radians. phi is the angle from x in the x-y plane and theta the angle from z. The default is 45 degrees between x and y
+			const SAMS::T_dataType theta = kvs.getReal("/TCTest/theta", M_PI / 2.0);
+			const SAMS::T_dataType phi = kvs.getReal("/TCTest/phi", M_PI / 4.0);
+			// Strength of the field. The default gives the field of 1 in x and y
+			const SAMS::T_dataType B0 = kvs.getReal("/TCTest/B0", std::sqrt(2.0));
+			pw::assign(bx, B0 * std::sin(theta) * std::cos(phi));
+			pw::assign(by, B0 * std::sin(theta) * std::sin(phi));
+			pw::assign(bz, B0 * std::cos(theta));
 			pw::assign(rho, 1.0);
 			lare.gas_gamma = 2.0;
 			lare.eos.setGamma(2.0);
-			if constexpr (std::is_same_v<T_problem, SAMS::braginskii<SAMS::electron, T_eos>> ||
-			std::is_same_v<T_problem, SAMS::braginskii<SAMS::ion, T_eos>>)
+			// LARE3D does not run in the test, so the constants that the conduction uses are set here, in normalised units
+			lare.mf = 1.0;
+			lare.mh = 1.0;
+			lare.kb = 1.0;
+			if (braginskiiParams)
 			{
-				params.kappa0 = 0.1;
-				params.exponent = 2.5;
-				params.fieldSoftening = 1.0e-6;
-				params.limiterFlux = 1.0;
-				params.limiterExponent = 2.0;
-				params.limiterSoftening = 1.0e-10;
+				for (auto &sp : braginskiiParams->species)
+				{
+					sp.kappa0 = 0.1;
+					sp.exponent = 2.5;
+					sp.fieldSoftening = 1.0e-6;
+					sp.limiterFlux = 1.0;
+					sp.limiterFluxSet = true;
+					sp.limiterExponent = 2.0;
+					sp.limiterSoftening = 1.0e-10;
+				}
 			}
-			else if constexpr (std::is_same_v<T_problem, SAMS::isotropic<SAMS::electron, T_eos>> ||
-			std::is_same_v<T_problem, SAMS::isotropic<SAMS::ion, T_eos>>)
+			if (isotropicParams)
 			{
-				params.kappa = 0.1;
-			}
-			else
-			{
-				static_assert(!std::is_same_v<T_problem, T_problem>, "TCTest does not know the parameters of this problem");
+				for (auto &sp : isotropicParams->species)
+					sp.kappa = 0.1;
 			}
 		}
 
@@ -170,13 +217,13 @@ namespace SAMS
 
 		/**
 		 * @brief Ask for output
-		 * @param shouldOutput Set to true when output is wanted
+		 * @param request The collections of outputs. The default collection is activated when output is wanted
 		 * @param tData The timestep data
 		 */
-		void queryOutput(bool &shouldOutput, SAMS::timeState &tData)
+		void queryOutput(SAMS::outputRequest &request, [[maybe_unused]] SAMS::timeState &tData)
 		{
-			if ((tData.step & 1) == 0)
-				shouldOutput = true;
+			// Every step
+			request.activate("default", "diagnostics{_NNNNN}");
 		}
 
 		/**
@@ -201,25 +248,42 @@ namespace SAMS
 		}
 
 		/**
-		 * @brief Register the output variables
+		 * @brief Handles of the outputs of the energies of the electrons and the ions
+		 */
+		SAMS::outputHandle electronOutput, ionOutput;
+
+		/**
+		 * @brief Register the outputs that the test can write, which are written by default and needed for a restart
+		 * @param outputs The registry of outputs
+		 */
+		void registerOutputVariables(SAMS::outputRegistry &outputs)
+		{
+			electronOutput = outputs.registerOutput(SAMS::electron::fieldName(), std::string("Specific internal energy of the ") + SAMS::electron::name.c_str());
+			ionOutput = outputs.registerOutput(SAMS::ion::fieldName(), std::string("Specific internal energy of the ") + SAMS::ion::name.c_str());
+		}
+
+		/**
+		 * @brief Register the output variables that the dump writes
 		 * @tparam T_writer The writer type
-		 * @param writer The writer
+		 * @param regWriter The writer for variables in the registries
+		 * @param level The outputs that the dump writes
 		 */
 		template <typename T_writer>
-		void registerOutputVariables(writer<T_writer> &writer)
+		void registerDumpVariables(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &regWriter, const SAMS::outputLevel &level)
 		{
-			writer.registerData(T_problem::species::fieldName(), "MeshCC", T_problem::species::fieldName());
+			if (level.includes(electronOutput)) regWriter.template registerData<SAMS::T_dataType, 3>(SAMS::electron::fieldName(), "MeshCC", SAMS::electron::fieldName());
+			if (level.includes(ionOutput)) regWriter.template registerData<SAMS::T_dataType, 3>(SAMS::ion::fieldName(), "MeshCC", SAMS::ion::fieldName());
 		}
 
 		/**
 		 * @brief Register the output meshes
 		 * @tparam T_writer The writer type
-		 * @param writer The writer
+		 * @param regWriter The writer for variables in the registries
 		 */
 		template <typename T_writer>
-		void registerOutputMeshes(writer<T_writer> &writer)
+		void registerDumpMeshes(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &regWriter, const SAMS::outputLevel &)
 		{
-			writer.registerRectilinearMesh("MeshCC", {"X", SAMS::staggerType::CENTRED}, {"Y", SAMS::staggerType::CENTRED}, {"Z", SAMS::staggerType::CENTRED});
+			regWriter.registerRectilinearMesh("MeshCC", {{"X", SAMS::staggerType::CENTRED}, {"Y", SAMS::staggerType::CENTRED}, {"Z", SAMS::staggerType::CENTRED}});
 		}
 
 		/**
@@ -231,7 +295,6 @@ namespace SAMS
 		 */
 		inline void getHostVersion(simulationData &data, pw::portableArrayManager &manager, volumeArray &device, hostVolumeArray &host)
 		{
-			using Range = pw::Range;
 			auto fullHost = manager.makeHostAvailable(device);
 
 			manager.allocate(host, data.xcLocalDomainRange, data.ycLocalDomainRange, data.zcLocalDomainRange);
@@ -243,25 +306,20 @@ namespace SAMS
 		/**
 		 * @brief Write the output meshes
 		 * @tparam T_writer The writer type
-		 * @param writer The writer
 		 */
 		template <typename T_writer>
-		void writeOutputMeshes(writer<T_writer> &writer)
+		void writeDumpMeshes(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &, const SAMS::outputLevel &)
 		{
-			writer.writeRectilinearMesh("MeshCC");
 		}
 
 		/**
 		 * @brief Write the output variables
 		 * @tparam T_writer The writer type
-		 * @param writer The writer
 		 */
 		template <typename T_writer>
-		void writeOutputVariables(writer<T_writer> &writer)
+		void writeDumpVariables(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &, const SAMS::outputLevel &)
 		{
-			writer.writeData(T_problem::species::fieldName());
-		}
-	};
+		}	};
 }
 
 #endif // MULTIGRIDTEST_TCTEST_H

@@ -26,6 +26,7 @@
 #include "harness.h"
 #include "runner.h"
 #include "io/writerProto.h"
+#include "io/readerProto.h"
 
 namespace LARE
 {
@@ -145,11 +146,6 @@ namespace LARE
         bool x_stretch, y_stretch, z_stretch;
         geometryType geometry;
 
-        // Boundary conditions
-        BCType xbc_min, xbc_max;
-        BCType ybc_min, ybc_max;
-        BCType zbc_min, zbc_max;
-
         // Physics selectors
         bool resistiveMHD; // Resistive MHD
         bool rke;          // Remap phase kinetic energy correction
@@ -166,10 +162,9 @@ namespace LARE
         T_dataType eta_background; // Background resisivity
         T_dataType mf;             // Average mass of an ion in proton masses
         T_dataType mu0;             // Vacuum permeability
+        T_dataType mh;             // Mass of a hydrogen atom
+        T_dataType kb;             // Boltzmann constant
 
-        // IO control
-        T_dataType dt_snapshots; // Time between snapshots
-        T_dataType lastOutputTime=0.0; // Time of last output
 
         // Physical arrays
         volumeArray energy_electron; // Electron specific internal energy
@@ -259,12 +254,19 @@ namespace LARE
         bool iszLB = false; // Is this processor on the z-min boundary
         bool iszUB = false; // Is this processor on the z-max boundary
 
-        MPI_Datatype mpiType = MPI_DATATYPE_NULL; // MPI datatype for T_dataType
+        SAMSMPI::datatype mpiType = SAMSMPI::datatypeNull; // MPI datatype for T_dataType
     };
 
     private:
 
         SAMS::harness &harness;
+
+        /**
+         * Handles of the outputs that LARE3D registers
+         */
+        SAMS::outputHandle rhoOutput, energyElectronOutput, energyIonOutput;
+        SAMS::outputHandle vxOutput, vyOutput, vzOutput;
+        SAMS::outputHandle bxOutput, byOutput, bzOutput;
 
     public:
 
@@ -363,6 +365,14 @@ namespace LARE
         constexpr static bool timeSimulation = true;
 
         /**
+         * Names of the phases in the timing output
+         */
+				constexpr static std::string_view beforeStartOfTimestepTimerName = "Shock Viscosity";
+        constexpr static std::string_view startOfTimestepTimerName = "Lagrangian Predictor";
+        constexpr static std::string_view halfTimestepTimerName = "Lagrangian Corrector";
+        constexpr static std::string_view endOfTimestepTimerName = "Remap";
+
+        /**
          * Lare's dataPack is simulationData and remapData
          */
         using dataPack = SAMS::dataPacks::multiPack<simulationData, remapData>;
@@ -393,7 +403,12 @@ namespace LARE
         /**
          * Set default values for control parameters
          */
-        void defaultValues(simulationData &data);
+        void defaultValues(simulationData &data, SAMS::KVS &kvs);
+
+        /**
+         * Put the control parameters back into the deck
+         */
+        void repopulateDeck(simulationData &data, SAMS::KVS &kvs);
 
         /**
          * Set default values for control parameters
@@ -466,17 +481,31 @@ namespace LARE
             data.dt = timeData.dt;
         }
 
-        template<typename T>
-        void registerOutputMeshes(writer<T> &writer);
+        /**
+         * Register the outputs that LARE3D can write
+         * @param outputs The registry of outputs
+         */
+        void registerOutputVariables(SAMS::outputRegistry &outputs);
 
         template<typename T>
-        void registerOutputVariables(writer<T> &writer, simulationData &data);
+        void registerDumpMeshes(SAMS::IO::writer<T> &writer, SAMS::IO::registryWriter<T> &regWriter, const SAMS::outputLevel &level);
 
         template<typename T>
-        void writeOutputMeshes(writer<T> &writer);
+        void registerDumpVariables(SAMS::IO::writer<T> &writer, SAMS::IO::registryWriter<T> &regWriter, const SAMS::outputLevel &level, simulationData &data);
 
         template<typename T>
-        void writeOutputVariables(writer<T> &writer);
+        void writeDumpMeshes(SAMS::IO::writer<T> &writer, SAMS::IO::registryWriter<T> &regWriter, const SAMS::outputLevel &level);
+
+        template<typename T>
+        void writeDumpVariables(SAMS::IO::writer<T> &writer, SAMS::IO::registryWriter<T> &regWriter, const SAMS::outputLevel &level);
+
+        /**
+         * Read the variables of LARE3D from a restart dump
+         * @param reader The reader of the dump
+         * @param regReader The reader for variables in the registries
+         */
+        template<typename T>
+        void restart(SAMS::IO::reader<T> &reader, SAMS::IO::registryReader<T> &regReader);
 
         /**
          * Allocate the LARE3D data arrays

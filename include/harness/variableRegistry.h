@@ -400,6 +400,66 @@ namespace SAMS{
         }
 
         /**
+         * Apply a boundary condition on an edge of a dimension of a specified variable
+         * @param name The name of the variable
+         * @param dim The dimension (0 to rank-1)
+         * @param edge The edge (SAMS::domain::edges)
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void activateBoundaryCondition(const std::string &name, int dim, SAMS::domain::edges edge, const std::shared_ptr<boundaryConditions> &bc){
+            getVariable(name).activateBoundaryCondition(dim, edge, bc);
+        }
+
+        /**
+         * Apply a boundary condition on both edges of a dimension of a specified variable
+         * @param name The name of the variable
+         * @param dim The dimension (0 to rank-1)
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void activateBoundaryCondition(const std::string &name, int dim, const std::shared_ptr<boundaryConditions> &bc){
+            getVariable(name).activateBoundaryCondition(dim, bc);
+        }
+
+        /**
+         * Apply a boundary condition on both edges of all dimensions of a specified variable
+         * @param name The name of the variable
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void activateBoundaryCondition(const std::string &name, const std::shared_ptr<boundaryConditions> &bc){
+            getVariable(name).activateBoundaryCondition(bc);
+        }
+
+        /**
+         * Stop applying a boundary condition on an edge of a dimension of a specified variable
+         * @param name The name of the variable
+         * @param dim The dimension (0 to rank-1)
+         * @param edge The edge (SAMS::domain::edges)
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void deactivateBoundaryCondition(const std::string &name, int dim, SAMS::domain::edges edge, const std::shared_ptr<boundaryConditions> &bc){
+            getVariable(name).deactivateBoundaryCondition(dim, edge, bc);
+        }
+
+        /**
+         * Stop applying a boundary condition on both edges of a dimension of a specified variable
+         * @param name The name of the variable
+         * @param dim The dimension (0 to rank-1)
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void deactivateBoundaryCondition(const std::string &name, int dim, const std::shared_ptr<boundaryConditions> &bc){
+            getVariable(name).deactivateBoundaryCondition(dim, bc);
+        }
+
+        /**
+         * Stop applying a boundary condition on both edges of all dimensions of a specified variable
+         * @param name The name of the variable
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void deactivateBoundaryCondition(const std::string &name, const std::shared_ptr<boundaryConditions> &bc){
+            getVariable(name).deactivateBoundaryCondition(bc);
+        }
+
+        /**
          * Call all boundary conditions on an edge and dimension
          * @param dim The dimension to call the boundary conditions on (0 to rank-1)
          * @param edge The edge to call the boundary conditions on (SAMS::domain::edges)

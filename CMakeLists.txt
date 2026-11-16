@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.12)
+#option() in find modules leaves variables that are already set alone, so that MPI_CXX_SKIP_MPICXX is kept
+if(POLICY CMP0077)
+  cmake_policy(SET CMP0077 NEW)
+endif()
 
 #Check for flag support
 enable_language(CXX)
@@ -8,6 +12,8 @@ include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-march=native" HAVE_MARCH_NATIVE)
 #Check for OpenMP support
 check_cxx_compiler_flag("-fopenmp" HAVE_OPENMP)
+#Check for compressed debug symbol support
+check_cxx_compiler_flag("-gz" HAVE_GZ)
 
 #Enable array bounds checking
 option(ARRAY_BOUNDS_CHECKING "Enable array bounds checking" OFF)
@@ -19,12 +25,14 @@ option(MPI "Enable MPI" OFF)
 option(KOKKOS_CUDA "Enable Kokkos with CUDA backend" OFF)
 #Enable Kokkos HIP backend
 option(KOKKOS_HIP "Enable Kokkos with HIP backend" OFF)
-#Enable native HIP compilation
+#Enable Kokkos SYCL backend
 option(KOKKOS_SYCL "Enable Kokkos with SYCL backend" OFF)
 #Enable Kokkos OpenMP backend
 option(KOKKOS_OPENMP "Enable Kokkos with OpenMP backend" OFF)
 #Enable native CUDA compilation
 option(NATIVE_CUDA "Compile all .cpp files with nvcc as CUDA" OFF)
+#Enable native HIP compilation
+option(NATIVE_HIP "Compile all .cpp files as HIP" OFF)
 #Debug to stderr instead of log files
 option(DEBUG_TO_STDERR "Send debug output to stderr instead of log files" OFF)
 #Do not unroll loops in the native OpenMP implementation. Usually reduces performance.
@@ -35,6 +43,10 @@ option(NATIVE_LOOP_COLLAPSE "Enable loop collapse in the native OpenMP implement
 option(TIMER_SUPPORT "Enable timing of packages" OFF)
 #Compile with -O0 (debug compile mode) also, -Wall -Wextra
 option(DEBUG_COMPILE "Compile with -O0 (debug compile mode)" OFF)
+#Compile the optimised build with debug symbols, compressed where the compiler supports it. DEBUG_COMPILE always has debug symbols
+option(DEBUG_SYMBOLS "Compile the optimised build with debug symbols" OFF)
+#MPI errors return to the code instead of aborting
+option(MPI_ERRORS_RETURN "MPI errors return to the code instead of aborting" OFF)
 #Allow rank inconsistency in queries for whole code events (terminate, output)
 option(ALLOW_RANK_INCONSISTENCY "Allow rank inconsistency in queries for whole code events (terminate, output)" OFF)
 #Enable PETSc
@@ -47,34 +59,62 @@ set(SOLVER_TOLERANCE "" CACHE STRING "Relative tolerance of the parabolic solver
 option(BRAGINSKII_LARSON "Larsen's flux limiter in Braginskii thermal conduction" ON)
 #van Leer limiter of the cross conductances in Braginskii thermal conduction. Turning it off defines NO_BRAGINSKII_VAN_LEER
 option(BRAGINSKII_VAN_LEER "van Leer limiter of the cross conductances in Braginskii thermal conduction" ON)
+#Enable ADIOS2 output
+option(ADIOS2 "Enable ADIOS2 output" OFF)
+#Enable HDF5 output
+option(HDF5 "Enable HDF5 output" OFF)
+#Enable mathematical expressions in the deck with the deck parser
+option(DECK_PARSER "Enable mathematical expressions in the deck" OFF)
+#Pack the halos of accelerated variables into contiguous buffers on the device
+option(DEVICE_CONTINUOUS_HALO "Pack the halos of accelerated variables into contiguous buffers on the device" ON)
 
 if (TIMER_SUPPORT)
   message(STATUS "Enabling timer support")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_TIMER")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DUSE_TIMER")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DUSE_TIMER")
+endif()
+
+if(DECK_PARSER)
+  message(STATUS "Enabling mathematical expressions in the deck")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_DECK_PARSER")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DUSE_DECK_PARSER")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DUSE_DECK_PARSER")
+endif()
+
+if(NOT DEVICE_CONTINUOUS_HALO)
+  message(STATUS "Turning off packing of the halos of accelerated variables on the device")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSAMS_DEVICE_NO_CONTIGUOUS_HALO")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DSAMS_DEVICE_NO_CONTIGUOUS_HALO")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DSAMS_DEVICE_NO_CONTIGUOUS_HALO")
 endif()
 
 if(EXACT_FLUX_CONSERVATION)
   message(STATUS "Enabling exact flux conservation in the parabolic solvers")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEXACT_FLUX_CONSERVATION")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DEXACT_FLUX_CONSERVATION")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DEXACT_FLUX_CONSERVATION")
 endif()
 
 if(NOT BRAGINSKII_LARSON)
   message(STATUS "Turning off Larsen's flux limiter in Braginskii thermal conduction")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_BRAGINSKII_LARSON")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DNO_BRAGINSKII_LARSON")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DNO_BRAGINSKII_LARSON")
 endif()
 
 if(NOT BRAGINSKII_VAN_LEER)
   message(STATUS "Turning off the van Leer limiter in Braginskii thermal conduction")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_BRAGINSKII_VAN_LEER")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DNO_BRAGINSKII_VAN_LEER")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DNO_BRAGINSKII_VAN_LEER")
 endif()
 
 if(SOLVER_TOLERANCE)
   message(STATUS "Setting the tolerance of the parabolic solvers to ${SOLVER_TOLERANCE}")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSOLVER_TOLERANCE=${SOLVER_TOLERANCE}")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DSOLVER_TOLERANCE=${SOLVER_TOLERANCE}")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DSOLVER_TOLERANCE=${SOLVER_TOLERANCE}")
 endif()
 
 # Debug level: numeric 0..3 (default 0)
@@ -97,14 +137,20 @@ endif()
 # Make available to sources and flags
 add_compile_definitions(DEBUG_LEVEL=${DEBUG_LEVEL})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSAMS_DEBUG=${DEBUG_LEVEL}")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DSAMS_DEBUG=${DEBUG_LEVEL}")
+set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DSAMS_DEBUG=${DEBUG_LEVEL}")
 
 if(ARRAY_BOUNDS_CHECKING)
   message(STATUS "Enabling array bounds checking")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DARRAY_BOUNDS_CHECKING")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DARRAY_BOUNDS_CHECKING")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DARRAY_BOUNDS_CHECKING")
 endif()
 
 if(ARRAY_SET_CHECKER)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSET_CHECKER")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DSET_CHECKER")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DSET_CHECKER")
 endif()
 
 if(MPI)
@@ -128,6 +174,9 @@ if(MPI)
   if(KOKKOS_CUDA OR NATIVE_CUDA)
     set(CMAKE_CUDA_HOST_COMPILER "mpicxx" CACHE FILEPATH "CUDA host C++ compiler")
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DUSE_MPI")
+  endif()
+  if(KOKKOS_HIP OR NATIVE_HIP)
+    set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DUSE_MPI")
   endif()
 endif()
 
@@ -173,8 +222,15 @@ if(DEBUG_TO_STDERR)
   add_compile_definitions(SAMS_DEBUG_TO_STDERR)
 endif()
 
+if(MPI_ERRORS_RETURN)
+  message(STATUS "MPI errors return to the code instead of aborting")
+  add_compile_definitions(SAMS_MPI_ERRORS_RETURN)
+endif()
+
 if(NATIVE_CUDA)
   project(SAMS-PP LANGUAGES CXX CUDA)
+elseif(NATIVE_HIP)
+  project(SAMS-PP LANGUAGES CXX HIP)
 else()
   project(SAMS-PP LANGUAGES CXX)
 endif()
@@ -191,13 +247,24 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Set optimization flags depending on DEBUG_COMPILE (separate from DEBUG_LEVEL)
 if(DEBUG_COMPILE)
   message(STATUS "Debug compile mode enabled: using -O0 (no optimizations)")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -DUSE_HDF5 -Wall -Wextra")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -Wall -Wextra")
   # Also set CUDA/HIP flags for debug compile mode if those languages are enabled
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O0 -g")
   set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -O0 -g")
 else()
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -g -DUSE_HDF5 -DUNROLL_NATIVE_OPENMP_LOOPS")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -DUNROLL_NATIVE_OPENMP_LOOPS")
   # Preserve existing CUDA/HIP default flags (they may be extended elsewhere)
+  if(DEBUG_SYMBOLS)
+    message(STATUS "Compiling with debug symbols")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -g")
+    set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -g")
+    if(HAVE_GZ)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -gz")
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler -gz")
+      set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -gz")
+    endif()
+  endif()
 endif()
 
 if (HAVE_MARCH_NATIVE)
@@ -207,11 +274,25 @@ if (HAVE_OPENMP)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
-find_package(HDF5 REQUIRED COMPONENTS CXX)
+if(HDF5)
+  message(STATUS "Enabling HDF5 output")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_HDF5")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DUSE_HDF5")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DUSE_HDF5")
+  find_package(HDF5 REQUIRED COMPONENTS CXX)
 
-#Writing a single HDF5 file from all MPI ranks needs an HDF5 library built with parallel support
-if(MPI AND NOT HDF5_IS_PARALLEL)
-  message(FATAL_ERROR "MPI=ON requires a parallel HDF5 library, but the HDF5 library that was found is not parallel")
+  #Writing a single HDF5 file from all MPI ranks needs an HDF5 library built with parallel support
+  if(MPI AND NOT HDF5_IS_PARALLEL)
+    message(FATAL_ERROR "MPI=ON requires a parallel HDF5 library, but the HDF5 library that was found is not parallel")
+  endif()
+  #A parallel HDF5 library includes mpi.h, so without MPI the MPI that it was built with is added to the build
+  if(NOT MPI AND HDF5_IS_PARALLEL)
+    message(STATUS "The HDF5 library that was found is parallel, so its MPI is added to the build without enabling MPI")
+    #The deprecated MPI C++ bindings are not used
+    set(MPI_CXX_SKIP_MPICXX ON)
+    find_package(MPI REQUIRED COMPONENTS CXX)
+    set(HDF5_NEEDS_MPI ON)
+  endif()
 endif()
 
 #Recursively gather all .cpp source files in src/
@@ -222,7 +303,7 @@ if(NATIVE_CUDA)
   foreach(src_file IN LISTS SAMS_SOURCES)
     set_source_files_properties(${src_file} PROPERTIES LANGUAGE CUDA)
   endforeach()
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DUSE_CUDA  -DUSE_HDF5 --extended-lambda")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DUSE_CUDA --extended-lambda")
 endif()
 
 if(NATIVE_HIP)
@@ -237,7 +318,13 @@ add_executable(sams ${SAMS_SOURCES})
 message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
   
 
-target_include_directories(sams PRIVATE ${HDF5_INCLUDE_DIRS})
+if(HDF5)
+  target_include_directories(sams PRIVATE ${HDF5_INCLUDE_DIRS})
+endif()
+if(HDF5_NEEDS_MPI)
+  target_include_directories(sams PRIVATE ${MPI_CXX_INCLUDE_DIRS})
+  target_link_libraries(sams PRIVATE MPI::MPI_CXX)
+endif()
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/PhysicsPackages/LARE")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/PhysicsPackages/LARE/include")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/PhysicsPackages/Parabolic")
@@ -251,11 +338,14 @@ target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditio
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditions/OrszagTang3D")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditions/EmeryWindTunnel")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditions/KarmanVortex")
+target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/src/InitialConditions/Deck")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include/harness")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include/runner")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include/boundaryConditions")
 target_include_directories(sams PRIVATE "${CMAKE_SOURCE_DIR}/include")
-target_link_libraries(sams PRIVATE ${HDF5_LIBRARIES})
+if(HDF5)
+  target_link_libraries(sams PRIVATE ${HDF5_LIBRARIES})
+endif()
 target_link_libraries(sams PRIVATE stdc++)
 
 if (KOKKOS_CUDA OR KOKKOS_HIP OR KOKKOS_SYCL OR KOKKOS_OPENMP)
@@ -268,12 +358,19 @@ if (KOKKOS_CUDA OR KOKKOS_HIP OR KOKKOS_SYCL OR KOKKOS_OPENMP)
   find_package(Kokkos REQUIRED CONFIG NO_DEFAULT_PATH PATHS "${Kokkos_DIR}")
   message(STATUS "Found Kokkos ${Kokkos_VERSION} at ${Kokkos_DIR}")
   target_link_libraries(sams PRIVATE Kokkos::kokkos)
+  #The debug information of the large kernels exceeds the variable tracking limit, so GCC does not attempt the tracking
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-var-tracking-assignments")
+  #nvcc_wrapper compiles and links with its own host compiler, so with MPI it is told to use the MPI compiler
+  if(MPI AND KOKKOS_CUDA)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ccbin ${MPI_CXX_COMPILER_PATH}")
+  endif()
 endif()
 
 if (PETSC)
   message(STATUS "Enabling PETSc support")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_PETSC")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DUSE_PETSC")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DUSE_PETSC")
 
   # Allow PETSC_DIR / PETSC_ARCH to come from env or be set on the cmake command line
   if(NOT PETSC_DIR)
@@ -333,6 +430,64 @@ if (PETSC)
   endif()
 
   message(STATUS "PETSC_INCLUDE_DIRS=${PETSC_INCLUDE_DIRS}")
+
+  #A PETSc library built with MPI includes mpi.h, so without MPI the MPI that it was built with is added to the build. A PETSc library built without MPI uses MPIUNI
+  find_file(PETSC_CONF_HEADER petscconf.h HINTS ${PETSC_INCLUDE_DIRS} NO_DEFAULT_PATH)
+  file(STRINGS "${PETSC_CONF_HEADER}" PETSC_MPIUNI REGEX "#define PETSC_HAVE_MPIUNI")
+  if(NOT MPI AND NOT PETSC_MPIUNI)
+    message(STATUS "The PETSc library that was found is parallel, so its MPI is added to the build without enabling MPI")
+    #The deprecated MPI C++ bindings are not used
+    set(MPI_CXX_SKIP_MPICXX ON)
+    find_package(MPI REQUIRED COMPONENTS CXX)
+    target_include_directories(sams PRIVATE ${MPI_CXX_INCLUDE_DIRS})
+    target_link_libraries(sams PRIVATE MPI::MPI_CXX)
+  endif()
+
   target_include_directories(sams PRIVATE ${PETSC_INCLUDE_DIRS})
   target_link_libraries(sams PRIVATE ${PETSC_LDFLAGS})
+endif()
+
+if (ADIOS2)
+  message(STATUS "Enabling ADIOS2 output")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_ADIOS2")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DUSE_ADIOS2")
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DUSE_ADIOS2")
+
+  # Allow ADIOS2_DIR to come from env or be set on the cmake command line
+  if(NOT ADIOS2_DIR)
+    set(ADIOS2_DIR "$ENV{ADIOS2_DIR}")
+  endif()
+
+  find_path(ADIOS2_INCLUDE_DIR adios2.h
+    HINTS "${ADIOS2_DIR}/include"
+  )
+  #Writing from all MPI ranks needs the MPI version of the ADIOS2 C++ library
+  if(MPI)
+    set(ADIOS2_CXX_LIBRARY_NAME adios2_cxx11_mpi)
+    #The ADIOS2 headers only declare the MPI interface when ADIOS2_USE_MPI is set
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DADIOS2_USE_MPI=1")
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DADIOS2_USE_MPI=1")
+    set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DADIOS2_USE_MPI=1")
+  else()
+    set(ADIOS2_CXX_LIBRARY_NAME adios2_cxx11)
+  endif()
+  find_library(ADIOS2_CXX_LIBRARY
+    NAMES ${ADIOS2_CXX_LIBRARY_NAME}
+    HINTS "${ADIOS2_DIR}/lib" "${ADIOS2_DIR}/lib64"
+  )
+  #The MPI version of the ADIOS2 C++ library only holds the MPI interface. The rest is in the serial library
+  if(MPI)
+    find_library(ADIOS2_CXX_SERIAL_LIBRARY
+      NAMES adios2_cxx11
+      HINTS "${ADIOS2_DIR}/lib" "${ADIOS2_DIR}/lib64"
+    )
+  endif()
+
+  if(NOT ADIOS2_INCLUDE_DIR OR NOT ADIOS2_CXX_LIBRARY)
+    message(FATAL_ERROR "Could not locate ADIOS2 headers/libraries (${ADIOS2_CXX_LIBRARY_NAME}) under ADIOS2_DIR='${ADIOS2_DIR}'")
+  endif()
+
+  message(STATUS "ADIOS2_INCLUDE_DIR=${ADIOS2_INCLUDE_DIR}")
+  target_include_directories(sams PRIVATE ${ADIOS2_INCLUDE_DIR})
+  target_link_libraries(sams PRIVATE ${ADIOS2_CXX_LIBRARY} ${ADIOS2_CXX_SERIAL_LIBRARY})
 endif()

@@ -2,6 +2,10 @@
 #define MULTIGRIDTEST_PETSCMATRIX_H
 #include "runner.h"
 #include "harness.h"
+#include "builtInBoundaryConditions.h"
+#include "deckHelpers/deckBoundaries.h"
+#include "deckHelpers/expressionBC.h"
+#include "helpers.h"
 #include <petscksp.h>
 #include <vector>
 
@@ -29,33 +33,41 @@ namespace SAMS
 
 		struct simulationData
 		{
-			size_t nx, ny, nz;
+			SAMS::T_sizeType nx, ny, nz;
 			pw::Range xcLocalDomainRange, ycLocalDomainRange, zcLocalDomainRange;
 		};
 
 		inline static constexpr auto nameType = T::name + SAMS::makeName("_petscMatrix");
 		constexpr static std::string_view name = nameType;
-		constexpr static bool coreSimulation = true;
+		constexpr static bool coreSimulation = false;
 		constexpr static bool timeSimulation = true;
-		using dataPack = SAMS::dataPacks::multiPack<simulationData, typename T::dataPack>;
+		using dataPack = SAMS::dataPacks::multiPack<simulationData, SAMS::deckHostData<3>, typename T::dataPack>;
 		using packRefs = SAMS::packRefsOf_t<typename T::dataPack>;
 
 		static_assert(std::is_same_v<SAMS::T_dataType, PetscScalar>, "petscMatrix requires SAMS::T_dataType to be PetscScalar");
+
+		// Activate the deck services, which hold the host data of the deck for expressions
+		template <typename T_runner>
+		void runnerInteraction(T_runner &runnerRef)
+		{
+			runnerRef.activatePackage("deckServices");
+		}
 
 		pw::portableArrayManager &manager;
 
 		petscMatrix(SAMS::harness &hr) : manager(hr.memoryRegistry.getArrayManager()) {}
 
-		KSP ksp = nullptr;
+		// One solver, with its own preconditioner, for each subproblem, because their operators can differ greatly
+		std::vector<KSP> ksps;
 		Mat A = nullptr;
 		Vec x = nullptr, b = nullptr;
 #ifdef EXACT_FLUX_CONSERVATION
 		Vec residual = nullptr;
 #endif
 
-		// The preconditioner is rebuilt every rebuildInterval steps, starting with the first, and reused in between
+		// The preconditioner of each subproblem is rebuilt every rebuildInterval steps, starting with the first, and reused in between
 		static constexpr int rebuildInterval = 20;
-		int stepsSinceRebuild = rebuildInterval;
+		std::vector<int> stepsSinceRebuild;
 
 		// Values of the matrix in COO form, stencilSize per row in the order given by the offsets of the problem
 		lineArray cooValues;
@@ -76,10 +88,16 @@ namespace SAMS
 			return (ii < 1 && e.lowX) || (ii > nx && e.highX) || (jj < 1 && e.lowY) || (jj > ny && e.highY) || (kk < 1 && e.lowZ) || (kk > nz && e.highZ);
 		}
 
+		// The boundary conditions on the sides of the domain for each subproblem
+		std::vector<parabolic::sideConditions> sides;
+
+		// The boundary conditions of the temperature of each subproblem, active only while that subproblem is solved
+		std::vector<std::vector<std::shared_ptr<SAMS::boundaryConditions>>> problemBoundaries;
+
 		// The finest level, with the members that the problem needs
 		struct level
 		{
-			size_t nx, ny, nz;
+			SAMS::T_sizeType nx, ny, nz;
 			// The index of the level, which is 0 for the finest level
 			SAMS::T_sizeType gridLevel = 0;
 			bool coarsenX = false, coarsenY = false, coarsenZ = false;
@@ -104,9 +122,48 @@ namespace SAMS
 			harness.initialisePETSc();
 		}
 
-		void setBoundaryConditions(SAMS::harness &harness, packRefs packs)
+		void defaultValues(SAMS::KVS &kvs, packRefs packs)
+		{
+			callWithFixedAndInferred(problem, &T::defaultValues, packs, kvs);
+		}
+
+		void setBoundaryConditions(SAMS::harness &harness, SAMS::KVS &kvs, [[maybe_unused]] SAMS::deckHostData<3> &hostData, [[maybe_unused]] SAMS::timeState &tData, packRefs packs)
 		{
 			callWithFixedAndInferred(problem, &T::setBoundaryConditions, packs, harness);
+			using clamp = SAMS::simpleClamp<SAMS::T_dataType, 3>;
+			SAMS::variableDef &fieldDef = harness.variableRegistry.getVariable(T::fieldName());
+			sides.assign(problem.problemCount(), parabolic::sideConditions{});
+			problemBoundaries.assign(problem.problemCount(), {});
+			for (SAMS::T_sizeType n = 0; n < problem.problemCount(); ++n)
+			{
+				for (int d = 0; d < 3; ++d)
+				{
+					for (SAMS::domain::edges edge : {SAMS::domain::edges::lower, SAMS::domain::edges::upper})
+					{
+						const int side = edge == SAMS::domain::edges::lower ? 0 : 1;
+						const parabolic::tcBoundaryType boundary = problem.getBoundaryType(kvs, n, d, edge);
+						// Clamp and expression set the ghost cells of the temperature, which are then fixed
+						const bool setsGhosts = boundary.type == parabolic::boundaryType::clamp || boundary.type == parabolic::boundaryType::expression;
+						sides[n].type[d][side] = setsGhosts ? parabolic::boundaryType::fixedGhosts : boundary.type;
+						sides[n].value[d][side] = boundary.value;
+						if (boundary.type == parabolic::boundaryType::clamp)
+							problemBoundaries[n].push_back(fieldDef.addBoundaryCondition(d, edge, clamp(fieldDef, boundary.value)));
+						else if (boundary.type == parabolic::boundaryType::expression)
+						{
+#ifdef USE_DECK_PARSER
+							eis::stack<SAMS::T_dataType> stack;
+							eis::error errcode = eis::err_none;
+							hostData.parser->tokenize(boundary.text, stack, errcode);
+							if (errcode != eis::err_none) harness.abort("Invalid thermal conduction boundary expression: " + boundary.text + "\n" + SAMS::parserErrors(*hostData.parser), false);
+							hostData.addPositions(harness, fieldDef);
+							problemBoundaries[n].push_back(fieldDef.addBoundaryCondition(d, edge, SAMS::expressionBC<3>(fieldDef, harness, tData, hostData, stack)));
+#else
+							harness.abort("Invalid thermal conduction boundary expression: " + boundary.text + "\nExpressions need the deck parser", false);
+#endif
+						}
+					}
+				}
+			}
 		}
 
 		void initialConditions(SAMS::harness &harness, packRefs packs)
@@ -152,6 +209,15 @@ namespace SAMS
 			edges.highY = atEdge(1, SAMS::domain::edges::upper);
 			edges.lowZ = atEdge(2, SAMS::domain::edges::lower);
 			edges.highZ = atEdge(2, SAMS::domain::edges::upper);
+			for (parabolic::sideConditions &s : sides)
+			{
+				s.physical[0][0] = edges.lowX;
+				s.physical[0][1] = edges.highX;
+				s.physical[1][0] = edges.lowY;
+				s.physical[1][1] = edges.highY;
+				s.physical[2][0] = edges.lowZ;
+				s.physical[2][1] = edges.highZ;
+			}
 
 			// The global index of the first cell of this rank in each direction, and the first row that it owns
 			const std::array<std::string, 3> axisNames = {xName, yName, zName};
@@ -255,67 +321,95 @@ namespace SAMS
 
 			// The matrix is not symmetric for a general magnetic field, so GMRES, with hypre's BoomerAMG unless
 			// PETSC_NO_PRECONDITIONER is defined. These can be overridden from the PETSc options database
-			PC pc;
-			PetscCallAbort(comm, KSPCreate(comm, &ksp));
-			PetscCallAbort(comm, KSPSetType(ksp, KSPGMRES));
-			PetscCallAbort(comm, KSPGetPC(ksp, &pc));
+			ksps.assign(problem.problemCount(), nullptr);
+			stepsSinceRebuild.assign(problem.problemCount(), rebuildInterval);
+			for (KSP &ksp : ksps)
+			{
+				PC pc;
+				PetscCallAbort(comm, KSPCreate(comm, &ksp));
+				PetscCallAbort(comm, KSPSetType(ksp, KSPGMRES));
+				PetscCallAbort(comm, KSPGetPC(ksp, &pc));
 #ifdef PETSC_NO_PRECONDITIONER
-			PetscCallAbort(comm, PCSetType(pc, PCNONE));
+				PetscCallAbort(comm, PCSetType(pc, PCNONE));
 #else
-			PetscCallAbort(comm, PCSetType(pc, PCHYPRE));
-			PetscCallAbort(comm, PCHYPRESetType(pc, "boomeramg"));
+				PetscCallAbort(comm, PCSetType(pc, PCHYPRE));
+				PetscCallAbort(comm, PCHYPRESetType(pc, "boomeramg"));
 
-			// Options for a cheaper BoomerAMG setup in 3D: a larger strong threshold, HMIS coarsening with one level of
-			// aggressive coarsening, and truncated extended interpolation
-			PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_strong_threshold", "0.5"));
-			PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_coarsen_type", "HMIS"));
-			PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_agg_nl", "1"));
-			PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_interp_type", "ext+i"));
-			PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_P_max", "4"));
+				// Options for a cheaper BoomerAMG setup in 3D: a larger strong threshold, HMIS coarsening with one level of
+				// aggressive coarsening, and truncated extended interpolation
+				PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_strong_threshold", "0.5"));
+				PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_coarsen_type", "HMIS"));
+				PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_agg_nl", "1"));
+				PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_interp_type", "ext+i"));
+				PetscCallAbort(comm, PetscOptionsSetValue(nullptr, "-pc_hypre_boomeramg_P_max", "4"));
 #endif
 
-			// The preconditioner is built on the first solve and reused for later ones, even though the matrix changes
-			PetscCallAbort(comm, KSPSetReusePreconditioner(ksp, PETSC_TRUE));
-			PetscCallAbort(comm, KSPSetTolerances(ksp, SOLVER_TOLERANCE, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT));
-			// The tolerance is relative to the initial residual, as in the multigrid solver, and not to the norm of the right hand side
-			PetscCallAbort(comm, KSPConvergedDefaultSetUIRNorm(ksp));
-			PetscCallAbort(comm, KSPSetInitialGuessNonzero(ksp, PETSC_TRUE));
-			PetscCallAbort(comm, KSPSetFromOptions(ksp));
+				// The preconditioner is built on the first solve and reused for later ones, even though the matrix changes
+				PetscCallAbort(comm, KSPSetReusePreconditioner(ksp, PETSC_TRUE));
+				PetscCallAbort(comm, KSPSetTolerances(ksp, SOLVER_TOLERANCE, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT));
+				// The tolerance is relative to the initial residual, as in the multigrid solver, and not to the norm of the right hand side
+				PetscCallAbort(comm, KSPConvergedDefaultSetUIRNorm(ksp));
+				PetscCallAbort(comm, KSPSetInitialGuessNonzero(ksp, PETSC_TRUE));
+				PetscCallAbort(comm, KSPSetFromOptions(ksp));
+			}
 		}
 
 		void endOfTimestep(const SAMS::timeState &ts, SAMS::harness &harness, simulationData &data, packRefs packs)
 		{
-			callWithFixedAndInferred(problem, &T::beforeSolve, packs, harness);
+			callWithFixedAndInferred(problem, &T::beforeAllSolves, packs, harness);
+			for (SAMS::T_sizeType n = 0; n < problem.problemCount(); ++n)
+			{
+				solveProblem(n, ts, harness, packs);
+			}
+			callWithFixedAndInferred(problem, &T::afterAllSolves, packs, harness);
+		}
+
+		// Solve subproblem n for one step, with its own solver and preconditioner
+		void solveProblem(SAMS::T_sizeType n, const SAMS::timeState &ts, SAMS::harness &harness, packRefs packs)
+		{
+			for (auto &boundaries : problemBoundaries)
+			{
+				for (auto &bc : boundaries)
+					harness.variableRegistry.deactivateBoundaryCondition(T::fieldName(), bc);
+			}
+			for (auto &bc : problemBoundaries[n])
+				harness.variableRegistry.activateBoundaryCondition(T::fieldName(), bc);
+			callWithFixedAndInferred(problem, &T::beforeSolve, packs, harness, n);
 			harness.variableRegistry.applyBoundaryConditions(T::fieldName());
 			const volumeArray field = this->field;
 			const boundaryFlags e = edges;
-			const double dt = ts.dt;
-			const size_t nx = levels[0].nx, ny = levels[0].ny, nz = levels[0].nz;
+			const parabolic::sideConditions sc = sides[n];
+			const SAMS::T_sizeType nx = levels[0].nx, ny = levels[0].ny, nz = levels[0].nz;
+			const SIGNED_INDEX_TYPE cells[3] = {static_cast<SIGNED_INDEX_TYPE>(nx), static_cast<SIGNED_INDEX_TYPE>(ny), static_cast<SIGNED_INDEX_TYPE>(nz)};
 			const lineArray dxc = levels[0].dxc, dyc = levels[0].dyc, dzc = levels[0].dzc;
 			lineArray vals = cooValues;
 
 			levels[0].rhs = field;
-			callWithFixedAndInferred(problem, &T::template prepareSolve<level>, packs, levels);
-			const typename T::stencil s = problem.makeStencil(levels[0]);
+			callWithFixedAndInferred(problem, &T::template prepareSolve<level>, packs, levels, n, ts);
+			const typename T::stencil s = problem.makeStencil(levels[0], n);
 
 			PetscScalar *bp, *xp;
 			PetscMemType memType;
 			PetscCallAbort(comm, VecGetArrayAndMemType(b, &bp, &memType));
 			PetscCallAbort(comm, VecGetArrayAndMemType(x, &xp, &memType));
-			// Neighbours beyond the boundary of the domain go on the right hand side
-			auto assemble = LAMBDA(size_t i, size_t j, size_t k)
+			// A neighbour beyond the boundary of the domain is mapped onto domain cells, which take its coefficient in this row,
+			// and onto ghost cells and a constant, which go on the right hand side
+			auto assemble = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				const double vol = dxc(i) * dyc(j) * dzc(k);
+				const SAMS::T_dataType vol = dxc(i) * dyc(j) * dzc(k);
 
-				double a[stencilSize];
+				SAMS::T_dataType a[stencilSize];
 				s.coefficients(i, j, k, a);
 
-				const size_t r = (i - 1) + nx * ((j - 1) + ny * (k - 1));
-				const double uOld = field(i, j, k);
-				const double factor = s.beta(i, j, k);
-				double rhs = vol * factor * uOld / dt;
+				const SAMS::T_indexType r = (i - 1) + nx * ((j - 1) + ny * (k - 1));
+				const SAMS::T_dataType uOld = field(i, j, k);
+				const SAMS::T_dataType factor = s.beta(i, j, k);
+				SAMS::T_dataType rhs = vol * factor * uOld;
 
-				const double timeTerm = vol * factor / dt;
+				const SAMS::T_dataType timeTerm = vol * factor;
+				SAMS::T_dataType row[stencilSize];
+				for (int t = 0; t < stencilSize; ++t)
+					row[t] = 0.0;
 				for (int s = 0; s < stencilSize; ++s)
 				{
 					int di, dj, dk;
@@ -323,16 +417,32 @@ namespace SAMS
 					const SIGNED_INDEX_TYPE ii = static_cast<SIGNED_INDEX_TYPE>(i) + di;
 					const SIGNED_INDEX_TYPE jj = static_cast<SIGNED_INDEX_TYPE>(j) + dj;
 					const SIGNED_INDEX_TYPE kk = static_cast<SIGNED_INDEX_TYPE>(k) + dk;
-					if (!petscMatrix::beyondDomain(e, ii, jj, kk, static_cast<SIGNED_INDEX_TYPE>(nx), static_cast<SIGNED_INDEX_TYPE>(ny), static_cast<SIGNED_INDEX_TYPE>(nz)))
+					if (!petscMatrix::beyondDomain(e, ii, jj, kk, cells[0], cells[1], cells[2]))
 					{
-						vals(stencilSize * r + s) = (di == 0 && dj == 0 && dk == 0 ? timeTerm : 0.0) - a[s];
+						row[s] += (di == 0 && dj == 0 && dk == 0 ? timeTerm : 0.0) - a[s];
+						continue;
 					}
-					else
+					const parabolic::ghostMap g = parabolic::mapGhost(sc, ii, jj, kk, cells);
+					rhs += a[s] * g.constant;
+					for (int m = 0; m < g.count; ++m)
 					{
-						vals(stencilSize * r + s) = 0.0;
-						rhs += a[s] * field(ii, jj, kk);
+						const SIGNED_INDEX_TYPE mi = g.index[m][0], mj = g.index[m][1], mk = g.index[m][2];
+						if (petscMatrix::beyondDomain(e, mi, mj, mk, cells[0], cells[1], cells[2]))
+						{
+							rhs += a[s] * g.weight[m] * field(mi, mj, mk);
+							continue;
+						}
+						for (int t = 0; t < stencilSize; ++t)
+						{
+							int ti, tj, tk;
+							T::stencilCellOffset(t, ti, tj, tk);
+							if (mi == static_cast<SIGNED_INDEX_TYPE>(i) + ti && mj == static_cast<SIGNED_INDEX_TYPE>(j) + tj && mk == static_cast<SIGNED_INDEX_TYPE>(k) + tk)
+								row[t] -= a[s] * g.weight[m];
+						}
 					}
 				}
+				for (int t = 0; t < stencilSize; ++t)
+					vals(stencilSize * r + t) = row[t];
 
 				bp[r] = rhs;
 				xp[r] = uOld;
@@ -344,24 +454,24 @@ namespace SAMS
 			// The matrix depends on dt and on the conductivity from the old field, so it is set and handed to the solver
 			// every step
 			PetscCallAbort(comm, MatSetValuesCOO(A, cooValues.data(), INSERT_VALUES));
-			PetscCallAbort(comm, KSPSetOperators(ksp, A, A));
-			const bool rebuildPreconditioner = stepsSinceRebuild >= rebuildInterval;
-			stepsSinceRebuild = rebuildPreconditioner ? 1 : stepsSinceRebuild + 1;
-			PetscCallAbort(comm, KSPSetReusePreconditioner(ksp, rebuildPreconditioner ? PETSC_FALSE : PETSC_TRUE));
-			PetscCallAbort(comm, KSPSolve(ksp, b, x));
+			PetscCallAbort(comm, KSPSetOperators(ksps[n], A, A));
+			const bool rebuildPreconditioner = stepsSinceRebuild[n] >= rebuildInterval;
+			stepsSinceRebuild[n] = rebuildPreconditioner ? 1 : stepsSinceRebuild[n] + 1;
+			PetscCallAbort(comm, KSPSetReusePreconditioner(ksps[n], rebuildPreconditioner ? PETSC_FALSE : PETSC_TRUE));
+			PetscCallAbort(comm, KSPSolve(ksps[n], b, x));
 
 #ifdef EXACT_FLUX_CONSERVATION
-			// The residual b - A x is the old field minus the solved field, scaled by V beta / dt, plus the net flux of the solved
+			// The residual b - A x is the old field minus the solved field, scaled by V beta, plus the net flux of the solved
 			// field. Adding it to x, scaled, sets x to the old field plus the net flux of the solved field, which is conservative
 			PetscCallAbort(comm, MatMult(A, x, residual));
 			PetscCallAbort(comm, VecAYPX(residual, -1.0, b));
 			PetscScalar *rp;
 			PetscCallAbort(comm, VecGetArrayAndMemType(residual, &rp, &memType));
 			PetscCallAbort(comm, VecGetArrayAndMemType(x, &xp, &memType));
-			auto conserve = LAMBDA(size_t i, size_t j, size_t k)
+			auto conserve = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				const size_t r = (i - 1) + nx * ((j - 1) + ny * (k - 1));
-				xp[r] += dt * rp[r] / (dxc(i) * dyc(j) * dzc(k) * s.beta(i, j, k));
+				const SAMS::T_indexType r = (i - 1) + nx * ((j - 1) + ny * (k - 1));
+				xp[r] += rp[r] / (dxc(i) * dyc(j) * dzc(k) * s.beta(i, j, k));
 			};
 			pw::applyKernel(conserve, pw::Range(1, nx), pw::Range(1, ny), pw::Range(1, nz));
 			pw::fence();
@@ -370,7 +480,7 @@ namespace SAMS
 #endif
 
 			PetscCallAbort(comm, VecGetArrayAndMemType(x, &xp, &memType));
-			auto copyBack = LAMBDA(size_t i, size_t j, size_t k)
+			auto copyBack = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
 				field(i, j, k) = xp[(i - 1) + nx * ((j - 1) + ny * (k - 1))];
 			};
@@ -378,7 +488,7 @@ namespace SAMS
 			pw::fence();
 			PetscCallAbort(comm, VecRestoreArrayAndMemType(x, &xp));
 
-			callWithFixedAndInferred(problem, &T::afterSolve, packs, harness);
+			callWithFixedAndInferred(problem, &T::afterSolve, packs, harness, n);
 			const SAMS::T_dataType localSum = pw::sum(field);
 			SAMS::T_dataType total = localSum;
 #ifdef USE_MPI
@@ -395,7 +505,7 @@ namespace SAMS
 			VecDestroy(&residual);
 #endif
 			MatDestroy(&A);
-			KSPDestroy(&ksp);
+			for (KSP &ksp : ksps) KSPDestroy(&ksp);
 		}
 	};
 

@@ -6,11 +6,11 @@ The philosophy of SAMS is that each unit should be free to design itself as far 
 
 ## The current state of SAMS development
 
-SAMS is currently at v 0.0.3, so should be considered alpha or even pre-alpha software. The interfaces described in this document will almost certainly be extended. This should not break existing packages. It may also remove, change or modify existing interfaces which will break existing packages. In particular, IO is very much a placeholder, and one with some obvious limitations, so it is likely to be changed.
+SAMS is currently at v 0.1.0 beta, so should be considered beta software. The interfaces described in this document will almost certainly be extended. This should not break existing packages. It may also remove, change or modify existing interfaces which will break existing packages. In particular, IO is very much a placeholder, and one with some obvious limitations, so it is likely to be changed.
 
-## The Input Deck Parser
+## The Input Deck
 
-We don't have one yet. The idea is that any part of the code can access the input deck parser when one is put in place to allow users to select parameterised values for their simulations. In some places in this document we talk about "reading user input" but this is just a placeholder for "reading from the input deck parser when it is implemented".
+The runner reads the input deck into a key value store, `SAMS::KVS`, before any package is set up. The deck can be written in an extended EPOCH format or in JSON. Any event can request the `SAMS::KVS` through the ASMF and read keys from it by path, for example `kvs.getReal("/time/t_end")`. When SAMS is built with `DECK_PARSER`, numbers in the deck can be mathematical expressions, which the runner evaluates with its parser. A package can request the parser through the ASMF as `eis::parser<SAMS::T_dataType>` to add its own variables to it.
 
 ## The SAMS runner
 
@@ -61,6 +61,14 @@ This is a correct, but minimal package. It has a name, but it does not implement
 ## Core simulation status
 
 Optionally you can flag your package as being a core simulation by setting a constexpr static bool member of your class called `coreSimulation` to true. Core simulations status doesn't mean anything in terms of how the package is run, but the runner will refuse to run if no core simulations are activated, and will give a warning if more than one core simulation is activated. This is to prevent the user from accidentally running a simulation without activating any core simulations, or from accidentally activating multiple core simulations. If a package does not have a `coreSimulation` member, or if it is set to false, then the package is not considered a core simulation.
+
+## Other package settings
+
+A package can set three more optional static constexpr members:
+
+* `timeSimulation` - A bool saying whether the runner times the events of the package when SAMS is built with `TIMER_SUPPORT`
+* `defaultActivate` - A bool. If it is true the package is active unless the deck deactivates it with `~Name` in `/SAMS/packages`
+* `runnerOrder` - A `uint8_t` that sets the order in which the runner calls the events of the packages. Lower values run first. `SAMS::fixedOrders` holds the values used by solvers and initial conditions
 
 ## Data packs
 
@@ -159,6 +167,19 @@ void initialize(myDataPack& dataPack){
 
 NOTE: the order in which each stage is called on each package is fixed, but not trivial to manipulate. If you are implementing a package which requires a specific ordering with respect to another, please contact the core dev team.
 
+### `defaultDeck` event
+
+The `defaultDeck` event is called after `initialize`, before any axes or variables are registered. It is for setting values for deck keys that the deck does not set, using `setDefaultPath` on the `SAMS::KVS`. A package that sets up a problem uses this to give the problem its default domain, end time and so on, so that the deck only has to set what it changes.
+
+```cpp
+void defaultDeck(SAMS::KVS &kvs){
+    kvs.setDefaultPath(SAMS::deckKeys::endTime, 3.0);
+    kvs.setDefaultPath(SAMS::deckKeys::nx, 128);
+}
+```
+
+The names of keys that more than one package uses are in `SAMS::deckKeys`.
+
 ## `registerAxes` event
 
 The register axes event is called after `initialize`, and is for registering the axes that the package needs. This event is the first that will make use of the `SAMS::harness` object. The harness handles all common features of the simulation, and is used to specify spatial domains, variables, ghost cells etc. The harness is always available through the ASMF, so you can request a reference to it in the signature of any event. This only makes sense to do for some specific events, and `registerAxes` is the first of those events. In `registerAxes` you should use the harness to register the axes that your package needs, and to specify how those axes are mapped to the MPI domain decomposition. The runner will then use this information to set up the MPI domain decomposition and to allocate the appropriate amount of memory for the variables that your package needs. The harness has a member variable called `axisRegistry` which is used to register axes. See the full developer documentation for the `axisRegistry` class for full details on how to use it, but an example from LARE3D is shown here:
@@ -214,11 +235,11 @@ This shows a fragment of the variable registration for LARE3D. The first variabl
 ## `defaultValues` event
 
 The purpose of this event is to set up default values for non array variables. The idea of this is that a package may want to set up default values that will be overriden by another package that is setting up an initial condition. For example, in LARE3D the `mu0` parameter of the `simulationData` data pack that represents the magnetic susceptibility is set to `mu0_si` the physically correct SI value. Most simulations will not want to change this value, but some simulations may work in normalised units and thus require LARE to run with `mu0` set to 1. 
-Packages which use the default value set by LARE3D do not need to do anything - packages which require another value can override the default value in the `controlValues` event. 
+Packages which use the default value set by LARE3D do not need to do anything - packages which require another value can override the default value in the `controlVariables` event. 
 
 NOTE: as mentioned above, the order in which packages apply their default and control values is fixed, so there are no 'race'-like conditions if multiple packages set the same value. However, two packages setting inconsistent values indicates that they are not compatible. So if your package sets values on the core solver, or values on other packages, please make sure to document this carefully. 
 
-The philosophical difference between `defaultValues` and `controlValues` is that `defaultValues` is for setting up default values that are intended to be overridden by other packages, while `controlValues` is for setting up control variables that are intended to be used by a particular simulation. So in general a package implementing a problem would not set `defaultValues`, but would set `controlValues` to set up the control variables for that problem, while a package implementing a physics module would set `defaultValues` to set up default values for parameters that are used in the physics module but not `controlValues` because a physics module does not know what problem is going to be run and so cannot set up the control values. As a consequence of this, it would be unusual for `defaultValues` to read user input, but it is very common for `controlValues` to read user input, since the control values are intended to be set by the user for a particular simulation.
+The philosophical difference between `defaultValues` and `controlVariables` is that `defaultValues` is for setting up default values that are intended to be overridden by other packages, while `controlVariables` is for setting up control variables that are intended to be used by a particular simulation. So in general a package implementing a problem would not set `defaultValues`, but would set `controlVariables` to set up the control variables for that problem, while a package implementing a physics module would set `defaultValues` to set up default values for parameters that are used in the physics module but not `controlVariables` because a physics module does not know what problem is going to be run and so cannot set up the control values. As a consequence of this, it would be unusual for `defaultValues` to read user input, but it is very common for `controlVariables` to read user input, since the control values are intended to be set by the user for a particular simulation.
 
 Mechanically this is a very simple event. It uses the ASMF and usually a package will request it's own datapack objects and then just set the values appropriately. For example, in LARE3D we have the following `defaultValues` function:
 
@@ -249,11 +270,11 @@ Mechanically this is a very simple event. It uses the ASMF and usually a package
 
 This sets up sensible default values for values that LARE3D needs to have set but that a user may wish to override for a particular simulation.
 
-## `controlValues` event
+## `controlVariables` event
 
-The `controlValues` event is for setting up control variables for a particular simulation. These are variables that are intended to be set by the user for a particular simulation, and that are intended to be used by a particular simulation. They generally mirror `defaultValues` since the purpose of this is to have a place for the user to set values that will override the default values set in `defaultValues`. There isn't much to add to the description of this event that wasn't said in the description of `defaultValues`. 
+The `controlVariables` event is for setting up control variables for a particular simulation. These are variables that are intended to be set by the user for a particular simulation, and that are intended to be used by a particular simulation. They generally mirror `defaultValues` since the purpose of this is to have a place for the user to set values that will override the default values set in `defaultValues`. There isn't much to add to the description of this event that wasn't said in the description of `defaultValues`. 
 
-Generally `controlValues` will be implemented in a package that is setting up a particular problem. It may or may not parameterise the problem on values from the input deck, but it is also valid to hard code values.
+Generally `controlVariables` will be implemented in a package that is setting up a particular problem. It may or may not parameterise the problem on values from the input deck, but it is also valid to hard code values.
 
 ## `setDomain` event
 
@@ -303,10 +324,10 @@ This needs some explanation. The first part is getting the axes that the package
 ```cpp
 struct simulationData {
     //...
-    portableWrapper::portableArray<SAMS::T_dataType, 1, SAMS::arrayTags::accelerated> xc; // Cell centred X axis values on the device
-    portableWrapper::portableArray<SAMS::T_dataType, 1, SAMS::arrayTags::accelerated> xb; // Face centred X axis values on the device
-    portableWrapper::portableArray<SAMS::T_dataType, 1, SAMS::arrayTags::host> xc_host; // Cell centred X axis values on the host
-    portableWrapper::portableArray<SAMS::T_dataType, 1, SAMS::arrayTags::host> xb_host; // Face centred X axis values on the host
+    portableWrapper::portableArray<SAMS::T_dataType, 1, portableWrapper::arrayTags::accelerated> xc; // Cell centred X axis values on the device
+    portableWrapper::portableArray<SAMS::T_dataType, 1, portableWrapper::arrayTags::accelerated> xb; // Face centred X axis values on the device
+    portableWrapper::portableArray<SAMS::T_dataType, 1, portableWrapper::arrayTags::host> xc_host; // Cell centred X axis values on the host
+    portableWrapper::portableArray<SAMS::T_dataType, 1, portableWrapper::arrayTags::host> xb_host; // Face centred X axis values on the host
     //...
 };
 ```
@@ -315,6 +336,10 @@ as you can see the difference is that the first two arrays are allocated on the 
 
 The variable grabbing function is quite similar but simpler. You simply specify the name of the variable and a suitable portable array to associate with the memory. Note that while the term used is "fill" the function is actually just associating the array with the memory that has already been allocated for that variable. Unlike with the axes a variable is defined as being either on the device or on the host when it is registered and passing an array with the wrong tags will cause a runtime error.
 
+
+### `initialConditions` event
+
+The `initialConditions` event is called after `getVariables`, and is where a package that sets up a problem sets the initial values of the variables. It is not called when the run restarts from a restart dump. The variables are obtained from the variable registry in the same way as in `getVariables`, and set using performance portable kernels.
 
 ### `setBoundaryConditions` event
 
@@ -326,125 +351,102 @@ Setting up boundary conditions is detailed in the separate `Using SAMS Boundary 
 void setBoundaryConditions(SAMS::harness& harness){
     auto& varRegistry = harness.variableRegistry;
     auto& rhoDef = varRegistry.getVariable("rho"); // Take care not to miss the reference specifier, &
-    rhoDef.addBoundaryCondition(0, SAMS::domain::edges::lower, SAMS::simpleClamp<SAMS::T_dataType, 3, SAMS::arrayTags::accelerated>(rhoDef, 1.0));
+    rhoDef.addBoundaryCondition(0, SAMS::domain::edges::lower, SAMS::simpleClamp<SAMS::T_dataType, 3, portableWrapper::arrayTags::accelerated>(rhoDef, 1.0));
 }
 ```
 
 This is detailed better in the other documents, but you can see the basic principle. You attach a boundary condition to an edge by index (0 - first index, 1 - second index etc.) and by which edge (lower or upper). The boundary condition is an object that is called by the runner to apply the boundary condition at each time step. The `simpleClamp` boundary condition is a built in boundary condition that just clamps the value of the variable to a specified value at the boundary. In this case it clamps the density to 1.0 at the lower X boundary. The built in boundary conditions are templated on the type, rank and array tag just like the portable arrays, and each have their own constructor parameters that specify the details of the boundary condition.
 
-### `registerOutputMesh` event
+### `initializeBoundaryConditions` event
 
-The `registerOutputMesh` event is one of the four events that is involved in outputting data from the simulation. It is another templated event, but this time it is templated on the inner type of the IO writer, so the minimal signature would look like
+This event is called once after `setBoundaryConditions`, before the first timestep, so that a package can apply its boundary conditions to the initial state.
+
+### `repopulateDeck` event
+
+This event is called after `initializeBoundaryConditions`. It is for a package to write the values that it uses back into the `SAMS::KVS`, so that the deck that the run writes to `ran.deck` holds the values that were actually used.
+
+### `registerOutputVariables` event
+
+The `registerOutputVariables` event is called once, after `registerVariables`. It is for a package to register each quantity that it can output with the output registry. This does not say that the quantity will be written, only that it can be. The deck and other packages then choose what is written. The first parameter is the `SAMS::outputRegistry`.
 
 ```cpp
-template<typename T>
-void registerOutputMesh(writer<T>& writer){
-    //Register meshse output with the writer
+SAMS::outputHandle rhoOutput;
+
+void registerOutputVariables(SAMS::outputRegistry &outputs){
+    rhoOutput = outputs.registerOutput("rho", "Mass density");
 }
 ```
 
-You can still use the ASMF to request data packs etc. in this event, but the first parameter must be a reference to the writer that you want to register output with, and it must be templated on the inner type of the writer.
+`registerOutput` takes the name of the output, which the deck uses, a description, and two optional flags. `includedByDefault` puts the output in the built in `default` collection and `neededForRestart` puts it in the built in `restart` collection. Both default to true. The handle that it returns is used later to ask whether a dump writes the output.
 
-The purpose of this is to register the axes the package wants to output with the writer. This phase is to allow writing writer packages that need the variables and axes to be registered before the data is written. This often does nothing, because many writers do not need axes to be preregistered, but you should always implement it so that your package can be used with any writer, including writers that do need axes to be preregistered.
+### `registerDumpMeshes` and `registerDumpVariables` events
 
-The details on writing these is documented in the `Writing data from SAMS packages` document, but the general principle is that you use the ASMF to request the writer that you want to register output with, and then you call the appropriate functions on the writer to register the variables and axes that you want to output. For example, if you want to register the density variable and the X axis with a writer then you would do something like this:
-
-```cpp
-    template<typename T_writer>
-    void LARE3D::registerOutputMesh(writer<T_writer> &writer, simulationData &data)
-    {
-        writer.template registerRectilinearMesh<T_dataType>("MeshCC", data.nx, data.ny, data.nz);
-
-        writer.template registerData<T_dataType>("rho", "MeshCC");
-    }
-```
-
-### `registerOutputVariable` event
-
-The `registerOutputVariable` event is one of the four events that is involved in outputting data from the simulation. It is another templated event, but this time it is templated on the inner type of the IO writer, so the minimal signature would look like
+These events are called when a dump is written. They are templated on the inner type of the IO writer, and their first three parameters are the writer, the registry writer and the `SAMS::outputLevel`, which says which outputs the dump writes. Meshes are registered in `registerDumpMeshes` and variables in `registerDumpVariables`. A package should only register the outputs that `level.includes` says the dump writes. Variables in the variable registry are registered with the registry writer.
 
 ```cpp
-template<typename T>
-void registerOutputVariable(writer<T>& writer){
-    //Register variables to output with the writer
+template <typename T_writer>
+void registerDumpMeshes(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &regWriter, const SAMS::outputLevel &)
+{
+    regWriter.registerRectilinearMesh("MeshCC", {{"X", SAMS::staggerType::CENTRED}, {"Y", SAMS::staggerType::CENTRED}, {"Z", SAMS::staggerType::CENTRED}});
+}
+
+template <typename T_writer>
+void registerDumpVariables(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &regWriter, const SAMS::outputLevel &level)
+{
+    if (level.includes(rhoOutput)) regWriter.template registerData<SAMS::T_dataType, 3>("rho", "MeshCC", "rho");
 }
 ```
 
-You can still use the ASMF to request data packs etc. in this event, but the first parameter must be a reference to the writer that you want to register output with, and it must be templated on the inner type of the writer.
+### `writeDumpMeshes` and `writeDumpVariables` events
 
-The purpose of this is to register the variables the package wants to output with the writer. This phase is to allow writing writer packages that need all variables and axes to be pre-specified before any data is written. This often does nothing, because many writers can write axes and variables one by one, but you should always implement it so that your package can be used with any writer, including writers that do need variables to be preregistered.
-
-Note that there is a separate write mesh and write variable phase because some writers need the meshes to be registered before the variables, while others do not.
-
-The details on writing these is documented in the `Writing data from SAMS packages` document, but the general principle is that you use the ASMF to request the writer that you want to register output with, and then you call the appropriate functions on the writer to register the variables and axes that you want to output. For example, if you want to register the density variable and the X axis with a writer then you would do something like this:
+These events have the same parameters, and are called after the registration events. They are for data that a package writes through the writer itself rather than through the registry writer. For example, the `OutputControl` package writes the time of the next output of each schedule to restart dumps:
 
 ```cpp
-    template<typename T_writer>
-    void LARE3D::registerOutputVariable(writer<T_writer> &writer, simulationData &data)
-    {
-
-        writer.template registerData<T_dataType>("rho", "MeshCC");
+template<typename T_writer>
+void outputControl::writeDumpVariables(IO::writer<T_writer> &writer, IO::registryWriter<T_writer> &, const outputLevel &level)
+{
+    if (!level.isActive("restart")) return;
+    for (const schedule &current : schedules){
+        writer.template setKeyValue<double>(restartKey(current).c_str(), current.nextOutputTime);
     }
+}
 ```
 
+`level.isActive` says whether a collection is active for the dump.
 
-### `writeOutputMesh` event
+### `restart` event
 
-This is the counterpart of `registerOutputMesh`, and is called immediately after the two registration events. The purpose of this event is to actually write the data that was registered in `registerOutput` to the output files. Again, this is detailed in the `Writing data from SAMS packages` document, but this shows a basic example of IO from LARE3D.
+A run restarts from a restart dump when the deck sets `/SAMS/restart` to the dump, relative to the output directory, or when SAMS is run with `--restart`. The dump is read as HDF5 if its name ends in `.h5`, as ADIOS2 if it ends in `.bp`, and in the simple format if it is a directory. A restart changes the start of the run in three ways:
+
+1) The deck stored in the dump is merged into the deck, with the keys of the deck replacing those of the dump.
+
+2) The axes are set from the dump, and `setDomain` is not called.
+
+3) The runner reads the time, the step and the timestep from the dump, and then calls the `restart` event in place of `initialConditions`.
+
+The runner does not read the variables itself, so every package whose state must survive a restart reads it in the `restart` event. The event is templated on the inner type of the IO reader, and its first two parameters are the reader and the registry reader. Variables in the variable registry are read with the registry reader, and other data with the reader. For example, a package can write density to restart dumps with its ghost cells, and read it back in the same way:
 
 ```cpp
-    template <typename T_writer>
-    void LARE3D::writeOutputMesh(writer<T_writer> &writer, simulationData &data)
-    {
-        pw::portableArrayManager manager;
-        pw::portableArray<SAMS::T_dataType, 3, SAMS::arrayTags::host> host;
+template <typename T_writer>
+void registerDumpVariables(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &regWriter, const SAMS::outputLevel &level)
+{
+    if (!level.includes(rhoOutput)) return;
+    if (level.isActive("restart")) regWriter.template registerDataWithGhosts<SAMS::T_dataType, 3>("rho", "MeshCC", "rho");
+    else regWriter.template registerData<SAMS::T_dataType, 3>("rho", "MeshCC", "rho");
+}
 
-        writer.writeRectilinearMesh("MeshCC", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
-
-        getHostVersion(data, manager, data.rho, host);
-        writer.writeData("rho", host.data());
-
-    }
-
+template <typename T_reader>
+void restart(SAMS::IO::reader<T_reader> &, SAMS::IO::registryReader<T_reader> &regReader)
+{
+    regReader.template readDataWithGhosts<SAMS::T_dataType, 3>("rho", "rho");
+}
 ```
 
-This shows the basic approach, and also shows the key point - the data has to be on the host to be written. More support code for this will likely be added to the SAMS framework in the future, but at the moment, the portable wrapper array manager method `makeHostAvailable` is likely the easiest way to get data onto the host for writing. This method allocates a new array if needed and copies data to the host. If the data is already on the host then the new array is just a view on the same data.
+The first argument of `readDataWithGhosts` is the name of the output in the dump, and the second is the name of the variable in the variable registry.
 
+### `beforeStartOfTimestep` event
 
-### `writeOutputMesh` event
-
-This is the counterpart of `registerOutputMesh`, and is called immediately after the two registration events. The purpose of this event is to actually write the data that was registered in `registerOutputMesh` to the output files. Again, this is detailed in the `Writing data from SAMS packages` document, but this shows a basic example of IO from LARE3D.
-
-```cpp
-    template <typename T_writer>
-    void LARE3D::writeOutputMesh(writer<T_writer> &writer, simulationData &data)
-    {
-        writer.writeRectilinearMesh("MeshCC", &data.xc_host(1), &data.yc_host(1), &data.zc_host(1));
-    }
-
-```
-
-This shows the basic approach.
-
-### `writeOutputVariable` event
-
-This is the counterpart of `registerOutputVariable`, and is called immediately after the two registration events. The purpose of this event is to actually write the data that was registered in `registerOutputVariable` to the output files. Again, this is detailed in the `Writing data from SAMS packages` document, but this shows a basic example of IO from LARE3D.
-
-```cpp
-    template <typename T_writer>
-    void LARE3D::writeOutputVariable(writer<T_writer> &writer, simulationData &data)
-    {
-        pw::portableArrayManager manager;
-        pw::portableArray<SAMS::T_dataType, 3, SAMS::arrayTags::host> host;
-
-        getHostVersion(data, manager, data.rho, host);
-        writer.writeData("rho", host.data());
-
-    }
-
-```
-
-This shows the basic approach, and also shows the key point - the data has to be on the host to be written. More support code for this will likely be added to the SAMS framework in the future, but at the moment, the portable wrapper array manager method `makeHostAvailable` is likely the easiest way to get data onto the host for writing. `getHostVersion` wraps this function away as well as removing the ghost cells from around the edge of the domain. This method allocates a new array if needed and copies data to the host. If the data is already on the host then the new array is just a view on the same data.
+This event is called at the start of each timestep, before the timestep is calculated. There are no restrictions on its signature.
 
 ### `startOfTimestep` event
 
@@ -474,31 +476,33 @@ Other physics packages should only use this step if they want to fully operator 
 
 ### `queryOutput` event
 
-This event is triggered after the update sequence completes. This event has a single bool reference parameter as the first parameter. If a given physics package wants to trigger output at the end of a given timestep, then it should set this parameter to true. You should NEVER set this parameter to false (as that would cancel an output request from any prior packages), so the correct way to use this is just
+This event is triggered after the update sequence completes, once before the first timestep and once after the last. Its first parameter is a reference to a `SAMS::outputRequest`. A package that wants output written activates collections or single outputs in named dumps with `activate`. The dump name is relative to the output directory, without an extension. The requests of all packages are combined, so a package cannot cancel the output of another package.
 
 ```cpp
-void queryOutput(bool& outputThisStep){
+void queryOutput(SAMS::outputRequest &request, SAMS::timeState &tData){
     if (/*some condition for output*/){
-        outputThisStep = true;
+        request.activate("default", "diagnostics{_NNNNN}");
     }
 }
 ```
 
-This event uses the ASMF, so you can request data packs etc. in this event as well, but the first parameter must be a reference to a bool that is used to trigger output.
+`setWriter` chooses the writer of a dump, for example `request.setWriter("diagnostics{_NNNNN}", "hdf5")`. This event uses the ASMF, so you can request data packs etc. in this event as well, but the first parameter must be the `SAMS::outputRequest`.
 
 ### `queryTerminate` event
 
-This event is triggered after the update sequence completes and after the `queryOutput` event. This event has a single bool reference parameter as the first parameter. If a given physics package wants to trigger termination of the simulation at the end of a given timestep, then it should set this parameter to true. You should NEVER set this parameter to false, (as that would cancel a terminate request from any prior packages), so the correct way to use this is just
+This event is triggered after the update sequence completes and after the `queryOutput` event. Its first parameter is a reference to a `SAMS::terminationRequest`. If a package wants the simulation to end at the end of the timestep, it calls `terminate` with the reason, which is printed when the run ends:
 
 ```cpp
-void queryTerminate(bool& terminateThisStep){
+void queryTerminate(SAMS::terminationRequest &request){
     if (/*some condition for termination*/){
-        terminateThisStep = true;
+        request.terminate("The reason for ending");
     }
 }
 ```
 
-This event uses the ASMF, so you can request data packs etc. in this event as well, but the first parameter must be a reference to a bool that is used to trigger termination of the simulation.
+A package can instead take a reference to a bool as the first parameter, and set it to true to end the run without giving a reason. You should NEVER set it to false, as that would cancel a terminate request from any prior packages.
+
+This event uses the ASMF, so you can request data packs etc. in this event as well, but the first parameter must be the `SAMS::terminationRequest` or the bool.
 
 
 ### `finalize` event

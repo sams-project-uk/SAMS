@@ -508,7 +508,7 @@ namespace LARE
 
                 T_dataType dk = ((data.*mPtr)(ix, iyp, iz) - (data.*mPtr)(ix, iy, iz)) * (remap_data.flux(ix, iy, iz) - 0.5 * ((data.*mPtr)(ix, iyp, iz) + (data.*mPtr)(ix, iy, iz))) - 0.5 * ai * ((data.*mPtr)(ix, iy, iz) - remap_data.flux(ix, iy, iz)) + 0.5 * aip * ((data.*mPtr)(ix, iyp, iz) - remap_data.flux(ix, iy, iz));
 
-                dk = dk * data.dm(ix, iy, iz) * 0.5;
+                dk = dk * data.dm(ix, iy, iz) * 0.25;
                 pw::atomic::accelerated::Add(data.delta_ke(ixp,iyp,iz), dk);
                 pw::atomic::accelerated::Add(data.delta_ke(ix ,iyp,iz), dk);
                 pw::atomic::accelerated::Add(data.delta_ke(ixp,iyp,izp), dk);

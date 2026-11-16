@@ -2,6 +2,7 @@
 #define SAMS_HARNESS_UTILS_H
 
 #include <array>
+#include <ostream>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -44,6 +45,14 @@ namespace SAMS{
         for (std::size_t i = 0; i < N - 1; ++i) out[i] = a.data[i];
         for (std::size_t j = 0; j < M; ++j)     out[N - 1 + j] = b.data[j]; // copy b including '\0'
         return constexprName<N + M - 1>(out);
+    }
+
+    /**
+     * Insertion operator so that a constexprName can be written to a stream
+     */
+    template <std::size_t N>
+    std::ostream &operator<<(std::ostream &stream, const constexprName<N> &name) {
+        return stream << std::string_view(name);
     }
 
     //Utility class to find if a class has a binary operator defined

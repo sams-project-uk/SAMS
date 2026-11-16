@@ -64,7 +64,7 @@ namespace SAMS {
 /** Map from a harness typeID to an MPI_Datatype
  * C++ standard requires that std::complex be binary compatible with C complex types, so use the same MPI types
  */
-        std::vector<MPI_Datatype> mpiTypes{MPI_DOUBLE, MPI_FLOAT, MPI_INT32_T, MPI_INT64_T, MPI_UINT32_T, MPI_UINT64_T, MPI_C_DOUBLE_COMPLEX, MPI_C_FLOAT_COMPLEX, MPI_INT8_T, MPI_INT16_T, MPI_UINT8_T, MPI_UINT16_T};
+        std::vector<SAMSMPI::datatype> mpiTypes{MPI_DOUBLE, MPI_FLOAT, MPI_INT32_T, MPI_INT64_T, MPI_UINT32_T, MPI_UINT64_T, MPI_C_DOUBLE_COMPLEX, MPI_C_FLOAT_COMPLEX, MPI_INT8_T, MPI_INT16_T, MPI_UINT8_T, MPI_UINT16_T};
 #endif
         std::vector<size_t> typeSizes{sizeof(double), sizeof(float), sizeof(int32_t), sizeof(int64_t), sizeof(uint32_t), sizeof(uint64_t), sizeof(std::complex<double>), sizeof(std::complex<float>), sizeof(int8_t), sizeof(int16_t), sizeof(uint8_t), sizeof(uint16_t)};
         std::vector<std::string> typeNames{"double", "float", "int32_t", "int64_t", "uint32_t", "uint64_t", "complex<double>", "complex<float>", "int8_t", "int16_t", "uint8_t", "uint16_t"};
@@ -132,11 +132,11 @@ namespace SAMS {
         /**
          * Get the MPI_Datatype corresponding to a typeID
          */
-        MPI_Datatype getMPIType([[maybe_unused]] typeHandle t) {
+        SAMSMPI::datatype getMPIType([[maybe_unused]] typeHandle t) {
             #ifdef USE_MPI
             return mpiTypes[static_cast<int>(t)];
             #else
-            return MPI_DATATYPE_NULL;
+            return SAMSMPI::datatypeNull;
             #endif
         }
 
@@ -147,14 +147,14 @@ namespace SAMS {
          * @return The corresponding MPI_Datatype
          */
         template<typename T>
-        MPI_Datatype getMPIType() {
+        SAMSMPI::datatype getMPIType() {
             #ifdef USE_MPI
             auto it = getTypeIterator<T>();
             if (it == typeMap.end()) throw std::runtime_error("Type not registered with typeRegistry MPIT.");
             typeID t = it->second;
             return mpiTypes[static_cast<int>(t)];
             #else
-            return MPI_DATATYPE_NULL;
+            return SAMSMPI::datatypeNull;
             #endif
         }
 
@@ -168,8 +168,8 @@ namespace SAMS {
         /**
          * Get a type name from an MPI_Datatype
          */
-        std::string getTypeName(MPI_Datatype mpiType) {
-            if (mpiType == MPI_DATATYPE_NULL){
+        std::string getTypeName(SAMSMPI::datatype mpiType) {
+            if (mpiType == SAMSMPI::datatypeNull){
                 return "Null MPI_Datatype";
             }
             #ifdef USE_MPI
@@ -234,7 +234,7 @@ namespace SAMS {
          * @return The corresponding harness typeID
          */
         template<typename T>
-        typeHandle registerType(const std::string& typeName, [[maybe_unused]] MPI_Datatype mpiType) {
+        typeHandle registerType(const std::string& typeName, [[maybe_unused]] SAMSMPI::datatype mpiType) {
             auto it = typeMap.find(std::type_index(typeid(T)));
             if (it != typeMap.end()) throw std::runtime_error("Type already registered with typeRegistry.");
             int newID = static_cast<int>(typeSizes.size());
@@ -255,7 +255,7 @@ namespace SAMS {
          * @return The corresponding harness typeID
          */
         template<typename T>
-        typeHandle registerType(MPI_Datatype mpiType) {
+        typeHandle registerType(SAMSMPI::datatype mpiType) {
             std::string typeName = getDemangledName<T>();
             return registerType<T>(typeName, mpiType);
         }

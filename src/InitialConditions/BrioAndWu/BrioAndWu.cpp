@@ -1,4 +1,6 @@
 #include "BrioAndWu.h"
+#include "../../Operations/OutputControl/defaultSchedule.h"
+#include "uniformDomain.h"
 
 namespace examples{
 
@@ -16,9 +18,40 @@ namespace examples{
             varDef.addBoundaryCondition(1, periodicBC);
             varDef.addBoundaryCondition(2, periodicBC);
 
-            //Mirror boundaries in X
-            std::shared_ptr<SAMS::boundaryConditions> mirrorBC = std::make_shared<SAMS::simpleMirrorBC<SAMS::T_dataType, 3>>(varDef);
-            varDef.addBoundaryCondition(0, mirrorBC);
+            //Reflecting walls in X. The velocity normal to the walls is antisymmetric, and everything else is symmetric
+            if (varName == "vx" || varName == "LARE/vx1") {
+                varDef.addBoundaryCondition(0, std::make_shared<SAMS::fixedMirrorBC<SAMS::T_dataType, 3>>(varDef, 0.0));
+            } else {
+                varDef.addBoundaryCondition(0, std::make_shared<SAMS::simpleSymmetricBC<SAMS::T_dataType, 3>>(varDef));
+            }
+        }
+
+        /**
+         * Set the deck keys that the deck does not set
+         * @param kvs The key value store
+         */
+        template<typename T_EOS>
+        void BrioAndWu<T_EOS>::defaultDeck(SAMS::KVS &kvs)
+        {
+            //Run with normalised units
+            kvs.setDefaultPath("/LARE/units", "normalised");
+            //Periodic in Y and Z
+            kvs.setDefaultPath("/domain/MPI_periodic", SAMS::KVS::Array{false, true, true});
+            //End time of the simulation
+            kvs.setDefaultPath(SAMS::deckKeys::endTime, 0.2);
+            //Domain. Y and Z have cells of the same size as X
+            kvs.setDefaultPath(SAMS::deckKeys::nx, 1024);
+            kvs.setDefaultPath(SAMS::deckKeys::ny, 2);
+            kvs.setDefaultPath(SAMS::deckKeys::nz, 2);
+            kvs.setDefaultPath(SAMS::deckKeys::xMin, -1.0);
+            kvs.setDefaultPath(SAMS::deckKeys::xMax, 1.0);
+            kvs.setDefaultPath(SAMS::deckKeys::yMin, 0.0);
+            kvs.setDefaultPath(SAMS::deckKeys::zMin, 0.0);
+            const SAMS::T_dataType width = kvs.getReal(SAMS::deckKeys::xMax) - kvs.getReal(SAMS::deckKeys::xMin);
+            kvs.setDefaultPath(SAMS::deckKeys::yMax, width * kvs.getInt(SAMS::deckKeys::ny) / kvs.getInt(SAMS::deckKeys::nx));
+            kvs.setDefaultPath(SAMS::deckKeys::zMax, width * kvs.getInt(SAMS::deckKeys::nz) / kvs.getInt(SAMS::deckKeys::nx));
+            //Write the default collection 10 times over the run if the deck has no output schedules
+            SAMS::addDefaultSchedule(kvs, kvs.getReal(SAMS::deckKeys::endTime) / 10.0);
         }
 
         /**
@@ -28,62 +61,41 @@ namespace examples{
          * @param data LARE3D simulation data
          */
         template<typename T_EOS>
-        void BrioAndWu<T_EOS>::controlVariables(LARE::LARE3D<T_EOS>::simulationData &data)
+        void BrioAndWu<T_EOS>::controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, SAMS::KVS &kvs)
         {
 
-            data.t_end = 0.2; // End time of the simulation
-            data.dt_snapshots = data.t_end/10;
+            data.t_end = kvs.getReal(SAMS::deckKeys::endTime, 0.2); // End time of the simulation
 
-            data.nx = 1024;
-            data.ny = 2;
-            data.nz = 2;
-
-            data.x_min = -1.0;
-            data.x_max = 1.0;
-            data.y_min = 0.0;
-            data.y_max = (data.x_max - data.x_min) * data.ny / data.nx;
-            data.z_min = 0.0;
-            data.z_max = (data.x_max - data.x_min) * data.nz / data.nx;
-
-            data.dt_multiplier = 0.8; // Default multiplier for time step
-            // Geometry options: cartesian, cylindrical, spherical
-            data.geometry = LARE::geometryType::Cartesian;
+            data.dt_multiplier = kvs.getReal("/LARE/dt_multiplier", 0.8); // Default multiplier for time step
             // Shock viscosity coefficients
-            data.visc1 = 0.1;
-            data.visc2 = 1.0;
+            data.visc1 = kvs.getReal("/LARE/visc1", 0.1);
+            data.visc2 = kvs.getReal("/LARE/visc2", 1.0);
 
             // Ratio of specific heat capacities
-            data.gas_gamma = 2.0;
+            data.gas_gamma = kvs.getReal("/LARE/gas_gamma", 2.0);
 
             // Average mass of an ion in proton masses
-            data.mf = 1.2;
-
-            //Run with normalised mu0
-            data.mu0 = 1.0;
+            data.mf = kvs.getReal("/LARE/mf", 1.2);
 
             // Resistive MHD options
-            data.resistiveMHD = false;
-            data.eta_background = 1.e-10;
-            data.j_max = 1.0;
-            data.eta0 = 2.e-10;
+            data.resistiveMHD = kvs.getBool("/LARE/resistiveMHD", false);
+            data.eta_background = kvs.getReal("/LARE/eta_background", 1.e-10);
+            data.j_max = kvs.getReal("/LARE/j_max", 1.0);
+            data.eta0 = kvs.getReal("/LARE/eta0", 2.e-10);
 
             // Remap kinetic energy correction
-            data.rke = false;
+            data.rke = kvs.getBool("/LARE/rke", false);
         }
 
         /**
          * Set up the simulation domain
          * @param harness SAMS harness
-         * @param data LARE3D simulation data
+         * @param kvs The key value store
          */
         template<typename T_EOS>
-        void BrioAndWu<T_EOS>::setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data) 
+        void BrioAndWu<T_EOS>::setDomain(SAMS::harness &harness, SAMS::KVS &kvs)
         {
-            auto &axisReg = harness.axisRegistry;
-            //Just hard code the domain for the Sod Shock Tube
-            axisReg.setDomain("X", data.nx, data.x_min, data.x_max);
-            axisReg.setDomain("Y", data.ny, data.y_min, data.y_max);
-            axisReg.setDomain("Z", data.nz, data.z_min, data.z_max);
+            SAMS::setUniformDomain(harness, kvs);
         }
 
         /**
@@ -159,36 +171,6 @@ namespace examples{
                 rho.getRange(0), rho.getRange(1), rho.getRange(2));
         }
 
-       /**
-         * Check whether to terminate the simulation
-         * @param terminate Boolean flag to set to true to terminate the simulation
-         * @param data LARE3D simulation data
-         * This function checks whether the simulation should terminate based on LARE3D data.
-         * It sets the terminate flag to true if the simulation should end.
-         */
-        template<typename T_EOS>
-        void BrioAndWu<T_EOS>::queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
-            //End at correct time for Sod Shock Tube (ends at t=0.2)
-            if (tData.time >= data.t_end){
-                terminate |= true;
-            }
-        }
-
-        /**
-         * Check whether to output data to disk
-         * @param shouldOutput Boolean flag to set to true to output data
-         * @param data LARE3D simulation data
-         * This function checks whether data should be output to disk based on LARE3D data.
-         * It returns true if data should be output.
-         */
-        template<typename T_EOS>
-        void BrioAndWu<T_EOS>::queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
-            static double nextOutputTime = data.dt_snapshots;
-            if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
-                shouldOutput |= true;
-                nextOutputTime += data.dt_snapshots;
-            }
-        }
     #define EOS_DEF(value) template class BrioAndWu<value>;
     EOS_DENSITY_ENERGY
     #undef EOS_DEF

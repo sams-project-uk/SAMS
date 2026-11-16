@@ -1,0 +1,48 @@
+EIS parser notes (read from every file in include/EISpp except parser/eis_interop.o)
+
+Layout
+- eis.h includes common/* and parser/eis_parser.h. Everything is templated on Num (SAMS uses SAMS::T_dataType)
+- parser/eis_parser.h: eis::parser<Num>. Options structs for every call (designated initialisers)
+- parser/eis_registry.h: registry, function_entry, stores. Local registry per parser plus static global_registry
+- parser/eis_eval_stack.h: RPN evaluator. eval_element dispatches on element.data variant
+- parser/eis_tree.h: AST, simplifier (simplify_tree), tree_to_stack, infix/dot output
+- parser/eis_parser_constants.h: pt_* type codes, functor typedef, stack_element/stack_co_element/stack
+- parser/eis_core_functions.h: built in maths. dummy<Num> sets err_bad_value and returns 0
+- common/*: error codes (bit flags), status codes, error_handler, stores, string utils
+- eis_interop.cpp/eis_interop_handles.h: C interface (parser/stack slots by integer ID). Not relevant to SAMS
+
+Functors
+- eis::functor<Num> = std::function<Num(count_type nparams, const Num* params, void* host_params, parser<Num>*, status&, error&)>
+- add_functor(name, functor, errcode, parser_function_options): copies into registry functor_registry (ordered_store, heap items, pointers stable). Locks derivative
+- add_functor_pointer(name, functor*, errcode, parser_functor_pointer_options): uses pointer; owns option
+- Registered as ptype pt_function, rtype pt_functor. expected_params 0 gives a no bracket symbol (tokenizer closes 0 param functions without "(")
+- parser_function_options defaults: can_simplify = true, defer = false, is_idempotent = false
+
+Deferral
+- Placeholders: add_variable(name, err, opts), add_function(name, err, opts), add_constant(name, err, opts), add_stack_variable(name, err, opts). They set defer = true and data = dummy (or 0)
+- No placeholder overload of add_functor, but deferral is by name, so any kind can replace any kind
+- Tokenize: co_element.defer copied from registry entry, stack.has_deferred set
+- evaluate(stack): if has_deferred, undefer() re-runs load_block(text) on each co_entry with defer set. Reads the registry as it is now. Still deferred gives err_has_deferred, returns, stack left deferred (can retry later). Success is permanent, then minify/simplify per parser defaults with the host params
+- undefer needs co_entries, so the stack must not be minified (minify_stack skips stacks with has_deferred anyway; parser default should_minify = false)
+- Simplifier does not look at defer. A placeholder with can_simplify = true is evaluated at tokenize time, dummy gives err_bad_value, tokenize fails (inferred from simplify_tree, not run). add_variable placeholder defaults can_simplify = false; add_function placeholder defaults true
+- Any non-simplifiable child stops the parents folding
+
+Replacing symbols
+- stored_items is a named_store: storing a name again replaces the entry, including derivatives and description
+- Stacks already tokenized keep the old data unless the element was deferred and has not yet been undeferred
+- evaluate(string) tokenizes afresh every call, so it sees the current registry. SAMS evaluateDeckNumber uses this
+
+Pointer variables
+- add_pointer_variable for int32/int64/float/double. rtype pt_pointer_variable, value read at evaluation. can_simplify default false (if true, frozen at simplify)
+
+Other
+- Stack owner check: a stack can only be evaluated by the parser that tokenized it (owner pointer)
+- cap_bits ORed through stacks. SAMS uses capTime = 1, capVariables = 2
+- host_params can be nullptr during simplification; getters must cope
+- Stack variables are pasted in at tokenize time (not values)
+- Emplaced functions produce stacks; evaluate(stack) refuses has_emplaced; evaluate(string) emplaces automatically
+- Errors go to the parser's error_handler; parserErrors(parser) in SAMS formats them
+
+SAMS use
+- runner.h initializePackages: parser.init with physics_si, "time" pointer variable (capTime), KVS::stringToNumber = evaluateDeckNumber. Then allocate, runnerInteraction, pkgInit, defaultDeck, addDeckConstants (constants blocks as stack variables), ... controlVariables (line ~1831), setDomain or readRestartAxes, ...
+- Grid point idea: register deferred names (nx etc.) at parser setup with can_simplify = false placeholders; add real functors holding a reference to the individual axis after setDomain/readRestartAxes. Evaluation before then gives err_has_deferred

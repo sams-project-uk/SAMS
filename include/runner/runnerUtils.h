@@ -1,6 +1,8 @@
 #ifndef SAMS_RUNNERUTILS_H
 #define SAMS_RUNNERUTILS_H
 
+#include <array>
+#include <cstdint>
 #include <type_traits>
 #include <tuple>
 #include <utility>
@@ -492,6 +494,42 @@ namespace SAMS{
 
     template<typename... T>
     using tupleUnion_t = typename tupleUnion<T...>::type;
+
+    /**
+     * The indices of a list sorted by their orders, lower first. Equal orders keep the order of the list
+     * @param orders The order of each element of the list
+     */
+    template<std::size_t N>
+    constexpr std::array<std::size_t, N> sortedIndices(const std::array<uint8_t, N> &orders)
+    {
+        std::array<std::size_t, N> indices{};
+        for (std::size_t i = 0; i < N; ++i) indices[i] = i;
+        //Insertion sort, which keeps equal orders in the order of the list
+        for (std::size_t i = 1; i < N; ++i){
+            const std::size_t current = indices[i];
+            std::size_t j = i;
+            while (j > 0 && orders[indices[j-1]] > orders[current]){
+                indices[j] = indices[j-1];
+                --j;
+            }
+            indices[j] = current;
+        }
+        return indices;
+    }
+
+    /**
+     * A tuple of the types of a tuple in the order of a list of indices
+     */
+    template<typename T_tuple, auto indices, typename = std::make_index_sequence<indices.size()>>
+    struct reorderTuple;
+
+    template<typename T_tuple, auto indices, std::size_t... Is>
+    struct reorderTuple<T_tuple, indices, std::index_sequence<Is...>> {
+        using type = std::tuple<std::tuple_element_t<indices[Is], T_tuple>...>;
+    };
+
+    template<typename T_tuple, auto indices>
+    using reorderTuple_t = typename reorderTuple<T_tuple, indices>::type;
 
 } // namespace SAMS
 

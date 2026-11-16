@@ -3,6 +3,8 @@ import itertools
 import tkinter as tk
 from tkinter import ttk
 
+from matplotlib.colors import LogNorm
+
 import plotWindow
 
 #Colour tables offered in the drop-down. The first is the default
@@ -19,13 +21,13 @@ def addColourChoice(parent, redraw):
     return colourChoice
 
 
-def plotImage(figure, varName, data, axes, title=None, colourTable=None):
-    #A variable with two axes to plot is shown as a colour map
+def plotImage(figure, varName, data, axes, title=None, colourTable=None, logScale=False):
+    #A variable with two axes to plot is shown as a colour map. With a logarithmic colour scale, cells that are zero or negative are blank
     figure.clear()
     plot = figure.add_subplot(111)
     (xName, xCoords), (yName, yCoords) = axes
     #The first index of the data is along the horizontal axis
-    mesh = plot.pcolormesh(plotWindow.axisPositions(xCoords, data.shape[0]), plotWindow.axisPositions(yCoords, data.shape[1]), data.T, shading="auto", cmap=colourTable)
+    mesh = plot.pcolormesh(plotWindow.axisPositions(xCoords, data.shape[0]), plotWindow.axisPositions(yCoords, data.shape[1]), data.T, shading="auto", cmap=colourTable, norm=LogNorm() if logScale else None)
     figure.colorbar(mesh, ax=plot, label=varName)
     plot.set_xlabel(xName)
     plot.set_ylabel(yName)
@@ -33,15 +35,17 @@ def plotImage(figure, varName, data, axes, title=None, colourTable=None):
 
 
 def addImageControls(window, figure, canvas, varName, data, axes):
-    #A variable with two axes to plot is shown as a colour map, with the colour table chosen from a list
+    #A variable with two axes to plot is shown as a colour map, with the colour table chosen from a list and a choice of a logarithmic colour scale
     controls = ttk.Frame(window)
     controls.pack(side=tk.BOTTOM, fill=tk.X)
 
     def redraw(*args):
-        plotImage(figure, varName, data, axes, colourTable=colourChoice.get())
+        plotImage(figure, varName, data, axes, colourTable=colourChoice.get(), logScale=logScale.get())
         canvas.draw_idle()
 
     colourChoice = addColourChoice(controls, redraw)
+    logScale = tk.BooleanVar(value=False)
+    ttk.Checkbutton(controls, text="Logarithmic", variable=logScale, command=redraw).pack(side=tk.LEFT)
     redraw()
 
 
@@ -56,6 +60,8 @@ def addSliceControls(window, figure, canvas, varName, data, axes):
     pairChoice.current(0)
     pairChoice.pack(side=tk.LEFT)
     colourChoice = addColourChoice(controls, lambda *args: redraw())
+    logScale = tk.BooleanVar(value=False)
+    ttk.Checkbutton(controls, text="Logarithmic", variable=logScale, command=lambda: redraw()).pack(side=tk.LEFT)
     ttk.Label(controls, text="Cell").pack(side=tk.LEFT)
     position = tk.Scale(controls, orient=tk.HORIZONTAL, **{"from": 0, "to": 0})
     position.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -74,7 +80,7 @@ def addSliceControls(window, figure, canvas, varName, data, axes):
         index[across] = cell
         name, coords = axes[across]
         where = plotWindow.linePositions(coords, cells)[cell]
-        plotImage(figure, varName, data[tuple(index)], [axes[first], axes[second]], varName + " at " + name + " = " + format(where, "g"), colourChoice.get())
+        plotImage(figure, varName, data[tuple(index)], [axes[first], axes[second]], varName + " at " + name + " = " + format(where, "g"), colourChoice.get(), logScale.get())
         canvas.draw_idle()
 
     def changePlane(*args):

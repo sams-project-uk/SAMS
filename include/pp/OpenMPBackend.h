@@ -37,12 +37,12 @@ namespace portableWrapper
         #define OMP4_5 201511
         #define OMP5_0 201811
         #define OMP5_1 202011
-        #define OMP5_2 202211
-        #define OMP6_0 202311
+        #define OMP5_2 202111
+        #define OMP6_0 202411
 
         // Forward declaration for the core CPU forEach function
         template <int rank, int level = 0, bool serial=false, typename T_func, typename T_cRange, typename... T_oRanges>
-        HOSTINLINE HOSTDEVICEPREFIX void forEachCore(
+        HOSTINLINE void forEachCore(
             T_func func,
             N_ary_tuple_type_t<SIGNED_INDEX_TYPE, rank> &tuple, T_cRange cRange, T_oRanges... oRanges);
 
@@ -57,7 +57,7 @@ namespace portableWrapper
          * i.e. OpenMP parallelism is only used on the outermost loop.
          */
         template <int rank, int level = 0, bool serial=false, typename T_func, typename T_cRange, typename... T_oRanges>
-        HOSTINLINE HOSTDEVICEPREFIX void forEachSerial(
+        HOSTINLINE void forEachSerial(
             T_func func,
             N_ary_tuple_type_t<SIGNED_INDEX_TYPE, rank> &tuple, T_cRange cRange, T_oRanges... oRanges)
         {
@@ -85,7 +85,7 @@ namespace portableWrapper
          * This function is used when the level is maximal to allow vectorization
          */
         /*template <int rank, int level = 0, bool serial=false, typename T_func, typename T_cRange, typename... T_oRanges>
-        HOSTDEVICEPREFIX HOSTINLINE void forEachVectorized(
+        HOSTINLINE void forEachVectorized(
             T_func func,
             N_ary_tuple_type_t<SIGNED_INDEX_TYPE, rank> &tuple, T_cRange cRange, T_oRanges... oRanges)
         {
@@ -116,7 +116,7 @@ namespace portableWrapper
          * I can't think of an even loosely elegant way to do this without duplicating the code.
          */
         template <int rank, int level = 0, bool serial = false, typename T_func, typename T_cRange, typename... T_oRanges>
-        HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(
+        HOSTINLINE void forEachParallel(
             T_func func,
             N_ary_tuple_type_t<SIGNED_INDEX_TYPE, rank> &tuple, T_cRange cRange, T_oRanges... oRanges)
         {
@@ -131,14 +131,14 @@ namespace portableWrapper
                     #pragma omp for
                     for (SIGNED_INDEX_TYPE i = lower_bound; i <= upper_bound; ++i)
                     {
-                        GET<level>(tuple) = i;
+                        GET<level>(local_tuple) = i;
                         if constexpr (sizeof...(oRanges) > 0)
                         {
-                            forEachCore<rank, level + 1, serial>(func, tuple, oRanges...);
+                            forEachCore<rank, level + 1, serial>(func, local_tuple, oRanges...);
                         }
                         else
                         {
-                            applyToDataHost(func, tuple);
+                            applyToDataHost(func, local_tuple);
                         }
                     }
                 }
@@ -149,7 +149,7 @@ namespace portableWrapper
          * Selector function to choose between parallel and serial execution on CPU
          */
         template <int rank, int level, bool serial, typename T_func, typename T_cRange, typename... T_oRanges>
-        HOSTDEVICEPREFIX HOSTINLINE void forEachCore(
+        HOSTINLINE void forEachCore(
             T_func func,
             N_ary_tuple_type_t<SIGNED_INDEX_TYPE, rank> &tuple, T_cRange cRange, T_oRanges... oRanges)
         {
@@ -446,23 +446,26 @@ namespace portableWrapper
             // For now, we assume OpenMP is already initialized by the compiler/runtime
         }
 
-        HOSTUNREPEATED void printInfo()
+        template<typename T_stream>
+        HOSTUNREPEATED void printInfo(T_stream &out)
         {
-            SAMS::cout << "OpenMP" << std::endl;
-            SAMS::cout << "OpenMP version: ";
+            out << "OpenMP" << std::endl;
+            out << "OpenMP version: ";
 #ifdef _OPENMP
-            SAMS::cout << _OPENMP << std::endl;
+            out << (_OPENMP > OMP6_0 ? "> 6.0" : _OPENMP == OMP6_0 ? "6.0" : _OPENMP >= OMP5_2 ? "5.2" : _OPENMP >= OMP5_1 ? "5.1" : _OPENMP >= OMP5_0 ? "5.0" :
+                _OPENMP >= OMP4_5 ? "4.5" : _OPENMP >= OMP4_0 ? "4.0" : _OPENMP >= OMP3_1 ? "3.1" : _OPENMP >= OMP3_0 ? "3.0" :
+                _OPENMP >= OMP2_5 ? "2.5" : _OPENMP >= OMP2_0 ? "2.0" : "1.0") << std::endl;
 #else
-            SAMS::cout << "Not defined" << std::endl;
+            out << "Not defined" << std::endl;
 #endif
-            SAMS::cout << "Number of threads: " << getOMPMaxThreads() << std::endl;
+            out << "Number of threads: " << getOMPMaxThreads() << std::endl;
 #ifndef NO_NATIVE_UNROLL
-            SAMS::cout << "Loop unrolling enabled up to rank " << openmp::UNROLL_LIMIT << std::endl;
+            out << "Loop unrolling enabled up to rank " << openmp::UNROLL_LIMIT << std::endl;
 #ifdef NATIVE_LOOP_COLLAPSE
-            SAMS::cout << "Loop collapse enabled beyond rank " << NATIVE_LOOP_COLLAPSE << std::endl;
+            out << "Loop collapse enabled beyond rank " << NATIVE_LOOP_COLLAPSE << std::endl;
 #endif
 #else
-            SAMS::cout << "Native OpenMP loop unrolling disabled. WARNING This is likely to cause performance degradation." << std::endl;
+            out << "Native OpenMP loop unrolling disabled. WARNING This is likely to cause performance degradation." << std::endl;
 #endif
         }
 

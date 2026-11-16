@@ -38,7 +38,7 @@ SAMS::typeRegistry &typeReg = SAMS::gettypeRegistry();//Get the type registry
 typeReg.registerType<MyCustomType>("MyCustomType"); //Register the type with the name "MyCustomType"
 ```
 
-This type will now word for non MPI decomposed variables, but if you wanted to use it for an MPI decomposed variable you would also have to provide an MPI datatype describing the type. This is done by providing a second argument to the `registerType` method, which is a `MPI_Datatype`. For example:
+This type will now word for non MPI decomposed variables, but if you wanted to use it for an MPI decomposed variable you would also have to provide an MPI datatype describing the type. This is done by providing a second argument to the `registerType` method, which is a `SAMSMPI::datatype`. For example:
 
 ```cpp
 
@@ -147,7 +147,7 @@ Mostly package developers don't need to interact directly with the `SAMS::MPIMan
 
 ```cpp
 SAMS::MPIManager &mpiManager = harness.MPIManager;//Get the MPI manager for this harness
-MPI_Comm comm = mpiManager.getComm(); //Get the MPI communicator
+SAMSMPI::comm comm = mpiManager.getComm(); //Get the MPI communicator
 int nprocs = mpiManager.getSize(); //Get the size of the communicator
 int rank = mpiManager.getRank(); //Get the rank of the current process
 ```
@@ -185,7 +185,7 @@ struct MyCustomType{
     double b;
 };
 SAMS::MPIManager &mpiManager = harness.MPIManager;//Get the MPI manager for this harness
-MPI_Datatype myCustomTypeMPI = mpiManager.createMPIStructType<MyCustomType, &MyCustomType::a, &MyCustomType::b>(); //Create an MPI datatype for MyCustomType
+SAMSMPI::datatype myCustomTypeMPI = mpiManager.createMPIStructType<MyCustomType, &MyCustomType::a, &MyCustomType::b>(); //Create an MPI datatype for MyCustomType
 ```
 
 As you can see this is quite different to the built in MPI approach to type creation. There is also an overload to `createMPIStructType` that has the same signature as the normal MPI type creation function, but this one is easier for C++ programmers to use. The types inside the struct must be registered with the `SAMS::typeRegistry` class for this to work, since it uses the type registry to get the MPI datatypes for the individual members of the struct.
@@ -193,7 +193,7 @@ As you can see this is quite different to the built in MPI approach to type crea
 While there are direct methods on the `SAMS::MPIManager` class for creating quite a few MPI types, you can also just create the MPI datatype yourself using the normal MPI type creation functions and then use the `cacheMPIType` method of the `SAMS::MPIManager` class to have the `SAMS::MPIManager` handle the lifetime and deduplication of the type. For example:
 
 ```cpp
-MPI_Datatype myCustomTypeMPI;
+SAMSMPI::datatype myCustomTypeMPI;
 //Code to create the MPI datatype using normal MPI functions goes here
 SAMS::MPIManager &mpiManager = harness.MPIManager;//Get the MPI manager for this harness
 mpiManager.cacheMPIType(myCustomTypeMPI); //Cache the MPI datatype with the MPI manager
@@ -252,7 +252,7 @@ varRegistry.applyBoundaryConditions("rho");
 This will apply boundary conditions (both actual domain boundarys and MPI interprocessor boundaries) to all edges of the variable "rho". The same thing using a variableDef object would be
 
 ```cpp
-SAMS::variableDef rhoDef = varRegistry.getVariableDef("rho"); //Get the variable definition for density
+SAMS::variableDef rhoDef = varRegistry.getVariable("rho"); //Get the variable definition for density
 rhoDef.applyBoundaryConditions(); //Apply boundary conditions to density
 ```
 
@@ -293,84 +293,82 @@ The possible queries to the dimension object are
 
 1) `getLB` - Get the lower bound of the global array
 
-2) `getLBZeroBased` - Get the lower bound of the global array, but with the global domain starting at index 0.
+2) `getLBZeroBase` - Get the lower bound of the global array, but with the global domain starting at index 0.
 
-3) `GetUB` - Get the upper bound of the global array
+3) `getUB` - Get the upper bound of the global array
 
-4) `GetUBZeroBased` - Get the upper bound of the global array, but with the global domain starting at index 0.
+4) `getUBZeroBase` - Get the upper bound of the global array, but with the global domain starting at index 0.
 
-5) `GetRange` A `portableWrapper::Range` object representing the range of the global array, including ghost cells is [GetLB, GetUB]
+5) `getRange` A `portableWrapper::Range` object representing the range of the global array, including ghost cells is [getLB, getUB]
 
-6) `GetRangeZeroBased` A `portableWrapper::Range` object representing the range of the global array, including ghost cells but with the global domain starting at index 0 is [GetLBZeroBased, GetUBZeroBased]
+6) `getRangeZeroBase` A `portableWrapper::Range` object representing the range of the global array, including ghost cells but with the global domain starting at index 0 is [getLBZeroBase, getUBZeroBase]
 
 7) `getCount` - Get the total number of points in the global array, including ghost cells
 
 8) `getDomainLB` - Get the lower bound of the global domain
 
-9) `getDomainLBZeroBased` - Get the lower bound of the global domain, but with the global **array** starting at index 0. 
+9) `getDomainLBZeroBase` - Get the lower bound of the global domain, but with the global **array** starting at index 0. 
 
 10) `getDomainUB` - Get the upper bound of the global domain
 
-11) `getDomainUBZeroBased` - Get the upper bound of the global domain, but with the global **array** starting at index 0.
+11) `getDomainUBZeroBase` - Get the upper bound of the global domain, but with the global **array** starting at index 0.
 
 12) `getDomainRange` - A `portableWrapper::Range` object representing the range of the global domain is [getDomainLB, getDomainUB]
 
-13) `getDomainRangeZeroBased` - A `portableWrapper::Range` object representing the range of the global domain, but with the global **array** starting at index 0 is [getDomainLBZeroBased, getDomainUBZeroBased]
+13) `getDomainRangeZeroBase` - A `portableWrapper::Range` object representing the range of the global domain, but with the global **array** starting at index 0 is [getDomainLBZeroBase, getDomainUBZeroBase]
 
 14) `getDomainCount` - Get the total number of points in the global domain
 
 15) `getLocalLB` - Get the lower bound of the local array
 
-16) `getLocalLBZeroBased` - Get the lower bound of the local array, but with the local array starting at index 0.
+16) `getLocalLBZeroBase` - Get the lower bound of the local array, but with the local array starting at index 0.
 
 17) `getLocalUB` - Get the upper bound of the local array
 
-18) `getLocalUBZeroBased` - Get the upper bound of the local array, but with the local array starting at index 0.
+18) `getLocalUBZeroBase` - Get the upper bound of the local array, but with the local array starting at index 0.
 
 19) `getLocalRange` - A `portableWrapper::Range` object representing the range of the local array, including ghost cells is [getLocalLB, getLocalUB]
 
-20) `getLocalRangeZeroBased` - A `portableWrapper::Range` object representing the range of the local array, including ghost cells but with the local array starting at index 0 is [getLocalLBZeroBased, getLocalUBZeroBased]
+20) `getLocalRangeZeroBase` - A `portableWrapper::Range` object representing the range of the local array, including ghost cells but with the local array starting at index 0 is [getLocalLBZeroBase, getLocalUBZeroBase]
 
-21) `getLocalCount` - Get the total number of points in the local array, including ghost cells
+21) `getLocalDomainLB` - Get the lower bound of the local domain
 
-22) `getLocalDomainLB` - Get the lower bound of the local domain
+22) `getLocalDomainLBZeroBase` - Get the lower bound of the local domain, but with the local **array** starting at index 0.
 
-23) `getLocalDomainLBZeroBased` - Get the lower bound of the local domain, but with the local **array** starting at index 0.
+23) `getLocalDomainUB` - Get the upper bound of the local domain
 
-24) `getLocalDomainUB` - Get the upper bound of the local domain
+24) `getLocalDomainUBZeroBase` - Get the upper bound of the local domain, but with the local **array** starting at index 0.
 
-25) `getLocalDomainUBZeroBased` - Get the upper bound of the local domain, but with the local **array** starting at index 0.
+25) `getLocalDomainRange` - A `portableWrapper::Range` object representing the range of the local domain is [getLocalDomainLB, getLocalDomainUB]
 
-26) `getLocalDomainRange` - A `portableWrapper::Range` object representing the range of the local domain is [getLocalDomainLB, getLocalDomainUB]
+26) `getLocalDomainRangeZeroBase` - A `portableWrapper::Range` object representing the range of the local domain, but with the local **array** starting at index 0 is [getLocalDomainLBZeroBase, getLocalDomainUBZeroBase]
 
-27) `getLocalDomainRangeZeroBased` - A `portableWrapper::Range` object representing the range of the local domain, but with the local **array** starting at index 0 is [getLocalDomainLBZeroBased, getLocalDomainUBZeroBased]
+27) `getLocalDomainCount` - Get the total number of points in the local domain
 
-28) `getLocalDomainCount` - Get the total number of points in the local domain
+28) `getGlobalLB` - Get the lower bound of the global array on this rank. This is the same as `getLB` for non MPI decomposed axes, but for MPI decomposed axes this is the lower bound of the local portion of the global array on this rank.
 
-29) `getGlobalLB` - Get the lower bound of the global array on this rank. This is the same as `getLB` for non MPI decomposed axes, but for MPI decomposed axes this is the lower bound of the local portion of the global array on this rank.
+29) `getGlobalLBZeroBase` - Get the lower bound of the global array on this rank, but with the global domain starting at index 0. This is the same as `getLBZeroBase` for non MPI decomposed axes, but for MPI decomposed axes this is the lower bound of the local portion of the global array on this rank, but with the global domain starting at index 0.
 
-30) `getGlobalLBZeroBased` - Get the lower bound of the global array on this rank, but with the global domain starting at index 0. This is the same as `getLBZeroBased` for non MPI decomposed axes, but for MPI decomposed axes this is the lower bound of the local portion of the global array on this rank, but with the global domain starting at index 0.
+30) `getGlobalUB` - Get the upper bound of the global array on this rank. This is the same as `getUB` for non MPI decomposed axes, but for MPI decomposed axes this is the upper bound of the local portion of the global array on this rank.
 
-31) `getGlobalUB` - Get the upper bound of the global array on this rank. This is the same as `getUB` for non MPI decomposed axes, but for MPI decomposed axes this is the upper bound of the local portion of the global array on this rank.
+31) `getGlobalUBZeroBase` - Get the upper bound of the global array on this rank, but with the global domain starting at index 0. This is the same as `getUBZeroBase` for non MPI decomposed axes, but for MPI decomposed axes this is the upper bound of the local portion of the global array on this rank, but with the global domain starting at index 0.
 
-32) `getGlobalUBZeroBased` - Get the upper bound of the global array on this rank, but with the global domain starting at index 0. This is the same as `getUBZeroBased` for non MPI decomposed axes, but for MPI decomposed axes this is the upper bound of the local portion of the global array on this rank, but with the global domain starting at index 0.
+32) `getGlobalRange` - A `portableWrapper::Range` object representing the range of the global array on this rank is [getGlobalLB, getGlobalUB]
 
-33) `getGlobalRange` - A `portableWrapper::Range` object representing the range of the global array on this rank is [getGlobalLB, getGlobalUB]
+33) `getGlobalRangeZeroBase` - A `portableWrapper::Range` object representing the range of the global array on this rank, but with the global domain starting at index 0 is [getGlobalLBZeroBase, getGlobalUBZeroBase]
 
-34) `getGlobalRangeZeroBased` - A `portableWrapper::Range` object representing the range of the global array on this rank, but with the global domain starting at index 0 is [getGlobalLBZeroBased, getGlobalUBZeroBased]
+34) `getGlobalCount` - Get the total number of points in the global array on this rank
 
-35) `getGlobalCount` - Get the total number of points in the global array on this rank
+35) `getLocalNonDomainLB(SAMS::domain::edges edge)` - Get the lower bound of the non-domain cells in the local array for the specified edge
 
-36) `getLocalNonDomainLB(SAMS::domain::edges edge)` - Get the lower bound of the non-domain cells in the local array for the specified edge
+36) `getLocalNonDomainLBZeroBase(SAMS::domain::edges edge)` - Get the lower bound of the non-domain cells in the local array for the specified edge, but with the local array starting at index 0.
 
-37) `getLocalNonDomainLBZeroBased(SAMS::domain::edges edge)` - Get the lower bound of the non-domain cells in the local array for the specified edge, but with the local array starting at index 0.
+37) `getLocalNonDomainUB(SAMS::domain::edges edge)` - Get the upper bound of the non-domain cells in the local array for the specified edge
 
-38) `getLocalNonDomainUB(SAMS::domain::edges edge)` - Get the upper bound of the non-domain cells in the local array for the specified edge
+38) `getLocalNonDomainUBZeroBase(SAMS::domain::edges edge)` - Get the upper bound of the non-domain cells in the local array for the specified edge, but with the local array starting at index 0.
 
-39) `getLocalNonDomainUBZeroBased(SAMS::domain::edges edge)` - Get the upper bound of the non-domain cells in the local array for the specified edge, but with the local array starting at index 0.
+39) `getLocalNonDomainRange(SAMS::domain::edges edge)` - A `portableWrapper::Range` object representing the range of the non-domain cells in the local array for the specified edge is [getLocalNonDomainLB(edge), getLocalNonDomainUB(edge)]
 
-40) `getLocalNonDomainRange(SAMS::domain::edges edge)` - A `portableWrapper::Range` object representing the range of the non-domain cells in the local array for the specified edge is [getLocalNonDomainLB(edge), getLocalNonDomainUB(edge)]
-
-41) `getLocalNonDomainRangeZeroBased(SAMS::domain::edges edge)` - A `portableWrapper::Range` object representing the range of the non-domain cells in the local array for the specified edge, but with the local array starting at index 0 is [getLocalNonDomainLBZeroBased(edge), getLocalNonDomainUBZeroBased(edge)]
+40) `getLocalNonDomainRangeZeroBase(SAMS::domain::edges edge)` - A `portableWrapper::Range` object representing the range of the non-domain cells in the local array for the specified edge, but with the local array starting at index 0 is [getLocalNonDomainLBZeroBase(edge), getLocalNonDomainUBZeroBase(edge)]
 
 

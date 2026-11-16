@@ -223,6 +223,7 @@ namespace portableWrapper {
             static_assert(std::is_default_constructible_v<T>, "Can only allocate arrays of types that have parameterless constructors.");
             wrapper.setSizesArray(lbounds, ubounds);
             SIZE_TYPE elements = wrapper.getElements();
+            wrapper.manage(this);
             T* data_;
             if constexpr(tag == arrayTags::host)
             {
@@ -252,6 +253,12 @@ namespace portableWrapper {
                         data_ = openmp::allocate<T>(elements);
                     #endif
                 }
+            }
+            if constexpr (!std::is_trivially_default_constructible_v<T>)
+            {
+                // If T is not trivially default constructible, we need to initialize the data
+                // using placement new.
+                applyKernel(placementNewFunctor<T>(data_), Range(0, elements - 1));
             }
             wrapper.bind(data_);
             return data_;
@@ -294,7 +301,7 @@ namespace portableWrapper {
 
         //Allocate a portableArray with the specified ranges
         template <typename T, arrayTags tag, typename... T_ranges>
-        void allocate(portableArray<T, sizeof...(T_ranges), tag> &wrapper, T_ranges... ranges)
+        std::enable_if_t<((std::is_integral_v<T_ranges> || std::is_same_v<T_ranges, Range>) && ...)> allocate(portableArray<T, sizeof...(T_ranges), tag> &wrapper, T_ranges... ranges)
         {
             deallocate(wrapper); // Ensure any previous allocation is cleaned up
             T* data_ = allocateCore<false>(wrapper, ranges...);
@@ -313,7 +320,7 @@ namespace portableWrapper {
 
         //Wrap some existing memory in a portableArray with the specified ranges
         template <typename T, arrayTags tag, typename... T_ranges>
-        void wrap(portableArray<T, sizeof...(T_ranges), tag> &wrapper, T* data_,T_ranges... ranges)
+        std::enable_if_t<((std::is_integral_v<T_ranges> || std::is_same_v<T_ranges, Range>) && ...)> wrap(portableArray<T, sizeof...(T_ranges), tag> &wrapper, T* data_,T_ranges... ranges)
         {
             deallocate(wrapper); // Ensure any previous allocation is cleaned up
             wrapCore<false>(wrapper, data_, ranges...);
@@ -330,7 +337,7 @@ namespace portableWrapper {
         }
 
         template<typename T, arrayTags tag, typename... T_ranges>
-        void allocateManaged(portableArray<T, sizeof...(T_ranges), tag> &wrapper, T_ranges... ranges)
+        std::enable_if_t<((std::is_integral_v<T_ranges> || std::is_same_v<T_ranges, Range>) && ...)> allocateManaged(portableArray<T, sizeof...(T_ranges), tag> &wrapper, T_ranges... ranges)
         {
             deallocate(wrapper); // Ensure any previous allocation is cleaned up
             T* data_ = allocateCore<true>(wrapper, ranges...);
@@ -347,7 +354,7 @@ namespace portableWrapper {
         }
 
         template<typename T, arrayTags tag, typename... T_ranges>
-        void wrapManaged(portableArray<T, sizeof...(T_ranges), tag> &wrapper, T* data_, T_ranges... ranges)
+        std::enable_if_t<((std::is_integral_v<T_ranges> || std::is_same_v<T_ranges, Range>) && ...)> wrapManaged(portableArray<T, sizeof...(T_ranges), tag> &wrapper, T* data_, T_ranges... ranges)
         {
             deallocate(wrapper); // Ensure any previous allocation is cleaned up
             wrapCore<true>(wrapper, data_, ranges...);
@@ -613,14 +620,50 @@ namespace portableWrapper {
         
         #ifdef USE_KOKKOS
             kokkos::copyData(destination, source);
-        #elif defined(USE_CUDA)
-            cuda::copyData(destination, source);
-        #elif defined(USE_HIP)
-            hip::copyData(destination, source);
+        #elif defined(USE_CUDA) || defined(USE_HIP)
+            //The backend only copies contiguous memory, so an array that is not contiguous goes through a contiguous array in its own memory space
+            if (source.isContiguous() && destination.isContiguous()) {
+                #if defined(USE_CUDA)
+                cuda::copyData(destination, source);
+                #else
+                hip::copyData(destination, source);
+                #endif
+            } else if constexpr (rankS == rankD) {
+                if constexpr (tagS == tagD) {
+                    assign<true>(destination, source);
+                } else {
+                    portableArray<T_data, rankS, tagS> packed;
+                    if (!source.isContiguous()) {
+                        this->mold(packed, source);
+                        assign<true>(packed, source);
+                    }
+                    const portableArray<T_data, rankS, tagS> &contiguousSource = source.isContiguous() ? source : packed;
+                    if (destination.isContiguous()) {
+                        #if defined(USE_CUDA)
+                        cuda::copyData(destination, contiguousSource);
+                        #else
+                        hip::copyData(destination, contiguousSource);
+                        #endif
+                    } else {
+                        portableArray<T_data, rankD, tagD> staging;
+                        this->mold(staging, destination);
+                        #if defined(USE_CUDA)
+                        cuda::copyData(staging, contiguousSource);
+                        #else
+                        hip::copyData(staging, contiguousSource);
+                        #endif
+                        assign<true>(destination, staging);
+                        this->deallocate(staging);
+                    }
+                    this->deallocate(packed);
+                }
+            } else {
+                throw std::runtime_error("An array that is not contiguous can only be copied to an array of the same rank");
+            }
         #else
             openmp::copyData(destination, source);
         #endif
-     
+
     }
 
     /**
@@ -641,6 +684,25 @@ namespace portableWrapper {
         if (array.isManaged() || tag == arrayTags::host)
         {
             //Array is already available on the host, just return it
+            hostArray.pointTo(array);
+            return hostArray;
+        }
+        else
+        {
+            this->allocate(hostArray, array.getLowerBounds(), array.getUpperBounds());
+            this->copyData(hostArray, array);
+            return hostArray;
+        }
+    }
+
+    //Make an array available on the host as a contiguous array. An array that is already contiguous and available on the host is returned as it is, and any other array is copied
+    template<typename T_data, int rank, arrayTags tag>
+    auto makeHostAvailableContiguous(const portableArray<T_data, rank, tag> &array)
+    {
+        portableArray<T_data, rank, arrayTags::host> hostArray;
+        if ((array.isManaged() || tag == arrayTags::host) && array.isContiguous())
+        {
+            //Array is already contiguous and available on the host, just return it
             hostArray.pointTo(array);
             return hostArray;
         }

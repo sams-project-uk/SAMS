@@ -466,6 +466,7 @@ namespace portableWrapper
 								stride[i] = other.stride[i];
 							}
 							offset=other.offset;
+							contiguous = other.contiguous;
 							bind(other.data_);
 							ownsData = false; // We do not own the data, just point to it
 						}
@@ -483,7 +484,7 @@ namespace portableWrapper
 					DEVICEPREFIX void rebaseCore(T_Range newRange, T_others... otherRanges)
 					{
 						if constexpr(level==0) offset=0;
-						static_assert(sizeof...(otherRanges) + 1 == rank, "Number of ranges must match the rank of the portable array.");
+						static_assert(level + sizeof...(otherRanges) + 1 == rank, "Number of ranges must match the rank of the portable array.");
 						//Only do this check on host, not device
 #if !defined(__CUDA_ARCH__) && !defined(__HIP_DEVICE_COMPILE__)
 						if (newRange.upper_bound - newRange.lower_bound != size[level] - 1)
@@ -714,6 +715,28 @@ namespace portableWrapper
 				{
 					this->setSizesArray(sizes);
 					this->bind(data);
+				}
+
+				/**
+				 * Point at memory that this array does not own, with given lower bounds, sizes and strides
+				 */
+				DEVICEPREFIX void bindStrided(T *data, const SIGNED_INDEX_TYPE *lbounds, const SIGNED_INDEX_TYPE *sizes, const SIGNED_INDEX_TYPE *strides)
+				{
+					elements = 1;
+					offset = 0;
+					for (int i = 0; i < rank; ++i)
+					{
+						lower_bound[i] = lbounds[i];
+						size[i] = sizes[i];
+						upper_bound[i] = lbounds[i] + sizes[i] - 1;
+						stride[i] = strides[i];
+						elements *= size[i];
+						offset -= lower_bound[i] * stride[i];
+					}
+					extent = getLastElement();
+					contiguous = extent + 1 == elements;
+					this->data_ = data;
+					ownsData = false;
 				}
 
 				/**

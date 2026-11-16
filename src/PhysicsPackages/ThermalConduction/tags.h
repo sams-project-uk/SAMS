@@ -11,6 +11,9 @@ namespace SAMS
 		/** @brief The name of the species */
 		inline static constexpr auto name = SAMS::makeName("electron");
 
+		/** @brief Spitzer's parallel conductivity in SI units, times the Coulomb logarithm */
+		static constexpr SAMS::T_dataType spitzerCoefficient = 1.84e-10;
+
 		/** @brief The name of the variable that is evolved, which is the energy of the species */
 		inline static constexpr auto field = SAMS::makeName("energy_") + name;
 
@@ -25,6 +28,9 @@ namespace SAMS
 	{
 		/** @brief The name of the species */
 		inline static constexpr auto name = SAMS::makeName("ion");
+
+		/** @brief Braginskii's parallel ion conductivity in SI units, times the Coulomb logarithm. It is about 0.041 of the electron value */
+		static constexpr SAMS::T_dataType spitzerCoefficient = 7.5e-12;
 
 		/** @brief The name of the variable that is evolved, which is the energy of the species */
 		inline static constexpr auto field = SAMS::makeName("energy_") + name;

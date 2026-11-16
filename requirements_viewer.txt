@@ -1,4 +1,5 @@
 h5py
+adios2>=2.10
 numpy
 matplotlib
 pyvista

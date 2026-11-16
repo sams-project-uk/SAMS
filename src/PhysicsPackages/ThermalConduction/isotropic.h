@@ -4,17 +4,19 @@
 #include "harness.h"
 #include <vector>
 #include "LARE/shared_data.h"
+#include "../Parabolic/helpers.h"
+#include "tags.h"
 
 namespace SAMS
 {
 	namespace pw = portableWrapper;
 
 	/**
-	 * @brief Isotropic heat conduction with a constant conductivity
+	 * @brief Isotropic heat conduction with a constant conductivity for each species
 	 *
 	 * It has the same interface as braginskii, but its stencil has only the cell and its six face neighbours.
 	 */
-	template <typename T_species, typename T_eos = LARE::idealGas>
+	template <typename T_eos = LARE::idealGas>
 	struct isotropic
 	{
 		using volumeArray = portableWrapper::acceleratedArray<SAMS::T_dataType, 3>;
@@ -22,103 +24,94 @@ namespace SAMS
 		using hostLineArray = portableWrapper::hostArray<SAMS::T_dataType, 1>;
 
 		using eosType = T_eos;
-		using species = T_species;
 		using lareData = typename LARE::LARE3D<T_eos>::simulationData;
-		/** @brief The constants of the problem, which are in a data pack */
+		/** @brief The constants of one species */
+		struct speciesParameters
+		{
+			/** @brief The name of the energy variable of the species */
+			const char *energyName = nullptr;
+			/** @brief The conductivity */
+			SAMS::T_dataType kappa = 0.0;
+		};
+
+		/** @brief The constants of the problem, which are in a data pack. There is one entry for each species that is solved, in the order of the subproblems */
 		struct parameters
 		{
-			/** @brief The conductivity */
-			double kappa = 0.0;
+			std::vector<speciesParameters> species;
 		};
 
 		using dataPack = SAMS::dataPacks::multiPack<parameters, lareData>;
 		using packRefs = SAMS::packRefsOf_t<dataPack>;
 
-		/** @brief The name of the temperature variable */
-		inline static constexpr auto temperatureName = SAMS::makeName("temperature_") + T_species::name + T_eos::name;
+		/** @brief The number of species that are solved, which defaultValues sets */
+		SAMS::T_sizeType speciesCount = 0;
+
+		/** @brief The name of the energy variable of each subproblem, which defaultValues sets */
+		std::array<const char *, 2> energyNames{};
+
+		/** @brief The name of the temperature variable, which the species share */
+		inline static constexpr auto temperatureName = SAMS::makeName("temperature_") + T_eos::name;
 
 		/** @brief The conductance of the x edge between cells i and i + 1 */
-		DEVICEPREFIX double faceX(const parameters &pr, const lineArray &dx, const lineArray &dy, const lineArray &dz, size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType faceX(const speciesParameters &pr, const lineArray &dx, const lineArray &dy, const lineArray &dz, SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k) const
 		{
 			return pr.kappa * dy(j) * dz(k) / (0.5 * (dx(i) + dx(i + 1)));
 		}
 
 		/** @brief The conductance of the y edge between cells j and j + 1 */
-		DEVICEPREFIX double faceY(const parameters &pr, const lineArray &dx, const lineArray &dy, const lineArray &dz, size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType faceY(const speciesParameters &pr, const lineArray &dx, const lineArray &dy, const lineArray &dz, SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k) const
 		{
 			return pr.kappa * dx(i) * dz(k) / (0.5 * (dy(j) + dy(j + 1)));
 		}
 
 		/** @brief The conductance of the z edge between cells k and k + 1 */
-		DEVICEPREFIX double faceZ(const parameters &pr, const lineArray &dx, const lineArray &dy, const lineArray &dz, size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType faceZ(const speciesParameters &pr, const lineArray &dx, const lineArray &dy, const lineArray &dz, SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k) const
 		{
 			return pr.kappa * dx(i) * dy(j) / (0.5 * (dz(k) + dz(k + 1)));
 		}
 
-		/** @brief Set a coarse cell array to the mean of the fine cells it covers */
+		/** @brief Set beta from the density, heat capacity and timestep, and average it onto the coarse levels */
 		template <typename T_level>
-		void averageCells(const volumeArray &fineArray, const volumeArray &coarseArray, const T_level &fineLevel, const T_level &l) const
-		{
-			const volumeArray fine = fineArray, coarse = coarseArray;
-			const size_t fx = l.coarsenX ? 2 : 1, fy = l.coarsenY ? 2 : 1, fz = l.coarsenZ ? 2 : 1;
-			// Offset of the first coarse cell along the fine cells
-			const size_t ox = l.coarsenX ? static_cast<size_t>(2 * (l.firstX - 1) - (fineLevel.firstX - 1)) : 0;
-			const size_t oy = l.coarsenY ? static_cast<size_t>(2 * (l.firstY - 1) - (fineLevel.firstY - 1)) : 0;
-			const size_t oz = l.coarsenZ ? static_cast<size_t>(2 * (l.firstZ - 1) - (fineLevel.firstZ - 1)) : 0;
-			auto kernel = LAMBDA(size_t i, size_t j, size_t k)
-			{
-				double sum = 0.0;
-				for (size_t a = 0; a < fx; ++a)
-					for (size_t b = 0; b < fy; ++b)
-						for (size_t c = 0; c < fz; ++c)
-							sum += fine(fx * (i - 1) + 1 + a + ox, fy * (j - 1) + 1 + b + oy, fz * (k - 1) + 1 + c + oz);
-				coarse(i, j, k) = sum / (fx * fy * fz);
-			};
-			pw::applyKernel(kernel, l.xcLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
-		}
-
-		/** @brief Set beta from the density and heat capacity, and average it onto the coarse levels */
-		template <typename T_level>
-		void setBeta(std::vector<T_level> &levels, const lareData &lare) const
+		void setBeta(std::vector<T_level> &levels, const lareData &lare, const SAMS::timeState &ts) const
 		{
 			T_level &l = levels[0];
 			const auto &eos = lare.eos;
-			const volumeArray density = rho, factor = l.data.beta;
-			auto kernel = LAMBDA(size_t i, size_t j, size_t k)
+			const SAMS::T_dataType mass = lare.mf * lare.mh / lare.kb;
+			const SAMS::T_dataType dt = ts.dt;
+			const volumeArray density = rho, factor = l.data.beta, temperature = l.rhs;
+			auto kernel = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				factor(i, j, k) = density(i, j, k) * eos.getCV();
+				const SAMS::T_dataType energy = eos.getEnergy(LARE::eosDensity(density(i, j, k)), LARE::eosTemperature(temperature(i, j, k)), LARE::eosMass(mass));
+				factor(i, j, k) = density(i, j, k) * eos.getCV(LARE::eosDensity(density(i, j, k)), LARE::eosEnergy(energy), LARE::eosMass(mass)) / dt;
 			};
 			pw::applyKernel(kernel, l.xcLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
-			for (size_t n = 1; n < levels.size(); ++n)
-			{
-				averageCells(levels[n - 1].data.beta, levels[n].data.beta, levels[n - 1], levels[n]);
-			}
+			parabolic::restrictCells(levels, [](T_level &l) -> volumeArray & { return l.data.beta; });
 		}
 
-		/** @brief Set the conductances on every level */
+		/** @brief Set the conductances of one species on every level */
 		template <typename T_level>
-		void setConductances(std::vector<T_level> &levels, const parameters pr) const
+		void setConductances(std::vector<T_level> &levels, const speciesParameters pr) const
 		{
 			const isotropic p = *this;
-			for (size_t n = 0; n < levels.size(); ++n)
+			for (SAMS::T_sizeType n = 0; n < levels.size(); ++n)
 			{
 				T_level &l = levels[n];
 				const lineArray dx = l.dxc, dy = l.dyc, dz = l.dzc;
 				const volumeArray cx = l.data.conductance.cx, cy = l.data.conductance.cy, cz = l.data.conductance.cz;
 
-				auto conductanceX = LAMBDA(size_t i, size_t j, size_t k)
+				auto conductanceX = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 				{
 					cx(i, j, k) = p.faceX(pr, dx, dy, dz, i, j, k);
 				};
 				pw::applyKernel(conductanceX, l.xbLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
 
-				auto conductanceY = LAMBDA(size_t i, size_t j, size_t k)
+				auto conductanceY = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 				{
 					cy(i, j, k) = p.faceY(pr, dx, dy, dz, i, j, k);
 				};
 				pw::applyKernel(conductanceY, l.xcLocalDomainRange, l.ybLocalDomainRange, l.zcLocalDomainRange);
 
-				auto conductanceZ = LAMBDA(size_t i, size_t j, size_t k)
+				auto conductanceZ = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 				{
 					cz(i, j, k) = p.faceZ(pr, dx, dy, dz, i, j, k);
 				};
@@ -129,8 +122,8 @@ namespace SAMS
 		/** @brief Density */
 		volumeArray rho;
 
-		/** @brief The name of the problem, which includes the species */
-		inline static constexpr auto name = SAMS::makeName("isotropic_") + T_species::name + T_eos::name;
+		/** @brief The name of the problem */
+		inline static constexpr auto name = SAMS::makeName("isotropic") + T_eos::name;
 
 		/** @brief The name that the arrays and axes of the problem are registered under, which the species share */
 		inline static constexpr auto memoryName = SAMS::makeName("isotropic") + T_eos::name;
@@ -151,7 +144,7 @@ namespace SAMS
 		struct levelData
 		{
 			conductanceData conductance;
-			/** @brief The prefactor of the time derivative, per unit volume */
+			/** @brief The prefactor of the time derivative per unit volume, divided by the timestep */
 			volumeArray beta;
 		};
 
@@ -173,8 +166,8 @@ namespace SAMS
 			volumeArray cx, cy, cz;
 			volumeArray betaArray;
 
-			/** @brief The prefactor of the time derivative */
-			DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const
+			/** @brief The prefactor of the time derivative, divided by the timestep */
+			DEVICEPREFIX SAMS::T_dataType beta(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k) const
 			{
 				return betaArray(i, j, k);
 			}
@@ -184,7 +177,7 @@ namespace SAMS
 			 *
 			 * The entries are found from their positions relative to the cell, so at<1, 0, 0> is the cell at i + 1.
 			 */
-			DEVICEPREFIX parabolic::fluxDivergence::faceWeights<isotropic> fluxWeights(size_t i, size_t j, size_t k) const
+			DEVICEPREFIX parabolic::fluxDivergence::faceWeights<isotropic> fluxWeights(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k) const
 			{
 				using parabolic::at;
 				parabolic::fluxDivergence::faceWeights<isotropic> w{};
@@ -196,14 +189,14 @@ namespace SAMS
 			}
 
 			/** @brief The coefficients of a cell */
-			DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const
+			DEVICEPREFIX void coefficients(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k, SAMS::T_dataType *a) const
 			{
 				parabolic::fluxDivergence::coefficientsFromFluxes<isotropic>(*this, i, j, k, a);
 			}
 		};
 
 		/** @brief Set the boundary conditions. There are none */
-		void setBoundaryConditions(SAMS::harness &harness)
+		void setBoundaryConditions([[maybe_unused]] SAMS::harness &harness)
 		{
 		}
 
@@ -214,7 +207,7 @@ namespace SAMS
 		}
 
 		/** @brief Set the constants of the problem. There are none, because the initial conditions package sets the parameters */
-		void initialConditions(SAMS::harness &harness)
+		void initialConditions([[maybe_unused]] SAMS::harness &harness)
 		{
 		}
 
@@ -251,44 +244,65 @@ namespace SAMS
 			parabolic::fillArrayLevels(harness, memory, "beta", levels, [](T_level &l) -> volumeArray & { return l.data.beta; });
 		}
 
-		/** @brief Set the temperature from the energy, after applying the boundary conditions of the energy */
-		void beforeSolve(SAMS::harness &harness, const lareData &lare)
+		/** @brief The number of subproblems that are solved in each step, which is the number of species */
+		SAMS::T_sizeType problemCount() const
+		{
+			return speciesCount;
+		}
+
+		/** @brief Called once before the solves of each step. There is nothing to do */
+		void beforeAllSolves([[maybe_unused]] SAMS::harness &harness)
+		{
+		}
+
+		/** @brief Called once after the solves of each step. There is nothing to do */
+		void afterAllSolves([[maybe_unused]] SAMS::harness &harness)
+		{
+		}
+
+		/** @brief Set the temperature from the energy of the species of the subproblem, after applying the boundary conditions of the energy */
+		void beforeSolve(SAMS::harness &harness, SAMS::T_sizeType problemIndex, const parameters &params, const lareData &lare)
 		{
 			auto &varRegistry = harness.variableRegistry;
-			varRegistry.applyBoundaryConditions(T_species::fieldName());
+			const char *energyName = params.species[problemIndex].energyName;
+			varRegistry.applyBoundaryConditions(energyName);
 			volumeArray energy, temperature;
-			varRegistry.fillPPArray(T_species::fieldName(), energy);
+			varRegistry.fillPPArray(energyName, energy);
 			varRegistry.fillPPArray(fieldName(), temperature);
 			const SAMS::variableDef &def = varRegistry.getVariable(fieldName());
 			const auto &eos = lare.eos;
-			auto convert = LAMBDA(size_t i, size_t j, size_t k)
+			const SAMS::T_dataType mass = lare.mf * lare.mh / lare.kb;
+			const volumeArray density = rho;
+			auto convert = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				temperature(i, j, k) = eos.getTemperature(LARE::eosEnergy(energy(i, j, k)));
+				temperature(i, j, k) = eos.getTemperature(LARE::eosDensity(density(i, j, k)), LARE::eosEnergy(energy(i, j, k)), LARE::eosMass(mass));
 			};
 			pw::applyKernel(convert, def.getDimension(0).getLocalRange(SAMS::staggerType::CENTRED), def.getDimension(1).getLocalRange(SAMS::staggerType::CENTRED), def.getDimension(2).getLocalRange(SAMS::staggerType::CENTRED));
 			pw::fence();
 		}
 
-		/** @brief Set the energy from the temperature */
-		void afterSolve(SAMS::harness &harness, const lareData &lare)
+		/** @brief Set the energy of the species of the subproblem from the temperature */
+		void afterSolve(SAMS::harness &harness, SAMS::T_sizeType problemIndex, const parameters &params, const lareData &lare)
 		{
 			auto &varRegistry = harness.variableRegistry;
 			volumeArray energy, temperature;
-			varRegistry.fillPPArray(T_species::fieldName(), energy);
+			varRegistry.fillPPArray(params.species[problemIndex].energyName, energy);
 			varRegistry.fillPPArray(fieldName(), temperature);
 			const SAMS::variableDef &def = varRegistry.getVariable(fieldName());
 			const auto &eos = lare.eos;
-			auto convert = LAMBDA(size_t i, size_t j, size_t k)
+			const SAMS::T_dataType mass = lare.mf * lare.mh / lare.kb;
+			const volumeArray density = rho;
+			auto convert = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				energy(i, j, k) = eos.getEnergy(LARE::eosTemperature(temperature(i, j, k)));
+				energy(i, j, k) = eos.getEnergy(LARE::eosDensity(density(i, j, k)), LARE::eosTemperature(temperature(i, j, k)), LARE::eosMass(mass));
 			};
 			pw::applyKernel(convert, def.getDimension(0).getLocalDomainRange(SAMS::staggerType::CENTRED), def.getDimension(1).getLocalDomainRange(SAMS::staggerType::CENTRED), def.getDimension(2).getLocalDomainRange(SAMS::staggerType::CENTRED));
 			pw::fence();
 		}
 
-		/** @brief The operator of a level */
+		/** @brief The operator of a level, from the arrays that prepareSolve set for the subproblem */
 		template <typename T_level>
-		stencil makeStencil(const T_level &l) const
+		stencil makeStencil(const T_level &l, [[maybe_unused]] SAMS::T_sizeType problemIndex) const
 		{
 			stencil s;
 			s.cx = l.data.conductance.cx;
@@ -298,12 +312,68 @@ namespace SAMS
 			return s;
 		}
 
-		/** @brief Populate the arrays of levelData that are needed, on every level */
-		template <typename T_level>
-		void prepareSolve(std::vector<T_level> &levels, const parameters &params, const lareData &lare) const
+		/** @brief Add a species to the species that are solved, with its conductivity from the deck */
+		template <typename T_species>
+		static void addSpecies(SAMS::KVS &kvs, parameters &params)
 		{
-			setConductances(levels, params);
-			setBeta(levels, lare);
+			speciesParameters sp;
+			sp.energyName = T_species::fieldName();
+			sp.kappa = kvs.getReal(std::string("/ThermalConduction/") + T_species::name.c_str() + "/kappa", 0.0);
+			params.species.push_back(sp);
+		}
+
+		/** @brief Set the default parameters, which can be changed in the deck. /ThermalConduction/species is electron, ion, (electron, ion) or both, and both are solved if it is absent */
+		void defaultValues(SAMS::KVS &kvs, parameters &params)
+		{
+			SAMS::KVS::Element speciesElement = kvs.getPath("/ThermalConduction/species", SAMS::KVS::Element("both"));
+			std::vector<std::string> names;
+			if (speciesElement.isType(SAMS::KVS::Type::Array))
+			{
+				for (const SAMS::KVS::Element &element : speciesElement.get<SAMS::KVS::Array &>()) names.push_back(element.asString());
+			}
+			else
+			{
+				names.push_back(speciesElement.asString());
+			}
+			params.species.clear();
+			for (const std::string &speciesName : names)
+			{
+				if (speciesName == "both")
+				{
+					addSpecies<SAMS::electron>(kvs, params);
+					addSpecies<SAMS::ion>(kvs, params);
+				}
+				else if (speciesName == SAMS::electron::name.c_str())
+				{
+					addSpecies<SAMS::electron>(kvs, params);
+				}
+				else if (speciesName == SAMS::ion::name.c_str())
+				{
+					addSpecies<SAMS::ion>(kvs, params);
+				}
+				else
+				{
+					const std::string message = "/ThermalConduction/species: unknown species " + speciesName;
+					kvs.reportFatalError(message);
+					throw std::runtime_error(message);
+				}
+			}
+			speciesCount = params.species.size();
+			for (SAMS::T_sizeType n = 0; n < speciesCount; ++n) energyNames[n] = params.species[n].energyName;
+		}
+
+		/** @brief The boundary condition of the temperature of a subproblem on an edge, from /ThermalConduction/boundaries, or else from the condition of its energy in /boundaries */
+		parabolic::tcBoundaryType getBoundaryType(SAMS::KVS &kvs, SAMS::T_sizeType problemIndex, int dimension, SAMS::domain::edges edge) const
+		{
+			return parabolic::readBoundaryType(kvs, energyNames[problemIndex], dimension, edge);
+		}
+
+		/** @brief Populate the arrays of levelData that are needed, on every level, for the species of the subproblem. rhs of the first level is the old field */
+		template <typename T_level>
+		void prepareSolve(std::vector<T_level> &levels, SAMS::T_sizeType problemIndex, const SAMS::timeState &ts, const parameters &params, const lareData &lare) const
+		{
+			setConductances(levels, params.species[problemIndex]);
+			setBeta(levels, lare, ts);
 		}
 	};
 }

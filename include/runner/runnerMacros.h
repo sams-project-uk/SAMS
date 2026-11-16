@@ -62,14 +62,12 @@ public: \
         }; \
         template<bool ifActive = true, bool recursive = true, int level=0>\
         T_sizeType countParam_##X(){\
-            T_sizeType count;\
+            T_sizeType count = 0;\
             if constexpr(!std::is_void_v<typename hasParam_##X<std::tuple_element_t<level, T_packages>>::type>){\
-                using type = typename hasParamType_##X<std::tuple_element_t<level, T_packages>>::type;\
-                static_assert(std::is_convertible_v<type, REQ>, "Error: Parameter " #X " does not match the required type."); \
                 T_sizeType shouldCount = ifActive ? simulationActiveFlags[level] : true;\
                 count = shouldCount ? 1:0;\
             }\
-            if constexpr (recursive && level < sizeof...(Package)-1){\
+            if constexpr (recursive && level < sizeof...(Packages)-1){\
                 return count + countParam_##X<ifActive, recursive, level+1>();\
             } else {\
                 return count;\
@@ -96,7 +94,7 @@ public: \
         }; \
         template<bool ifActive = true, bool recursive = true, int level=0>\
         T_sizeType countParam_##X(){\
-            T_sizeType count;\
+            T_sizeType count = 0;\
             if constexpr(!std::is_void_v<typename hasParamType_##X<std::tuple_element_t<level, T_packages>>::type>){\
                 using type = typename hasParamType_##X<std::tuple_element_t<level, T_packages>>::type;\
                 static_assert(std::is_convertible_v<type, REQ>, "Error: Parameter " #X " does not match the required type."); \
@@ -129,15 +127,21 @@ public: \
         void toggleTimer_##X(){\
             std::get<level>(X##_timers).toggle();\
         }\
-        template<int level=0>\
-        void printTimer_##X(){\
+        /* A package can name the phase in the timing output with a static X##TimerName */ \
+        template<typename T, typename = void>\
+        struct hasTimerName_##X { static constexpr bool value = false; };\
+        template<typename T>\
+        struct hasTimerName_##X<T, std::void_t<decltype(T::X##TimerName)>> { static constexpr bool value = true; };\
+        template<int level=0, bool recursive=true>\
+        void printTimer_##X(std::vector<std::pair<std::string_view, double>> &times){\
             timer& t = std::get<level>(X##_timers);\
             if (simulationActiveFlags[level] && t.everRun()) {\
-                std::string name = static_cast<std::string>(hasParamType_name<std::tuple_element_t<level, T_packages>>::value); \
-                SAMS::cout << "Timer " << TOSTRING(X) << " for simulation " << name << " (level " << level << "): " << t.end_silent() << " seconds." << std::endl;\
+                std::string_view label = STR(X);\
+                if constexpr (hasTimerName_##X<std::tuple_element_t<level, T_packages>>::value) label = std::tuple_element_t<level, T_packages>::X##TimerName;\
+                times.emplace_back(label, t.end_silent());\
             }\
-            if constexpr(level < sizeof...(Packages)-1){\
-                printTimer_##X<level+1>();\
+            if constexpr(recursive && level < sizeof...(Packages)-1){\
+                printTimer_##X<level+1, recursive>(times);\
             }\
         }
 #else
@@ -145,8 +149,8 @@ public: \
     #define TIMER_X(X) \
     template<int level>\
     void toggleTimer_##X(){}\
-    template<int level=0>\
-    void printTimer_##X(){}
+    template<int level=0, bool recursive=true>\
+    void printTimer_##X(std::vector<std::pair<std::string_view, double>> &){}
 #endif
 
    #define CALL_X(X)\

@@ -2,6 +2,8 @@
 #define MULTIGRIDTEST_HELPERS_H
 #include "runner.h"
 #include "harness.h"
+#include "deckHelpers/deckUtils.h"
+#include <stdexcept>
 #include <vector>
 #include <type_traits>
 #include <string>
@@ -23,6 +25,148 @@ namespace SAMS
 
 	namespace parabolic
 	{
+
+	/** @brief The boundary condition of the temperature on an edge. fixedGhosts keeps the ghost cells set before the solve, for fixed_energy from the initial energy from the core solver. The others have their normal meaning */
+	enum class boundaryType
+	{
+		periodic,
+		zeroGradient,
+		fixedGhosts,
+		clamp,
+		fixedMirror,
+		floatingMirror,
+		expression
+	};
+
+	/** @brief The boundary condition of the temperature on an edge, with the value of clamp and fixedMirror and the text of expression */
+	struct tcBoundaryType
+	{
+		boundaryType type;
+		T_dataType value = 0.0;
+		std::string text;
+	};
+
+	/**
+	 * @brief The boundary condition of the temperature of a species on an edge, from /ThermalConduction/boundaries, or else from the condition of its energy in /boundaries
+	 * @param energyName The name of the energy variable of the species, which is the block name in both
+	 */
+	inline tcBoundaryType readBoundaryType(SAMS::KVS &kvs, const std::string &energyName, int dimension, SAMS::domain::edges edge)
+	{
+		const char *suffix = edge == SAMS::domain::edges::lower ? "_min" : "_max";
+		std::string path;
+		const std::string text = edgeText(kvs, "/ThermalConduction/boundaries", energyName, dimension, suffix, path);
+		if (text.empty())
+		{
+			//Only conditions without values carry over from the energy
+			const std::string energyText = edgeText(kvs, "/boundaries", energyName, dimension, suffix, path);
+			const std::string type = conditionType(energyText);
+			const bool hasValue = energyText.find('(') != std::string::npos;
+			if (type == "periodic") return {boundaryType::periodic};
+			if (type == "zero_gradient") return {boundaryType::zeroGradient};
+			if (type == "mirror" && !hasValue) return {boundaryType::floatingMirror};
+			return {boundaryType::fixedGhosts};
+		}
+		const std::string type = conditionType(text);
+		const std::string::size_type open = text.find('(');
+		const bool hasValue = open != std::string::npos;
+		const std::string argument = hasValue ? text.substr(open + 1, text.rfind(')') - open - 1) : "";
+		if (type == "periodic" && !hasValue) return {boundaryType::periodic};
+		if (type == "zero_gradient" && !hasValue) return {boundaryType::zeroGradient};
+		if (type == "fixed_energy" && !hasValue) return {boundaryType::fixedGhosts};
+		if (type == "mirror" && !hasValue) return {boundaryType::floatingMirror};
+		if (type == "expression" && hasValue) return {boundaryType::expression, 0.0, argument};
+		if ((type == "clamp" || type == "mirror") && hasValue)
+		{
+			try
+			{
+				const SAMS::T_dataType value = SAMS::KVS::Element(argument).asReal();
+				return {type == "clamp" ? boundaryType::clamp : boundaryType::fixedMirror, value};
+			}
+			catch (const std::exception &e)
+			{
+				const std::string message = "Invalid " + path + ": " + e.what();
+				kvs.reportFatalError(message);
+				throw std::runtime_error(message);
+			}
+		}
+		const std::string message = "Invalid " + path + ": " + text;
+		kvs.reportFatalError(message);
+		throw std::runtime_error(message);
+	}
+
+	/** @brief The boundary conditions on the sides of the domain for use in kernels, in which clamp and expression are fixedGhosts */
+	struct sideConditions
+	{
+		boundaryType type[3][2];
+		T_dataType value[3][2];
+		/** @brief Whether the side of this rank is on the boundary of the domain */
+		bool physical[3][2];
+	};
+
+	/** @brief A cell beyond the boundary of the domain as the weighted sum of other cells plus a constant */
+	struct ghostMap
+	{
+		SIGNED_INDEX_TYPE index[8][3];
+		T_dataType weight[8];
+		int count;
+		T_dataType constant;
+	};
+
+	/**
+	 * @brief A cell beyond the boundary of the domain as the weighted sum of domain cells plus a constant, for use in forming a matrix
+	 *
+	 * Zero gradient is the adjacent cell. A fixed mirror is 2v minus the adjacent cell. A floating mirror is the linear extrapolation
+	 * through the adjacent cell and the next one in. A cell beyond the domain in more than one direction is mapped one direction at a time.
+	 * Parts beyond any other boundary stay beyond the domain, and are taken from the ghost cells.
+	 * @param n The number of cells of this rank in each direction, whose indices are counted from 1
+	 */
+	DEVICEPREFIX inline ghostMap mapGhost(const sideConditions &sides, SIGNED_INDEX_TYPE i, SIGNED_INDEX_TYPE j, SIGNED_INDEX_TYPE k, const SIGNED_INDEX_TYPE n[3])
+	{
+		ghostMap g;
+		g.index[0][0] = i;
+		g.index[0][1] = j;
+		g.index[0][2] = k;
+		g.weight[0] = 1.0;
+		g.count = 1;
+		g.constant = 0.0;
+		for (int d = 0; d < 3; ++d)
+		{
+			const int count = g.count;
+			for (int e = 0; e < count; ++e)
+			{
+				const SIGNED_INDEX_TYPE x = g.index[e][d];
+				const int side = x < 1 ? 0 : 1;
+				if ((x >= 1 && x <= n[d]) || !sides.physical[d][side])
+					continue;
+				const SIGNED_INDEX_TYPE adjacent = side == 0 ? 1 : n[d];
+				const SIGNED_INDEX_TYPE inner = side == 0 ? 2 : n[d] - 1;
+				switch (sides.type[d][side])
+				{
+				case boundaryType::zeroGradient:
+					g.index[e][d] = adjacent;
+					break;
+				case boundaryType::fixedMirror:
+					g.constant += 2.0 * sides.value[d][side] * g.weight[e];
+					g.weight[e] = -g.weight[e];
+					g.index[e][d] = adjacent;
+					break;
+				case boundaryType::floatingMirror:
+					g.index[g.count][0] = g.index[e][0];
+					g.index[g.count][1] = g.index[e][1];
+					g.index[g.count][2] = g.index[e][2];
+					g.index[g.count][d] = inner;
+					g.weight[g.count] = -g.weight[e];
+					++g.count;
+					g.weight[e] = 2.0 * g.weight[e];
+					g.index[e][d] = adjacent;
+					break;
+				default:
+					break;
+				}
+			}
+		}
+		return g;
+	}
 
 	/**
 	 * @brief The name of the axis of a direction on a level
@@ -98,7 +242,7 @@ namespace SAMS
 	template <typename T_level, typename T_getArray>
 	void fillArrayLevels(SAMS::harness &harness, const std::string &memoryName, const std::string &variable, std::vector<T_level> &levels, T_getArray getArray)
 	{
-		for (size_t n = 0; n < levels.size(); ++n)
+		for (SAMS::T_sizeType n = 0; n < levels.size(); ++n)
 			fillArray(harness, memoryName, variable, getArray(levels[n]), static_cast<int>(n));
 	}
 
@@ -119,19 +263,19 @@ namespace SAMS
 	void averageCells(const T_array &fineArray, const T_array &coarseArray, const T_level &fineLevel, const T_level &l, T_scale scale = T_scale())
 	{
 		const T_array fine = fineArray, coarse = coarseArray;
-		const size_t fx = l.coarsenX ? 2 : 1, fy = l.coarsenY ? 2 : 1, fz = l.coarsenZ ? 2 : 1;
+		const SAMS::T_indexType fx = l.coarsenX ? 2 : 1, fy = l.coarsenY ? 2 : 1, fz = l.coarsenZ ? 2 : 1;
 		// Offset of the first coarse cell along the fine cells
-		const size_t ox = l.coarsenX ? static_cast<size_t>(2 * (l.firstX - 1) - (fineLevel.firstX - 1)) : 0;
-		const size_t oy = l.coarsenY ? static_cast<size_t>(2 * (l.firstY - 1) - (fineLevel.firstY - 1)) : 0;
-		const size_t oz = l.coarsenZ ? static_cast<size_t>(2 * (l.firstZ - 1) - (fineLevel.firstZ - 1)) : 0;
-		auto kernel = LAMBDA(size_t i, size_t j, size_t k)
+		const SAMS::T_indexType ox = l.coarsenX ? static_cast<SAMS::T_indexType>(2 * (l.firstX - 1) - (fineLevel.firstX - 1)) : 0;
+		const SAMS::T_indexType oy = l.coarsenY ? static_cast<SAMS::T_indexType>(2 * (l.firstY - 1) - (fineLevel.firstY - 1)) : 0;
+		const SAMS::T_indexType oz = l.coarsenZ ? static_cast<SAMS::T_indexType>(2 * (l.firstZ - 1) - (fineLevel.firstZ - 1)) : 0;
+		auto kernel = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 		{
-			double sum = 0.0;
-			for (size_t a = 0; a < fx; ++a)
-				for (size_t b = 0; b < fy; ++b)
-					for (size_t c = 0; c < fz; ++c)
+			SAMS::T_dataType sum = 0.0;
+			for (SAMS::T_indexType a = 0; a < fx; ++a)
+				for (SAMS::T_indexType b = 0; b < fy; ++b)
+					for (SAMS::T_indexType c = 0; c < fz; ++c)
 						sum += fine(fx * (i - 1) + 1 + a + ox, fy * (j - 1) + 1 + b + oy, fz * (k - 1) + 1 + c + oz);
-			const double mean = sum / (fx * fy * fz);
+			const SAMS::T_dataType mean = sum / (fx * fy * fz);
 			// nvcc must see the captures outside the constexpr-if
 			(void)coarse;
 			(void)scale;
@@ -155,22 +299,22 @@ namespace SAMS
 	void averageFaces(const T_array &fineArray, const T_array &coarseArray, const T_level &fineLevel, const T_level &l, int direction)
 	{
 		const T_array fine = fineArray, coarse = coarseArray;
-		const size_t fx = l.coarsenX ? 2 : 1, fy = l.coarsenY ? 2 : 1, fz = l.coarsenZ ? 2 : 1;
-		const size_t countX = (direction == 0) ? 1 : fx, countY = (direction == 1) ? 1 : fy, countZ = (direction == 2) ? 1 : fz;
+		const SAMS::T_indexType fx = l.coarsenX ? 2 : 1, fy = l.coarsenY ? 2 : 1, fz = l.coarsenZ ? 2 : 1;
+		const SAMS::T_indexType countX = (direction == 0) ? 1 : fx, countY = (direction == 1) ? 1 : fy, countZ = (direction == 2) ? 1 : fz;
 		// Offset of the first coarse cell along the fine cells
-		const size_t ox = l.coarsenX ? static_cast<size_t>(2 * (l.firstX - 1) - (fineLevel.firstX - 1)) : 0;
-		const size_t oy = l.coarsenY ? static_cast<size_t>(2 * (l.firstY - 1) - (fineLevel.firstY - 1)) : 0;
-		const size_t oz = l.coarsenZ ? static_cast<size_t>(2 * (l.firstZ - 1) - (fineLevel.firstZ - 1)) : 0;
-		auto kernel = LAMBDA(size_t i, size_t j, size_t k)
+		const SAMS::T_indexType ox = l.coarsenX ? static_cast<SAMS::T_indexType>(2 * (l.firstX - 1) - (fineLevel.firstX - 1)) : 0;
+		const SAMS::T_indexType oy = l.coarsenY ? static_cast<SAMS::T_indexType>(2 * (l.firstY - 1) - (fineLevel.firstY - 1)) : 0;
+		const SAMS::T_indexType oz = l.coarsenZ ? static_cast<SAMS::T_indexType>(2 * (l.firstZ - 1) - (fineLevel.firstZ - 1)) : 0;
+		auto kernel = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 		{
 			// The first fine index covered. In the face direction the edge is the last fine edge of the cell, which is at fx * i
-			const size_t firstI = (direction == 0) ? fx * i + ox : fx * (i - 1) + 1 + ox;
-			const size_t firstJ = (direction == 1) ? fy * j + oy : fy * (j - 1) + 1 + oy;
-			const size_t firstK = (direction == 2) ? fz * k + oz : fz * (k - 1) + 1 + oz;
-			double sum = 0.0;
-			for (size_t a = 0; a < countX; ++a)
-				for (size_t b = 0; b < countY; ++b)
-					for (size_t c = 0; c < countZ; ++c)
+			const SAMS::T_indexType firstI = (direction == 0) ? fx * i + ox : fx * (i - 1) + 1 + ox;
+			const SAMS::T_indexType firstJ = (direction == 1) ? fy * j + oy : fy * (j - 1) + 1 + oy;
+			const SAMS::T_indexType firstK = (direction == 2) ? fz * k + oz : fz * (k - 1) + 1 + oz;
+			SAMS::T_dataType sum = 0.0;
+			for (SAMS::T_indexType a = 0; a < countX; ++a)
+				for (SAMS::T_indexType b = 0; b < countY; ++b)
+					for (SAMS::T_indexType c = 0; c < countZ; ++c)
 						sum += fine(firstI + a, firstJ + b, firstK + c);
 			coarse(i, j, k) = sum / (countX * countY * countZ);
 		};
@@ -188,7 +332,7 @@ namespace SAMS
 	template <typename T_level, typename T_getArray>
 	void restrictCells(std::vector<T_level> &levels, T_getArray getArray)
 	{
-		for (size_t n = 1; n < levels.size(); ++n)
+		for (SAMS::T_sizeType n = 1; n < levels.size(); ++n)
 		{
 			averageCells(getArray(levels[n - 1]), getArray(levels[n]), levels[n - 1], levels[n]);
 		}
@@ -203,7 +347,7 @@ namespace SAMS
 	template <typename T_level, typename T_getArray>
 	void restrictFaces(std::vector<T_level> &levels, T_getArray getArray, int direction)
 	{
-		for (size_t n = 1; n < levels.size(); ++n)
+		for (SAMS::T_sizeType n = 1; n < levels.size(); ++n)
 		{
 			averageFaces(getArray(levels[n - 1]), getArray(levels[n]), levels[n - 1], levels[n], direction);
 		}
@@ -284,7 +428,7 @@ namespace SAMS
 	struct stencilMirror
 	{
 		int target[T::stencilSize];
-		double sign[T::stencilSize];
+		SAMS::T_dataType sign[T::stencilSize];
 		bool high[T::stencilSize];
 	};
 
@@ -320,7 +464,7 @@ namespace SAMS
 	template <typename T>
 	struct stencilWeights
 	{
-		double value[T::stencilSize] = {};
+		SAMS::T_dataType value[T::stencilSize] = {};
 
 		/** @brief Set the entries on the high side of the face to those on the low side, as given by the mirror, replacing what they were */
 		DEVICEPREFIX void mirrorLowToHigh(const stencilMirror<T> &mirror)
@@ -334,7 +478,7 @@ namespace SAMS
 		}
 
 		template <int di, int dj, int dk>
-		DEVICEPREFIX double &operator[](stencilPosition<di, dj, dk>)
+		DEVICEPREFIX SAMS::T_dataType &operator[](stencilPosition<di, dj, dk>)
 		{
 			constexpr int index = stencilIndex<T>(di, dj, dk);
 			static_assert(index >= 0, "The position is not in the stencil");
@@ -342,15 +486,15 @@ namespace SAMS
 		}
 
 		template <int di, int dj, int dk>
-		DEVICEPREFIX const double &operator[](stencilPosition<di, dj, dk>) const
+		DEVICEPREFIX const SAMS::T_dataType &operator[](stencilPosition<di, dj, dk>) const
 		{
 			constexpr int index = stencilIndex<T>(di, dj, dk);
 			static_assert(index >= 0, "The position is not in the stencil");
 			return value[index];
 		}
 
-		DEVICEPREFIX double &operator[](int s) { return value[s]; }
-		DEVICEPREFIX const double &operator[](int s) const { return value[s]; }
+		DEVICEPREFIX SAMS::T_dataType &operator[](int s) { return value[s]; }
+		DEVICEPREFIX const SAMS::T_dataType &operator[](int s) const { return value[s]; }
 	};
 
 	/**
@@ -393,23 +537,23 @@ namespace SAMS
 	template <typename T>
 	struct stencilView
 	{
-		double *value;
+		SAMS::T_dataType *value;
 
-		DEVICEPREFIX stencilView(double *a) : value(a)
+		DEVICEPREFIX stencilView(SAMS::T_dataType *a) : value(a)
 		{
 			for (int s = 0; s < T::stencilSize; ++s)
 				value[s] = 0.0;
 		}
 
 		template <int di, int dj, int dk>
-		DEVICEPREFIX double &operator[](stencilPosition<di, dj, dk>) const
+		DEVICEPREFIX SAMS::T_dataType &operator[](stencilPosition<di, dj, dk>) const
 		{
 			constexpr int index = stencilIndex<T>(di, dj, dk);
 			static_assert(index >= 0, "The position is not in the stencil");
 			return value[index];
 		}
 
-		DEVICEPREFIX double &operator[](int s) const { return value[s]; }
+		DEVICEPREFIX SAMS::T_dataType &operator[](int s) const { return value[s]; }
 	};
 
 	/**
@@ -424,7 +568,7 @@ namespace SAMS
 	 * @param a The coefficients of the cell, in the order of the stencil
 	 */
 	template <typename T, typename T_stencil>
-	DEVICEPREFIX void coefficientsFromFluxes(const T_stencil &stencil, size_t i, size_t j, size_t k, double *a)
+	DEVICEPREFIX void coefficientsFromFluxes(const T_stencil &stencil, SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k, SAMS::T_dataType *a)
 	{
 		constexpr faceShift<T> shift = makeFaceShift<T>();
 		const faceWeights<T> high = stencil.fluxWeights(i, j, k);

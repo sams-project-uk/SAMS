@@ -27,6 +27,7 @@
 //That could easily be a bad idea, so this should make
 //it easy to switch to std::tuple or thrust::tuple if needed
 #define APPLY portableWrapper::portableTuple::apply
+#define APPLYHOST portableWrapper::portableTuple::applyHost
 #define MAKETUPLE portableWrapper::portableTuple::make_tuple
 #define GET portableWrapper::portableTuple::get
 #define TUPLE portableWrapper::portableTuple::tuple

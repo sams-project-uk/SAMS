@@ -18,6 +18,7 @@ namespace LARE
     inline constexpr int temperatureVar = 3;
     inline constexpr int ionizationVar = 4;
     inline constexpr int indexVar = 5; // For EOS that require index inputs
+    inline constexpr int massVar = 6;
 
     using eosDensity = eosVariable<T_dataType, densityVar>;
     using eosEnergy = eosVariable<T_dataType, energyVar>;
@@ -25,34 +26,35 @@ namespace LARE
     using eosTemperature = eosVariable<T_dataType, temperatureVar>;
     using eosIonization = eosVariable<T_dataType, ionizationVar>;
     using eosIndex = eosVariable<T_indexType, indexVar>;
+    using eosMass = eosVariable<T_dataType, massVar>;
 
     struct idealGas
     {
         static constexpr auto name = SAMS::makeName("");
         T_dataType gamma;
-        FUNCTORMETHODPREFIX INLINE T_dataType getPressure(eosDensity density, eosEnergy energy) const
+        FUNCTORMETHODPREFIX INLINE T_dataType getPressure(eosDensity density, eosEnergy energy, [[maybe_unused]] eosMass mass) const
         {
             return (gamma - 1.0) * density * energy;
         }
-        FUNCTORMETHODPREFIX INLINE T_dataType getSoundSpeedSquared(eosDensity density, eosEnergy energy) const
+        FUNCTORMETHODPREFIX INLINE T_dataType getSoundSpeedSquared([[maybe_unused]] eosDensity density, eosEnergy energy, [[maybe_unused]] eosMass mass) const
         {
             return gamma * (gamma - 1.0) * energy;
         }
-        FUNCTORMETHODPREFIX INLINE T_dataType getEnergy(eosTemperature temperature) const
+        FUNCTORMETHODPREFIX INLINE T_dataType getEnergy([[maybe_unused]] eosDensity density, eosTemperature temperature, eosMass mass) const
         {
-            return temperature / (gamma - 1.0);
+            return temperature / ((gamma - 1.0) * mass);
         }
-        FUNCTORMETHODPREFIX INLINE T_dataType getTemperature(eosEnergy energy) const
+        FUNCTORMETHODPREFIX INLINE T_dataType getTemperature([[maybe_unused]] eosDensity density, eosEnergy energy, eosMass mass) const
         {
-            return (gamma - 1.0) * energy;
+            return (gamma - 1.0) * energy * mass;
         }
-        FUNCTORMETHODPREFIX INLINE T_dataType getCV() const
+        FUNCTORMETHODPREFIX INLINE T_dataType getCV([[maybe_unused]] eosDensity density, [[maybe_unused]] eosEnergy energy, eosMass mass) const
         {
-            return 1.0 / (gamma - 1.0);
+            return 1.0 / ((gamma - 1.0) * mass);
         }
-        FUNCTORMETHODPREFIX INLINE T_dataType getCP() const
+        FUNCTORMETHODPREFIX INLINE T_dataType getCP([[maybe_unused]] eosDensity density, [[maybe_unused]] eosEnergy energy, eosMass mass) const
         {
-            return gamma / (gamma - 1.0);
+            return gamma / ((gamma - 1.0) * mass);
         }
         void setGamma(T_dataType gamma_in)
         {

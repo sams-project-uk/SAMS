@@ -58,6 +58,15 @@ namespace portableWrapper
         }
 
         /**
+         * Version of applyKernel that only ever runs on the host in serial
+         */
+        template <typename T_func, typename... T_ranges>
+        inline void applyKernelHostSerial(T_func func, T_ranges... ranges)
+        {
+					openmp::applyKernelSerial(std::forward<T_func>(func), ranges...);
+        }
+
+        /**
          *  Function to apply a reduction operation in parallel over the specified ranges
          * @param mapper Function to map the input data to a value. Same signature as a normal kernel function, but should return the value to be reduced.
          * @param reducer Function to reduce the values. Should take two parameters of the same type as the return value of the mapper function.
@@ -154,20 +163,21 @@ namespace portableWrapper
          * Function to print information about the parallelization mode.
          */
 
-        inline void printParallelizationInfo()
+        template<typename T_stream>
+        inline void printParallelizationInfo(T_stream &out)
         {
-                SAMS::cout << "On node parallelization mode: ";
+                out << "On node parallelization mode: ";
 #ifdef USE_KOKKOS
-                kokkos::printInfo();
+                kokkos::printInfo(out);
 #elif defined(USE_CUDA)
-                cuda::printInfo();
+                cuda::printInfo(out);
 #elif defined(USE_HIP)
-                hip::printInfo();
+                hip::printInfo(out);
 #else
 #ifdef _OPENMP
-                openmp::printInfo();
+                openmp::printInfo(out);
 #else
-                SAMS::cout << "Serial" << std::endl;
+                out << "Serial" << std::endl;
 #endif
 #endif
         }

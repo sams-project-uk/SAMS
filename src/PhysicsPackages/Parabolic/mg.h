@@ -3,6 +3,8 @@
 #include "runner.h"
 #include "harness.h"
 #include "builtInBoundaryConditions.h"
+#include "deckHelpers/deckBoundaries.h"
+#include "deckHelpers/expressionBC.h"
 #include "helpers.h"
 
 // Relative tolerance of the solvers of all the MultigridTest packages. Define SOLVER_TOLERANCE when compiling to set it for all of them
@@ -22,11 +24,11 @@ namespace SAMS
 	 * @param dx, dy, dz The cell widths of the level
 	 */
 	template <typename T, typename T_stencil, typename T_array, typename T_line>
-	DEVICEPREFIX void evaluateStencil(const T_stencil &s, const T_array &u, const T_line &dx, const T_line &dy, const T_line &dz, size_t i, size_t j, size_t k, double &divergence, double &diagonal)
+	DEVICEPREFIX void evaluateStencil(const T_stencil &s, const T_array &u, const T_line &dx, const T_line &dy, const T_line &dz, SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k, SAMS::T_dataType &divergence, SAMS::T_dataType &diagonal)
 	{
-		double a[T::stencilSize];
+		SAMS::T_dataType a[T::stencilSize];
 		s.coefficients(i, j, k, a);
-		double sum = 0.0, centre = 0.0;
+		SAMS::T_dataType sum = 0.0, centre = 0.0;
 		for (int n = 0; n < T::stencilSize; ++n)
 		{
 			int di, dj, dk;
@@ -35,7 +37,7 @@ namespace SAMS
 			if (di == 0 && dj == 0 && dk == 0)
 				centre = a[n];
 		}
-		const double volume = dx(i) * dy(j) * dz(k);
+		const SAMS::T_dataType volume = dx(i) * dy(j) * dz(k);
 		divergence = sum / volume;
 		diagonal = -centre / volume;
 	}
@@ -43,17 +45,18 @@ namespace SAMS
 	/**
 	 * @brief Geometric multigrid solver with eight colour Gauss-Seidel
 	 *
-	 * Solves (V beta/dt)(u - u_old) = the net heat into the cell from the operator of the problem, for the new field u,
-	 * where V is the cell volume. The solution is in the variable scratch, which is sol of the finest level.
+	 * Solves (V beta)(u - u_old) = the net heat into the cell from the operator of the problem, for the new field u,
+	 * where V is the cell volume and beta, from the problem, includes the timestep. The solution is in the variable scratch, which is sol of the finest level.
 	 * @tparam T The problem. Provides:
 	 * - name: a SAMS::constexprName, which is added to the name of the package.
 	 * - fieldName(): the name of the variable that is evolved, whose array is rhs of the finest level.
 	 * - levelData: a default constructible type holding the arrays of the problem for one level, which is the member data
 	 *   of a level.
 	 * - allocate(manager, level, finest): allocate the arrays of the problem for a level.
-	 * - prepareSolve(levels): set the coefficients of the operator on every level, from the old field, which is rhs
-	 *   of the finest level, and any other data that the problem holds.
-	 * - makeStencil(level): return an object to be copied into kernels, with coefficients(i, j, k, a) and beta(i, j, k).
+	 * - problemCount(): the number of subproblems that are solved in turn in each step.
+	 * - prepareSolve(levels, problemIndex): set the coefficients of the operator of a subproblem on every level, from the old field,
+	 *   which is rhs of the finest level, and any other data that the problem holds.
+	 * - makeStencil(level, problemIndex): return an object to be copied into kernels, with coefficients(i, j, k, a) and beta(i, j, k).
 	 *   The operator must only depend on the cell and its neighbours which differ by at most one in each direction.
 	 * The problem must be trivially copyable, because it is copied into the kernels. A level has the sizes nx, ny, nz,
 	 * whether it is coarsened from the finer level in each direction, coarsenX, coarsenY, coarsenZ, the ranges of its cells,
@@ -73,7 +76,7 @@ namespace SAMS
 		struct level
 		{
 			/** @brief Number of cells in each direction */
-			size_t nx, ny, nz;
+			SAMS::T_sizeType nx, ny, nz;
 			/** @brief The index of the level, counted from 0 for the finest level */
 			SAMS::T_sizeType gridLevel = 0;
 			/** @brief Whether the level is coarsened from the next finer level in each direction */
@@ -81,7 +84,7 @@ namespace SAMS
 			/** @brief Global index of the first cell of this rank in each direction, counted from 1 */
 			SIGNED_INDEX_TYPE firstX = 1, firstY = 1, firstZ = 1;
 			/** @brief Relaxation parameter of the smoother. 1 is Gauss-Seidel. The value here is the largest, and build lowers it on coarse levels */
-			double w = 1.6;
+			SAMS::T_dataType w = 1.6;
 			/** @brief Range of the cells in each direction */
 			pw::Range xcLocalDomainRange, ycLocalDomainRange, zcLocalDomainRange;
 			/** @brief Range of the cell boundaries in each direction */
@@ -119,8 +122,14 @@ namespace SAMS
 		/** @brief Number of times the last solve went down from the finest level, which is the number of cycles */
 		int cycleCount = 0;
 
+		/** @brief The index of the subproblem that is being solved */
+		SAMS::T_sizeType currentProblem = 0;
+
 		/** @brief Number of derived axes that are used in each direction */
 		std::array<int, 3> axisLevels = {0, 0, 0};
+
+		/** @brief The boundary conditions of each subproblem, active only while that subproblem is solved */
+		std::vector<std::vector<std::pair<std::string, std::shared_ptr<SAMS::boundaryConditions>>>> problemBoundaries;
 
 		/** @brief The harness */
 		SAMS::harness *harnessPtr = nullptr;
@@ -148,32 +157,32 @@ namespace SAMS
 		 * @param first Global index of the first cell of this rank in the direction
 		 * @param deviceWidths, hostWidths Widths to set, on the device and on the host
 		 */
-		void axisWidths(SAMS::harness &harness, const std::string &axisName, size_t n, SIGNED_INDEX_TYPE first, lineArray &deviceWidths, hostLineArray &hostWidths)
+		void axisWidths(SAMS::harness &harness, const std::string &axisName, SAMS::T_sizeType n, SIGNED_INDEX_TYPE first, lineArray &deviceWidths, hostLineArray &hostWidths)
 		{
 			lineArray globalDevice;
 			hostLineArray globalHost;
 			harness.axisRegistry.fillPPDelta(axisName, globalDevice, SAMS::staggerType::CENTRED);
 			harness.axisRegistry.fillPPDelta(axisName, globalHost, SAMS::staggerType::CENTRED);
 			const lineArray source = globalDevice, widths = deviceWidths;
-			auto interior = LAMBDA(size_t i)
+			auto interior = LAMBDA(SAMS::T_indexType i)
 			{
 				widths(i) = source(static_cast<SIGNED_INDEX_TYPE>(i) + first - 1);
 			};
 			pw::applyKernel(interior, pw::Range(1, n));
 			pw::fence();
-			auto lower = LAMBDA(size_t i)
+			auto lower = LAMBDA(SAMS::T_indexType i)
 			{
-				widths(0) = widths(1);
+				widths(i) = widths(i + 1);
 			};
 			pw::applyKernel(lower, pw::Range(0, 0));
-			auto upper = LAMBDA(size_t i)
+			auto upper = LAMBDA(SAMS::T_indexType i)
 			{
-				widths(n + 1) = widths(n);
+				widths(i) = widths(i - 1);
 			};
 			pw::applyKernel(upper, pw::Range(n + 1, n + 1));
 			pw::fence();
 
-			for (size_t i = 1; i <= n; ++i)
+			for (SAMS::T_indexType i = 1; i <= static_cast<SAMS::T_indexType>(n); ++i)
 				hostWidths(i) = globalHost(static_cast<SIGNED_INDEX_TYPE>(i) + first - 1);
 			hostWidths(0) = hostWidths(1);
 			hostWidths(n + 1) = hostWidths(n);
@@ -183,10 +192,10 @@ namespace SAMS
 		 * @brief The optimal SOR parameter for the Laplacian on the cells of a level, from the spectral radius of Jacobi iteration
 		 * @param l The level, of which the sizes are used
 		 */
-		double optimalOmega(const level &l) const
+		SAMS::T_dataType optimalOmega(const level &l) const
 		{
-			const double pi = 3.14159265358979323846;
-			const double rho = (cos(pi / (l.nx + 1)) + cos(pi / (l.ny + 1)) + cos(pi / (l.nz + 1))) / 3.0;
+			const SAMS::T_dataType pi = 3.14159265358979323846;
+			const SAMS::T_dataType rho = (cos(pi / (l.nx + 1)) + cos(pi / (l.ny + 1)) + cos(pi / (l.nz + 1))) / 3.0;
 			return 2.0 / (1.0 + sqrt(1.0 - rho * rho));
 		}
 
@@ -290,19 +299,18 @@ namespace SAMS
 		/**
 		 * @brief Calculate the residual of a level into l.res
 		 * @param l The level
-		 * @param dt Timestep
 		 */
-		void computeResidual(level &l, double dt)
+		void computeResidual(level &l)
 		{
-			const auto s = problem.makeStencil(l);
+			const auto s = problem.makeStencil(l, currentProblem);
 			const volumeArray u = l.sol, rhs = l.rhs, res = l.res;
 			const lineArray dx = l.dxc, dy = l.dyc, dz = l.dzc;
 
-			auto kernel = LAMBDA(size_t i, size_t j, size_t k)
+			auto kernel = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				double divergence, diagonal;
+				SAMS::T_dataType divergence, diagonal;
 				evaluateStencil<T>(s, u, dx, dy, dz, i, j, k, divergence, diagonal);
-				res(i, j, k) = s.beta(i, j, k) * (rhs(i, j, k) - u(i, j, k)) / dt + divergence;
+				res(i, j, k) = s.beta(i, j, k) * (rhs(i, j, k) - u(i, j, k)) + divergence;
 			};
 			pw::applyKernel(kernel, l.xcLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
 		}
@@ -310,17 +318,16 @@ namespace SAMS
 		/**
 		 * @brief The largest magnitude of the residual of a level
 		 * @param l The level
-		 * @param dt Timestep
 		 * @return The maximum of |res| over all ranks
 		 */
-		double residualNorm(level &l, double dt)
+		SAMS::T_dataType residualNorm(level &l)
 		{
-			computeResidual(l, dt);
+			computeResidual(l);
 			const volumeArray res = l.res;
-			double norm = pw::maxval(LAMBDA(size_t i, size_t j, size_t k) { return std::abs(res(i, j, k)); },
+			SAMS::T_dataType norm = pw::maxval(LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k) { return std::abs(res(i, j, k)); },
 				l.xcLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
 #ifdef USE_MPI
-			MPI_Allreduce(MPI_IN_PLACE, &norm, 1, MPI_DOUBLE, MPI_MAX, harnessPtr->MPIManager.getComm());
+			MPI_Allreduce(MPI_IN_PLACE, &norm, 1, SAMS::gettypeRegistry().getMPIType<SAMS::T_dataType>(), MPI_MAX, harnessPtr->MPIManager.getComm());
 #endif
 			return norm;
 		}
@@ -330,22 +337,21 @@ namespace SAMS
 		 *
 		 * Eight colours are used because the stencil includes the diagonal neighbours.
 		 * @param l The level
-		 * @param dt Timestep
 		 */
-		void smooth(level &l, double dt)
+		void smooth(level &l)
 		{
-			const auto s = problem.makeStencil(l);
+			const auto s = problem.makeStencil(l, currentProblem);
 			const volumeArray u = l.sol, rhs = l.rhs;
 			const lineArray dx = l.dxc, dy = l.dyc, dz = l.dzc;
-			const double w = l.w;
+			const SAMS::T_dataType w = l.w;
 
-			auto kernel = LAMBDA(size_t i, size_t j, size_t k)
+			auto kernel = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				double divergence, diagonal;
+				SAMS::T_dataType divergence, diagonal;
 				evaluateStencil<T>(s, u, dx, dy, dz, i, j, k, divergence, diagonal);
-				const double factor = s.beta(i, j, k);
-				const double r = factor * (rhs(i, j, k) - u(i, j, k)) / dt + divergence;
-				u(i, j, k) += w * r / (factor / dt + diagonal);
+				const SAMS::T_dataType factor = s.beta(i, j, k);
+				const SAMS::T_dataType r = factor * (rhs(i, j, k) - u(i, j, k)) + divergence;
+				u(i, j, k) += w * r / (factor + diagonal);
 			};
 			pw::applyEightColourKernel(kernel, l.xcLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
 		}
@@ -353,21 +359,20 @@ namespace SAMS
 		/**
 		 * @brief Restrict the residual of a level to the right hand side of the next coarser level
 		 *
-		 * The mean of the fine cells covered by a coarse cell, scaled by dt and the coarse beta. The coarse correction is set to zero.
+		 * The mean of the fine cells covered by a coarse cell, scaled by the coarse beta. The coarse correction is set to zero.
 		 * @param levelSrc Index of the fine level
 		 * @param levelDest Index of the coarse level
-		 * @param dt Timestep
 		 */
-		void restrict(int levelSrc, int levelDest, double dt)
+		void restrict(int levelSrc, int levelDest)
 		{
 			level &src = levels[levelSrc];
 			level &dest = levels[levelDest];
 
 			harnessPtr->variableRegistry.applyBoundaryConditions(src.resName);
-			const auto s = problem.makeStencil(dest);
-			auto scale = LAMBDA(double mean, size_t i, size_t j, size_t k)
+			const auto s = problem.makeStencil(dest, currentProblem);
+			auto scale = LAMBDA(SAMS::T_dataType mean, SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				return dt * mean / s.beta(i, j, k);
+				return mean / s.beta(i, j, k);
 			};
 			averageCells(src.res, dest.rhs, src, dest, scale);
 
@@ -386,22 +391,22 @@ namespace SAMS
 
 			const volumeArray coarse = src.sol, fine = dest.sol;
 			const bool coarsenX = src.coarsenX, coarsenY = src.coarsenY, coarsenZ = src.coarsenZ;
-			const size_t fineFirstX = dest.firstX, fineFirstY = dest.firstY, fineFirstZ = dest.firstZ;
-			const size_t coarseFirstX = src.firstX, coarseFirstY = src.firstY, coarseFirstZ = src.firstZ;
-			auto kernel = LAMBDA(size_t i, size_t j, size_t k)
+			const SAMS::T_indexType fineFirstX = dest.firstX, fineFirstY = dest.firstY, fineFirstZ = dest.firstZ;
+			const SAMS::T_indexType coarseFirstX = src.firstX, coarseFirstY = src.firstY, coarseFirstZ = src.firstZ;
+			auto kernel = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
 				// In a direction that is not coarsened the coarse cell is the same cell, with weight 1 and none on the neighbour.
 				// In a direction that is coarsened the coarse cell and the neighbour come from the global index of the fine cell
-				const size_t gi = fineFirstX + i - 1, gj = fineFirstY + j - 1, gk = fineFirstZ + k - 1;
-				const size_t ic = coarsenX ? (gi + 1) / 2 - (coarseFirstX - 1) : i;
-				const size_t jc = coarsenY ? (gj + 1) / 2 - (coarseFirstY - 1) : j;
-				const size_t kc = coarsenZ ? (gk + 1) / 2 - (coarseFirstZ - 1) : k;
-				const size_t in = coarsenX ? ((gi % 2 == 1) ? ic - 1 : ic + 1) : ic;
-				const size_t jn = coarsenY ? ((gj % 2 == 1) ? jc - 1 : jc + 1) : jc;
-				const size_t kn = coarsenZ ? ((gk % 2 == 1) ? kc - 1 : kc + 1) : kc;
-				const double wx = coarsenX ? 0.75 : 1.0, wxn = coarsenX ? 0.25 : 0.0;
-				const double wy = coarsenY ? 0.75 : 1.0, wyn = coarsenY ? 0.25 : 0.0;
-				const double wz = coarsenZ ? 0.75 : 1.0, wzn = coarsenZ ? 0.25 : 0.0;
+				const SAMS::T_indexType gi = fineFirstX + i - 1, gj = fineFirstY + j - 1, gk = fineFirstZ + k - 1;
+				const SAMS::T_indexType ic = coarsenX ? (gi + 1) / 2 - (coarseFirstX - 1) : i;
+				const SAMS::T_indexType jc = coarsenY ? (gj + 1) / 2 - (coarseFirstY - 1) : j;
+				const SAMS::T_indexType kc = coarsenZ ? (gk + 1) / 2 - (coarseFirstZ - 1) : k;
+				const SAMS::T_indexType in = coarsenX ? ((gi % 2 == 1) ? ic - 1 : ic + 1) : ic;
+				const SAMS::T_indexType jn = coarsenY ? ((gj % 2 == 1) ? jc - 1 : jc + 1) : jc;
+				const SAMS::T_indexType kn = coarsenZ ? ((gk % 2 == 1) ? kc - 1 : kc + 1) : kc;
+				const SAMS::T_dataType wx = coarsenX ? 0.75 : 1.0, wxn = coarsenX ? 0.25 : 0.0;
+				const SAMS::T_dataType wy = coarsenY ? 0.75 : 1.0, wyn = coarsenY ? 0.25 : 0.0;
+				const SAMS::T_dataType wz = coarsenZ ? 0.75 : 1.0, wzn = coarsenZ ? 0.25 : 0.0;
 				fine(i, j, k) += wx * (wy * (wz * coarse(ic, jc, kc) + wzn * coarse(ic, jc, kn)) +
 					wyn * (wz * coarse(ic, jn, kc) + wzn * coarse(ic, jn, kn))) +
 					wxn * (wy * (wz * coarse(in, jc, kc) + wzn * coarse(in, jc, kn)) +
@@ -417,25 +422,24 @@ namespace SAMS
 		 *
 		 * The residual is checked every checkInterval sweeps and after the last sweep, so l.res is current on return.
 		 * @param levelIndex Index of the level
-		 * @param dt Timestep
 		 * @param iterations Limit on the sweeps: iterations - 1 sweeps are done at most
 		 * @param tol Absolute residual below which it stops. Zero disables the check
 		 * @return True if the residual fell below tol
 		 */
-		bool GS(int levelIndex, double dt, int iterations, double tol = 0.0)
+		bool GS(int levelIndex, int iterations, SAMS::T_dataType tol = 0.0)
 		{
 			level &l = levels[levelIndex];
 			bool converged = false;
 
 			for (int iter = 1; iter < iterations; ++iter)
 			{
-				smooth(l, dt);
+				smooth(l);
 				harnessPtr->variableRegistry.applyBoundaryConditions(l.solName);
 				++sweepCounts[levelIndex];
 
 				if (iter % checkInterval == 0 || iter == iterations - 1)
 				{
-					const double max_delta = residualNorm(l, dt);
+					const SAMS::T_dataType max_delta = residualNorm(l);
 
 					if (tol > 0.0 && max_delta < tol)
 					{
@@ -453,20 +457,19 @@ namespace SAMS
 		 *
 		 * The faces give the same flux to both cells that share them, so the total is conserved exactly, however well the
 		 * solve converged.
-		 * @param dt Timestep
 		 */
-		void conservativeUpdate(double dt)
+		void conservativeUpdate()
 		{
 			level &l = levels[0];
-			const auto s = problem.makeStencil(l);
+			const auto s = problem.makeStencil(l, currentProblem);
 			const volumeArray u = l.sol, field = l.rhs;
 			const lineArray dx = l.dxc, dy = l.dyc, dz = l.dzc;
 
-			auto kernel = LAMBDA(size_t i, size_t j, size_t k)
+			auto kernel = LAMBDA(SAMS::T_indexType i, SAMS::T_indexType j, SAMS::T_indexType k)
 			{
-				double divergence, diagonal;
+				SAMS::T_dataType divergence, diagonal;
 				evaluateStencil<T>(s, u, dx, dy, dz, i, j, k, divergence, diagonal);
-				field(i, j, k) += dt * divergence / s.beta(i, j, k);
+				field(i, j, k) += divergence / s.beta(i, j, k);
 			};
 			pw::applyKernel(kernel, l.xcLocalDomainRange, l.ycLocalDomainRange, l.zcLocalDomainRange);
 			pw::fence();
@@ -475,24 +478,24 @@ namespace SAMS
 
 		/**
 		 * @brief Solve for the new field
-		 * @param dt Timestep
+		 * @param ts The timestep data, which the problem needs for its coefficients
 		 * @param sweeps Sweep limit for each visit to a level other than the coarsest
 		 * @param coarsestSweeps Sweep limit for each visit to the coarsest level
 		 * @param tol Tolerance relative to the initial residual. The same absolute residual is used on the coarser levels
 		 * @param packs The data packs of the problem, which it needs to set its coefficients
 		 */
-		void solve(double dt, int sweeps, int coarsestSweeps, double tol, packRefs packs)
+		void solve(const SAMS::timeState &ts, int sweeps, int coarsestSweeps, SAMS::T_dataType tol, packRefs packs)
 		{
 
-			callWithFixedAndInferred(problem, &T::template prepareSolve<level>, packs, levels);
+			callWithFixedAndInferred(problem, &T::template prepareSolve<level>, packs, levels, currentProblem, ts);
 
-			const double initialResidual = residualNorm(levels[0], dt);
+			const SAMS::T_dataType initialResidual = residualNorm(levels[0]);
 			if (initialResidual == 0.0)
 			{
 				pw::assign(levels[0].rhs, levels[0].sol);
 				return;
 			}
-			const double absoluteTolerance = tol * initialResidual;
+			const SAMS::T_dataType absoluteTolerance = tol * initialResidual;
 
 			sweepCounts.assign(levels.size(), 0);
 			cycleCount = 0;
@@ -501,8 +504,8 @@ namespace SAMS
 			bool converged = false;
 			while (true)
 			{
-				int cycles = levelSrc == levels.size() - 1 ? coarsestSweeps : sweeps;
-				converged = GS(levelSrc, dt, cycles, absoluteTolerance);
+				int cycles = levelSrc == static_cast<SAMS::T_indexType>(levels.size()) - 1 ? coarsestSweeps : sweeps;
+				converged = GS(levelSrc, cycles, absoluteTolerance);
 				// Converged: done on the finest level, otherwise prolongate up
 				if (converged) {
 					if (levelSrc == 0) break;
@@ -513,13 +516,13 @@ namespace SAMS
 				}
 				// Not converged: restrict down
 				int levelDest = levelSrc + 1;
-				if (levelDest >= levels.size()) continue;
+				if (levelDest >= static_cast<SAMS::T_indexType>(levels.size())) continue;
 				if (levelSrc == 0) ++cycleCount;
-				restrict(levelSrc, levelDest, dt);
+				restrict(levelSrc, levelDest);
 				levelSrc++;
 			}
 #ifdef EXACT_FLUX_CONSERVATION
-			conservativeUpdate(dt);
+			conservativeUpdate();
 #else
 			pw::assign(levels[0].rhs, levels[0].sol);
 #endif
@@ -533,9 +536,16 @@ namespace SAMS
 
 		inline static constexpr auto nameType = T::name + SAMS::makeName("_mg");
 		constexpr static std::string_view name = nameType;
-		constexpr static bool coreSimulation = true;
+		constexpr static bool coreSimulation = false;
 		constexpr static bool timeSimulation = true;
-		using dataPack = typename T::dataPack;
+		using dataPack = SAMS::dataPacks::multiPack<SAMS::deckHostData<3>, typename T::dataPack>;
+
+		/** @brief Activate the deck services, which hold the host data of the deck for expressions */
+		template <typename T_runner>
+		void runnerInteraction(T_runner &runnerRef)
+		{
+			runnerRef.activatePackage("deckServices");
+		}
 
 		/** @brief Array manager of the harness */
 		pw::portableArrayManager &manager;
@@ -571,7 +581,7 @@ namespace SAMS
 			{
 				const std::string baseName = fieldDef.getDimension(d).axisName;
 				std::string sourceName = baseName;
-				size_t cells = axisReg.getDomainElements(baseName, SAMS::staggerType::CENTRED);
+				SAMS::T_sizeType cells = axisReg.getDomainElements(baseName, SAMS::staggerType::CENTRED);
 				long long localCells = minLocalCells(sourceName);
 				int created = 0;
 				for (int level = 1; localCells > 4; ++level)
@@ -624,6 +634,15 @@ namespace SAMS
 		}
 
 		/**
+		 * @brief Set the default parameters of the problem
+		 * @param kvs The key value store
+		 */
+		void defaultValues(SAMS::KVS &kvs, packRefs packs)
+		{
+			callWithFixedAndInferred(problem, &T::defaultValues, packs, kvs);
+		}
+
+		/**
 		 * @brief Register scratch, which holds the solution
 		 * @param harness The harness, which holds the variable registry
 		 */
@@ -636,23 +655,70 @@ namespace SAMS
 		}
 
 		/**
-		 * @brief Set the boundary conditions of the problem, and clamp the variables of the coarse levels to zero
+		 * @brief Set the boundary conditions of the problem, and of the temperature, scratch and the coarse levels for each subproblem
+		 *
+		 * Periodic, zero gradient and the mirrors have their normal meaning on all levels. fixedGhosts uses the initial energy from the core solver as a boundary condition on the temperature. Clamp and expression set the ghost cells of the temperature, which are then fixed in the same way
 		 * @param harness The harness, which holds the variable registry
+		 * @param kvs The key value store, from which the problem reads its boundary types
+		 * @param hostData The host data of the deck, for expressions
+		 * @param tData The time state, for expressions
 		 */
-		void setBoundaryConditions(SAMS::harness &harness, packRefs packs)
+		void setBoundaryConditions(SAMS::harness &harness, SAMS::KVS &kvs, [[maybe_unused]] SAMS::deckHostData<3> &hostData, [[maybe_unused]] SAMS::timeState &tData, packRefs packs)
 		{
 			callWithFixedAndInferred(problem, &T::setBoundaryConditions, packs, harness);
 			auto &varRegistry = harness.variableRegistry;
 			using clamp = SAMS::simpleClamp<SAMS::T_dataType, 3>;
+			using periodic = SAMS::simplePeriodicBC<SAMS::T_dataType, 3>;
+			using zeroGradient = SAMS::simpleZeroGradientBC<SAMS::T_dataType, 3>;
+			using fixedMirror = SAMS::fixedMirrorBC<SAMS::T_dataType, 3>;
+			using floatingMirror = SAMS::floatingMirrorBC<SAMS::T_dataType, 3>;
 			const std::string memory = T::memoryName.c_str();
 			const int levelCount = std::max(std::max(axisLevels[0], axisLevels[1]), axisLevels[2]);
-			for (int n = 1; n <= levelCount; ++n)
+			SAMS::variableDef &fieldDef = varRegistry.getVariable(T::fieldName());
+			problemBoundaries.assign(problem.problemCount(), {});
+			for (SAMS::T_sizeType n = 0; n < problem.problemCount(); ++n)
 			{
-				for (const char *variable : {"rhs", "sol", "res"})
+				for (int d = 0; d < 3; ++d)
 				{
-					const std::string name = memory + "_" + variable + "_" + std::to_string(n);
-					SAMS::variableDef &varDef = varRegistry.getVariable(name);
-					varRegistry.addBoundaryCondition(name, std::make_shared<clamp>(varDef, 0.0));
+					for (SAMS::domain::edges edge : {SAMS::domain::edges::lower, SAMS::domain::edges::upper})
+					{
+						const parabolic::tcBoundaryType boundary = problem.getBoundaryType(kvs, n, d, edge);
+						auto attach = [&](const std::string &name, bool coarse)
+						{
+							SAMS::variableDef &varDef = varRegistry.getVariable(name);
+							if (boundary.type == parabolic::boundaryType::periodic)
+								problemBoundaries[n].emplace_back(name, varDef.addBoundaryCondition(d, edge, periodic(varDef)));
+							else if (boundary.type == parabolic::boundaryType::zeroGradient)
+								problemBoundaries[n].emplace_back(name, varDef.addBoundaryCondition(d, edge, zeroGradient(varDef)));
+							else if (boundary.type == parabolic::boundaryType::fixedMirror)
+								problemBoundaries[n].emplace_back(name, varDef.addBoundaryCondition(d, edge, fixedMirror(varDef, coarse ? 0.0 : boundary.value)));
+							else if (boundary.type == parabolic::boundaryType::floatingMirror)
+								problemBoundaries[n].emplace_back(name, varDef.addBoundaryCondition(d, edge, floatingMirror(varDef)));
+							else if (coarse)
+								problemBoundaries[n].emplace_back(name, varDef.addBoundaryCondition(d, edge, clamp(varDef, 0.0)));
+						};
+						attach("scratch", false);
+						for (int level = 1; level <= levelCount; ++level)
+						{
+							for (const char *variable : {"rhs", "sol", "res"})
+								attach(memory + "_" + variable + "_" + std::to_string(level), true);
+						}
+						if (boundary.type == parabolic::boundaryType::clamp)
+							problemBoundaries[n].emplace_back(T::fieldName(), fieldDef.addBoundaryCondition(d, edge, clamp(fieldDef, boundary.value)));
+						else if (boundary.type == parabolic::boundaryType::expression)
+						{
+#ifdef USE_DECK_PARSER
+							eis::stack<SAMS::T_dataType> stack;
+							eis::error errcode = eis::err_none;
+							hostData.parser->tokenize(boundary.text, stack, errcode);
+							if (errcode != eis::err_none) harness.abort("Invalid thermal conduction boundary expression: " + boundary.text + "\n" + SAMS::parserErrors(*hostData.parser), false);
+							hostData.addPositions(harness, fieldDef);
+							problemBoundaries[n].emplace_back(T::fieldName(), fieldDef.addBoundaryCondition(d, edge, SAMS::expressionBC<3>(fieldDef, harness, tData, hostData, stack)));
+#else
+							harness.abort("Invalid thermal conduction boundary expression: " + boundary.text + "\nExpressions need the deck parser", false);
+#endif
+						}
+					}
 				}
 			}
 		}
@@ -681,19 +747,32 @@ namespace SAMS
 		}
 
 		/**
-		 * @brief Advance the field by one step
+		 * @brief Advance the field by one step, solving each subproblem of the problem in turn
 		 * @param ts The timestep data
 		 * @param harness The harness, which holds the variable registry
 		 */
 		void endOfTimestep(const SAMS::timeState &ts, SAMS::harness &harness, packRefs packs)
 		{
-			callWithFixedAndInferred(problem, &T::beforeSolve, packs, harness);
-			harness.variableRegistry.applyBoundaryConditions(T::fieldName());
-			pw::assign(solution, field);
-			harness.variableRegistry.applyBoundaryConditions("scratch");
-			solve(ts.dt, 5, 10000, SOLVER_TOLERANCE, packs);
-			callWithFixedAndInferred(problem, &T::afterSolve, packs, harness);
-			SAMS::debug3 << pw::sum(field) << "\n";
+			callWithFixedAndInferred(problem, &T::beforeAllSolves, packs, harness);
+			for (SAMS::T_sizeType n = 0; n < problem.problemCount(); ++n)
+			{
+				currentProblem = n;
+				for (auto &boundaries : problemBoundaries)
+				{
+					for (auto &[name, bc] : boundaries)
+						harness.variableRegistry.deactivateBoundaryCondition(name, bc);
+				}
+				for (auto &[name, bc] : problemBoundaries[n])
+					harness.variableRegistry.activateBoundaryCondition(name, bc);
+				callWithFixedAndInferred(problem, &T::beforeSolve, packs, harness, n);
+				harness.variableRegistry.applyBoundaryConditions(T::fieldName());
+				pw::assign(solution, field);
+				harness.variableRegistry.applyBoundaryConditions("scratch");
+				solve(ts, 5, 10000, SOLVER_TOLERANCE, packs);
+				callWithFixedAndInferred(problem, &T::afterSolve, packs, harness, n);
+				SAMS::debug3 << pw::sum(field) << "\n";
+			}
+			callWithFixedAndInferred(problem, &T::afterAllSolves, packs, harness);
 		}
 	};
 

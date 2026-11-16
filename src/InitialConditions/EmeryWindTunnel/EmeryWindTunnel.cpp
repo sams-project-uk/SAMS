@@ -1,4 +1,6 @@
 #include "EmeryWindTunnel.h"
+#include "uniformDomain.h"
+#include "../../Operations/OutputControl/defaultSchedule.h"
 
 namespace examples
 {
@@ -36,21 +38,12 @@ namespace examples
         }
 
         /**
-         * Set Y mirror boundary conditions
+         * Set Y reflecting wall boundary conditions for the velocity normal to the walls, which is zero on them
          */
         template<typename T_EOS>
         void EmeryWindTunnel<T_EOS>::setMirrorYbcs( SAMS::variableDef &varDef)
         {
-            varDef.addBoundaryCondition(1, SAMS::simpleMirrorBC<SAMS::T_dataType, 3>(varDef));
-        }
-
-        /**
-         * Set zero gradient Y boundary conditions
-         */
-        template<typename T_EOS>
-        void EmeryWindTunnel<T_EOS>::setZeroGradientYbcs( SAMS::variableDef &varDef)
-        {
-            varDef.addBoundaryCondition(1, SAMS::simpleZeroGradientBC<SAMS::T_dataType, 3>(varDef));
+            varDef.addBoundaryCondition(1, SAMS::fixedMirrorBC<SAMS::T_dataType, 3>(varDef, 0.0));
         }
 
         /**
@@ -59,10 +52,12 @@ namespace examples
         template<typename T_EOS>
         void EmeryWindTunnel<T_EOS>::setScalarBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue)
         {
-            //Simple clamped scalars are y mirror, Z periodic, xMin clamped to inflow value, xMax zero gradient
+            //Clamped scalars are reflecting in Y, periodic in Z, clamped to the inflow value at xMin and zero gradient at xMax
             auto &varDef = harness.variableRegistry.getVariable(varName);
             setInflowXbcs(varDef, clampValue);
-            setMirrorYbcs(varDef);
+            //The velocity normal to the Y walls is antisymmetric, and everything else is symmetric
+            if (varName == "vy" || varName == "LARE/vy1") setMirrorYbcs(varDef);
+            else varDef.addBoundaryCondition(1, SAMS::simpleSymmetricBC<SAMS::T_dataType, 3>(varDef));
             setZbcs(varDef);
         }
 
@@ -72,38 +67,70 @@ namespace examples
         template<typename T_EOS>
         void EmeryWindTunnel<T_EOS>::setScalarBcs(std::string varName, SAMS::harness &harness)
         {
-            //Simple clamped scalars are y mirror, Z periodic, xMin clamped to inflow value, xMax zero gradient
+            //Scalars are reflecting in Y, periodic in Z and zero gradient in X
             auto &varDef = harness.variableRegistry.getVariable(varName);
             setZeroGradientXbcs(varDef);
-            setMirrorYbcs(varDef);
+            //The velocity normal to the Y walls is antisymmetric, and everything else is symmetric
+            if (varName == "vy" || varName == "LARE/vy1") setMirrorYbcs(varDef);
+            else varDef.addBoundaryCondition(1, SAMS::simpleSymmetricBC<SAMS::T_dataType, 3>(varDef));
             setZbcs(varDef);
         }
 
 
         /**
-         * Set y parallel vector boundary conditions (zero gradient in y, periodic in z, inflow clamped at xMin, zero gradient at xMax)
+         * Set boundary conditions for components parallel to the Y walls (symmetric in y, periodic in z, inflow clamped at xMin, zero gradient at xMax)
          */
         template<typename T_EOS>
         void EmeryWindTunnel<T_EOS>::setYParallelVectorBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue)
         {
             auto &varDef = harness.variableRegistry.getVariable(varName);
             setInflowXbcs(varDef, clampValue);
-            setZeroGradientYbcs(varDef);
+            //Symmetric at the Y walls
+            varDef.addBoundaryCondition(1, SAMS::simpleSymmetricBC<SAMS::T_dataType, 3>(varDef));
             setZbcs(varDef);
         }
 
         /**
-         * Set y parallel vector boundary conditions (zero gradient in y, periodic in z, inflow clamped at xMin, zero gradient at xMax)
+         * Set boundary conditions for components parallel to the Y walls (symmetric in y, periodic in z, zero gradient in x)
          */
         template<typename T_EOS>
         void EmeryWindTunnel<T_EOS>::setYParallelVectorBcs(std::string varName, SAMS::harness &harness)
         {
             auto &varDef = harness.variableRegistry.getVariable(varName);
             setZeroGradientXbcs(varDef);
-            setZeroGradientYbcs(varDef);
+            //Symmetric at the Y walls
+            varDef.addBoundaryCondition(1, SAMS::simpleSymmetricBC<SAMS::T_dataType, 3>(varDef));
             setZbcs(varDef);
         }
             
+
+        /**
+         * Set the deck keys that the deck does not set
+         * @param kvs The key value store
+         */
+        template<typename T_EOS>
+        void EmeryWindTunnel<T_EOS>::defaultDeck(SAMS::KVS &kvs)
+        {
+            //Run with normalised units
+            kvs.setDefaultPath("/LARE/units", "normalised");
+            //Periodic in Z
+            kvs.setDefaultPath("/domain/MPI_periodic", SAMS::KVS::Array{false, false, true});
+            //End time of the simulation
+            kvs.setDefaultPath(SAMS::deckKeys::endTime, 3.6);
+            //Domain. Z has cells of the same size as X
+            kvs.setDefaultPath(SAMS::deckKeys::nx, 480);
+            kvs.setDefaultPath(SAMS::deckKeys::ny, 160);
+            kvs.setDefaultPath(SAMS::deckKeys::nz, 2);
+            kvs.setDefaultPath(SAMS::deckKeys::xMin, 0.0);
+            kvs.setDefaultPath(SAMS::deckKeys::xMax, 3.0);
+            kvs.setDefaultPath(SAMS::deckKeys::yMin, 0.0);
+            kvs.setDefaultPath(SAMS::deckKeys::yMax, 1.0);
+            kvs.setDefaultPath(SAMS::deckKeys::zMin, 0.0);
+            const SAMS::T_dataType width = kvs.getReal(SAMS::deckKeys::xMax) - kvs.getReal(SAMS::deckKeys::xMin);
+            kvs.setDefaultPath(SAMS::deckKeys::zMax, width * kvs.getInt(SAMS::deckKeys::nz) / kvs.getInt(SAMS::deckKeys::nx));
+            //Write the default collection 100 times over the run if the deck has no output schedules
+            SAMS::addDefaultSchedule(kvs, kvs.getReal(SAMS::deckKeys::endTime) / 100.0);
+        }
 
         /**
          * Set up the LARE style simulation control variables
@@ -112,66 +139,46 @@ namespace examples
          * @param data LARE3D simulation data
          */
         template<typename T_EOS>
-        void EmeryWindTunnel<T_EOS>::controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams)
+        void EmeryWindTunnel<T_EOS>::controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams, SAMS::KVS &kvs)
         {
 
-            data.t_end = 3.6; // End time of the simulation
-            data.dt_snapshots = data.t_end/100;
-            data.nx = 480*2;
-            data.ny = 160*2;
-            data.nz = 2;
+            data.t_end = kvs.getReal(SAMS::deckKeys::endTime, 3.6); // End time of the simulation
 
-            data.x_min = 0.0;
-            data.x_max = 3.0;
-            data.y_min = 0.0;
-            data.y_max = 1.0;
-            data.z_min = 0.0;
-            data.z_max = (data.x_max - data.x_min) * data.nz / data.nx;
-
-            data.dt_multiplier = 0.8; // Default multiplier for time step
-            // Geometry options: cartesian, cylindrical, spherical
-            data.geometry = LARE::geometryType::Cartesian;
+            data.dt_multiplier = kvs.getReal("/LARE/dt_multiplier", 0.8); // Default multiplier for time step
             // Shock viscosity coefficients
-            data.visc1 = 0.0;
-            data.visc2 = 0.0;
+            data.visc1 = kvs.getReal("/LARE/visc1", 1.0);
+            data.visc2 = kvs.getReal("/LARE/visc2", 0.1);
 
             // Ratio of specific heat capacities
-            data.gas_gamma = 1.4;
+            data.gas_gamma = kvs.getReal("/LARE/gas_gamma", 1.4);
 
             // Average mass of an ion in proton masses
-            data.mf = 1.2;
-
-            //Run with normalised mu0
-            data.mu0 = 1.0;
+            data.mf = kvs.getReal("/LARE/mf", 1.2);
 
             // Resistive MHD options
-            data.resistiveMHD = false;
-            data.eta_background = 1.e-10;
-            data.j_max = 1.0;
-            data.eta0 = 2.e-10;
+            data.resistiveMHD = kvs.getBool("/LARE/resistiveMHD", false);
+            data.eta_background = kvs.getReal("/LARE/eta_background", 1.e-10);
+            data.j_max = kvs.getReal("/LARE/j_max", 1.0);
+            data.eta0 = kvs.getReal("/LARE/eta0", 2.e-10);
 
             // Remap kinetic energy correction
-            data.rke = true;
+            data.rke = kvs.getBool("/LARE/rke", true);
 
             //Set up the specific parameters for the emery wind tunnel
-            problemParams.ambPressure = 1.0;
-            problemParams.density = 1.4;
-            problemParams.flowVx = 1.0;
+            problemParams.ambPressure = kvs.getReal("/EmeryWindTunnel/amb_pressure", 1.0);
+            problemParams.density = kvs.getReal("/EmeryWindTunnel/density", 1.4);
+            problemParams.flowVx = kvs.getReal("/EmeryWindTunnel/flow_vx", 1.0);
         }
 
         /**
          * Set up the simulation domain
          * @param harness SAMS harness
-         * @param data LARE3D simulation data
+         * @param kvs The key value store
          */
         template<typename T_EOS>
-        void EmeryWindTunnel<T_EOS>::setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data) 
+        void EmeryWindTunnel<T_EOS>::setDomain(SAMS::harness &harness, SAMS::KVS &kvs)
         {
-            auto &axisReg = harness.axisRegistry;
-            //Just hard code the domain for the Sod Shock Tube
-            axisReg.setDomain("X", data.nx, data.x_min, data.x_max);
-            axisReg.setDomain("Y", data.ny, data.y_min, data.y_max);
-            axisReg.setDomain("Z", data.nz, data.z_min, data.z_max);
+            SAMS::setUniformDomain(harness, kvs);
         }
 
         /**
@@ -254,7 +261,10 @@ namespace examples
 
                     if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
                     {
-                        vx(ix,iy,iz) = 0.0;
+                        //The velocity along the top face of the step is free, so the flow slips along it
+                        const bool topFace = data.yb(iy+1) > problemParams.step_height;
+                        const bool frontFace = data.xb(ix-1) < problemParams.step_x;
+                        if (frontFace || !topFace) vx(ix,iy,iz) = 0.0;
                     }
 
                     //Specific internal energy
@@ -272,9 +282,12 @@ namespace examples
                 {
                     if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
                     {
-                        data.vx1(ix,iy,iz) = 0.0;
-                        data.vy1(ix,iy,iz) = 0.0;
-                        data.vz1(ix,iy,iz) = 0.0;
+                        //Inside the step every component is zero. On a face only the component normal to it is, so the flow slips along the face
+                        const bool topFace = data.yb(iy+1) > problemParams.step_height;
+                        const bool frontFace = data.xb(ix-1) < problemParams.step_x;
+                        if (frontFace || !topFace) data.vx1(ix,iy,iz) = 0.0;
+                        if (topFace || !frontFace) data.vy1(ix,iy,iz) = 0.0;
+                        if (!topFace && !frontFace) data.vz1(ix,iy,iz) = 0.0;
                     }
                     if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
                     {
@@ -293,9 +306,12 @@ namespace examples
                 {
                     if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
                     {
-                        data.vx(ix,iy,iz) = 0.0;
-                        data.vy(ix,iy,iz) = 0.0;
-                        data.vz(ix,iy,iz) = 0.0;
+                        //Inside the step every component is zero. On a face only the component normal to it is, so the flow slips along the face
+                        const bool topFace = data.yb(iy+1) > problemParams.step_height;
+                        const bool frontFace = data.xb(ix-1) < problemParams.step_x;
+                        if (frontFace || !topFace) data.vx(ix,iy,iz) = 0.0;
+                        if (topFace || !frontFace) data.vy(ix,iy,iz) = 0.0;
+                        if (!topFace && !frontFace) data.vz(ix,iy,iz) = 0.0;
                     }
                     if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
                     {
@@ -314,9 +330,12 @@ namespace examples
                 {
                     if (data.xb(ix) >= problemParams.step_x && data.yb(iy) <= problemParams.step_height)
                     {
-                        data.vx(ix,iy,iz) = 0.0;
-                        data.vy(ix,iy,iz) = 0.0;
-                        data.vz(ix,iy,iz) = 0.0;
+                        //Inside the step every component is zero. On a face only the component normal to it is, so the flow slips along the face
+                        const bool topFace = data.yb(iy+1) > problemParams.step_height;
+                        const bool frontFace = data.xb(ix-1) < problemParams.step_x;
+                        if (frontFace || !topFace) data.vx(ix,iy,iz) = 0.0;
+                        if (topFace || !frontFace) data.vy(ix,iy,iz) = 0.0;
+                        if (!topFace && !frontFace) data.vz(ix,iy,iz) = 0.0;
                     }
                     if (data.xc(ix) >= problemParams.step_x && data.yc(iy) <= problemParams.step_height)
                     {
@@ -328,36 +347,6 @@ namespace examples
                 pw::Range(0,data.nx), pw::Range(0,data.ny), pw::Range(0,data.nz));
         }
 
-       /**
-         * Check whether to terminate the simulation
-         * @param terminate Boolean flag to set to true to terminate the simulation
-         * @param data LARE3D simulation data
-         * This function checks whether the simulation should terminate based on LARE3D data.
-         * It sets the terminate flag to true if the simulation should end.
-         */
-        template<typename T_EOS>
-        void EmeryWindTunnel<T_EOS>::queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
-            //End at correct time for Sod Shock Tube (ends at t=0.2)
-            if (tData.time >= data.t_end){
-                terminate |= true;
-            }
-        }
-
-        /**
-         * Check whether to output data to disk
-         * @param shouldOutput Boolean flag to set to true to output data
-         * @param data LARE3D simulation data
-         * This function checks whether data should be output to disk based on LARE3D data.
-         * It returns true if data should be output.
-         */
-        template<typename T_EOS>
-        void EmeryWindTunnel<T_EOS>::queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData){
-            static double nextOutputTime = data.dt_snapshots;
-            if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
-                shouldOutput |= true;
-                nextOutputTime += data.dt_snapshots;
-            }
-        }
     #define EOS_DEF(value) template class EmeryWindTunnel<value>;
     EOS_DENSITY_ENERGY
     #undef EOS_DEF

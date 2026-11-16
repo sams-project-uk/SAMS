@@ -20,13 +20,27 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <iomanip>
 #include <iostream>
+#include <limits>
+#include <map>
 #include <numeric>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "harness.h"
+#include "types.h"
+#include "KVS/kvs.h"
+
+namespace SAMS::IO
+{
 
 enum class meshDataOrder{
 	dataFirst,
@@ -41,11 +55,161 @@ enum class dataState{
 	foundMultiple
 };
 
-//Name and staggering of one axis of a rectilinear mesh. An empty name means that the dimension is not used
-struct meshAxis{
-	std::string name;
-	SAMS::staggerType stagger = SAMS::staggerType::CENTRED;
+//The part of a distributed dataset that this rank holds, in each dimension. The size of the whole dataset is the size of its mesh
+struct decomposition{
+	//The size of the local array, including ghost cells
+	std::array<size_t, SAMS::MAX_RANK> localSizes{};
+	//The first element of the local array that is written
+	std::array<size_t, SAMS::MAX_RANK> localStarts{};
+	//The number of elements that are written
+	std::array<size_t, SAMS::MAX_RANK> counts{};
+	//The position of the written elements in the whole dataset
+	std::array<size_t, SAMS::MAX_RANK> globalStarts{};
+	//The communicator of the ranks that write. It is MPI_COMM_NULL if this rank does not write
+	SAMSMPI::comm comm = SAMSMPI::commNull;
 };
+
+//A dump that a writer opens. Writers build its file name from it, and can use the rest to decide how to write it
+struct dumpInfo{
+	//The output directory
+	std::string directory;
+	//The suffix of the files of the dump. Empty for the main diagnostics files
+	std::string suffix;
+	//The number of the dump among the dumps with its suffix
+	size_t number = 0;
+	//The name of a named dump, relative to the output directory. Empty if the dump is not named
+	std::string name;
+	//Whether the dump is a restart dump
+	bool restart = false;
+	//The simulation time of the dump
+	T_dataType time = 0.0;
+	//The simulation step of the dump
+	T_indexType step = 0;
+	//Whether a writer that can combine dumps into one file with multiple timesteps may try to. A file is always written the same way
+	bool attemptTimeCoalescence = false;
+};
+
+//The types that a key-value pair in the global scope can have
+template<typename T>
+inline constexpr bool isKeyValueType = std::is_same_v<T, double> || std::is_same_v<T, int64_t> || std::is_same_v<T, uint64_t> || std::is_same_v<T, std::string>;
+
+//The type that a step is stored as, which has the signedness of T_indexType
+using stepType = std::conditional_t<std::is_signed_v<T_indexType>, int64_t, uint64_t>;
+
+/**
+ * @brief The name of a dump without the extension that its writer adds
+ * @param info The dump
+ */
+inline std::string baseName(const dumpInfo &info){
+	if (!info.name.empty()) return info.directory + "/" + info.name;
+	std::ostringstream number;
+	number << std::setw(5) << std::setfill('0') << info.number;
+	return info.directory + "/diagnostics_" + (info.suffix.empty() ? "" : info.suffix + "_") + number.str();
+}
+
+//Values of the metavariables in a file name
+struct metavariables{
+	//N
+	size_t dumpNumber = 0;
+};
+
+//Which metavariables to remove from a file name
+struct metavariableFlags{
+	//N
+	bool dumpNumber = false;
+};
+
+//Expands and removes the {X...} metavariables in file names
+class metavariableName{
+	//The member for a metavariable character, or nullptr if the character is not a metavariable
+	template<typename T>
+	static auto member(T &s, char c) -> decltype(&s.dumpNumber){
+		switch (c){
+			case 'N': return &s.dumpNumber;
+			default: return nullptr;
+		}
+	}
+
+public:
+	/**
+	 * @brief Expand the {X...} metavariables in a file name
+	 * @param name The file name
+	 * @param values The metavariable values
+	 */
+	static std::string expand(const std::string &name, const metavariables &values){
+		std::ostringstream expanded;
+		size_t pos = 0;
+		for (size_t open = name.find('{'); open != std::string::npos; open = name.find('{', pos)){
+			const size_t close = name.find('}', open);
+			expanded << name.substr(pos, open - pos);
+			const std::string sequence = name.substr(open + 1, close - open - 1);
+			for (size_t start = 0, end; start < sequence.size(); start = end){
+				end = sequence.find_first_not_of(sequence[start], start);
+				if (end == std::string::npos) end = sequence.size();
+				const size_t *value = member(values, sequence[start]);
+				if (value) expanded << std::setw(static_cast<int>(end - start)) << std::setfill('0') << *value;
+				else expanded << sequence.substr(start, end - start);
+			}
+			pos = close + 1;
+		}
+		expanded << name.substr(pos);
+		return expanded.str();
+	}
+
+	/**
+	 * @brief Remove the flagged {X...} metavariables from a file name. A {} left with no metavariables is removed
+	 * @param name The file name
+	 * @param flags The metavariables to remove
+	 */
+	static std::string removeMetadata(const std::string &name, const metavariableFlags &flags){
+		std::string result;
+		size_t pos = 0;
+		for (size_t open = name.find('{'); open != std::string::npos; open = name.find('{', pos)){
+			const size_t close = name.find('}', open);
+			result += name.substr(pos, open - pos);
+			std::string kept;
+			bool special = false;
+			for (size_t i = open + 1; i < close; ++i){
+				const bool *flag = member(flags, name[i]);
+				if (flag && *flag) continue;
+				kept += name[i];
+				if (flag) special = true;
+			}
+			if (special) result += "{" + kept + "}";
+			pos = close + 1;
+		}
+		result += name.substr(pos);
+		return result;
+	}
+};
+
+/**
+ * @brief Split a name into its namespace and the name in that namespace. Namespaces are separated by "/"
+ * @param name The name
+ * @return The namespace, which is empty if the name has none, and the name in that namespace
+ */
+inline std::pair<std::string, std::string> splitNamespace(const std::string &name){
+	const size_t split = name.rfind('/');
+	if (split == std::string::npos) return {"", name};
+	return {name.substr(0, split), name.substr(split + 1)};
+}
+
+/**
+ * @brief The decomposition of the part of a distributed array that a localVariablePart describes
+ * @param part The part of the array, and where it is in the whole array
+ */
+template<typename T_data, int R>
+decomposition partDecomposition(const localVariablePart<T_data, R> &part){
+	decomposition decomp;
+	for (int i = 0; i < R; ++i){
+		const SIGNED_INDEX_TYPE lb = part.array.getLowerBound(i);
+		decomp.localSizes[i] = static_cast<size_t>(part.array.getUpperBound(i) - lb + 1);
+		decomp.localStarts[i] = static_cast<size_t>(part.sourceLower[i] - lb);
+		decomp.counts[i] = static_cast<size_t>(part.sourceUpper[i] - part.sourceLower[i] + 1);
+		decomp.globalStarts[i] = part.globalStarts[i];
+	}
+	return decomp;
+}
 
 class primitive {
 public:
@@ -122,7 +286,6 @@ class writer {
 		}
 	}
 
-	public:
 
 	//This public section describes the capabilities of the writer
 	//It should be used by the ouput code if it needs to write data
@@ -131,6 +294,8 @@ class writer {
 	//What is the name of the writer. This is not given a
 	//default value because it is an error to not have it
 	constexpr static std::string_view writerName = T_core::writerName;
+	//The extension of the files that the writer writes
+	constexpr static std::string_view extension = T_core::extension;
 
 	//Can you register more variables after starting writing
 	DEFAULTVALUE(registerAfterWrite, bool, false);
@@ -151,6 +316,8 @@ class writer {
 	DEFAULTVALUE(supportsMeshKeyValue, bool, false);
 	//Does the writer support setting the key-value pairs for a specific data
 	DEFAULTVALUE(supportsDataKeyValue, bool, false);
+	//Does the writer support true namespaces, which are the parts of names separated by "/". A writer that does not support them flattens the names
+	DEFAULTVALUE(supportsTrueNamespaces, bool, false);
 
 	private:
 
@@ -164,17 +331,12 @@ class writer {
 	HASMEMBER(startWriteImpl);
 	//Implementation for opening a file
 	HASMEMBER(openFileImpl);
-	/*
-	Implementation for setting a timestep/iteration
-	Writers that don't support multiple timesteps only need to support this being called once
-	before the first register. Writers that support multiple timesteps must allow it to be called
-	at any time and must start a new timestep when it is called.
-	*/
-	HASMEMBER(setTimeImpl);
 	//Implementation for setting a job name, completely optional and a writer must not require it
 	HASMEMBER(setJobName);
 	//Implementation for setting a key-value pair in the global scope.
-	HASMEMBER(setKeyValue);
+	HASMEMBER(setKeyValueImpl);
+	//Implementation for writing the deck
+	HASMEMBER(writeDeckImpl);
 	//Implementation for setting a key-value pair on a specific mesh
 	HASMEMBER(setMeshKeyValue);
 	//Implementation for setting a key-value pair on a specific dataset
@@ -202,60 +364,43 @@ class writer {
 	private:
 
 	/**
-	 * @brief Structure to hold infor about a rectilinear mesh
+	 * @brief Structure to hold info about a rectilinear mesh. Each dimension of the mesh is a range of cells of an axis
 	 * @param rank The rank of the mesh
-	 * @param sizes The global size of the mesh in each dimension
-	 * @param axisNames The name of the axis in each dimension
-	 * @param staggers The staggering of the mesh in each dimension
+	 * @param axes The name of the axis in each dimension
+	 * @param starts The core index of the first plotted cell of the axis in each dimension
+	 * @param sizes The number of cells of the axis in each dimension, which is the size of the mesh in that dimension
 	 */
 	struct rlMeshInfo{
 		size_t rank = 0;
+		std::array<std::string, maximumRank> axes;
+		std::array<SIGNED_INDEX_TYPE, maximumRank> starts{};
 		std::array<size_t, maximumRank> sizes{};
-		std::array<std::string, maximumRank> axisNames;
-		std::array<SAMS::staggerType, maximumRank> staggers{};
-		size_t zones = 1;
+		size_t zones = 0;
 	};
 
 	struct meshInfo {
 		bool written = false;
 		size_t zones;
-		const std::type_info* type = nullptr;
 		std::variant<rlMeshInfo> specificInfo;
-		//Function that writes the mesh with the type of its axes
-		void (writer::*writeMeshFn)(const char*, meshInfo&) = nullptr;
+		//Key-value pairs that are written with the mesh
+		std::map<std::string, std::string> keyValues;
 	};
 
 	//Structure to hold data info
 	struct dataInfo{
 		std::string meshName;
-		//Name of the variable in the variable registry that the data is taken from
-		std::string varName;
-		size_t elementSize;
+		size_t elementSize;		
 		const std::type_info* type = nullptr;
 		std::array<size_t, maximumRank> staggers;
-		bool written = false;
-		//Function that writes the data with the type of its variable
-		void (writer::*writeFn)(const char*, dataInfo&, meshInfo&) = nullptr;
-		dataInfo() = default;
-		dataInfo(const char* meshName, const char* varName) : meshName(meshName), varName(varName){};
-	};
-
-	/**
-	 * @brief Structure to hold the part of a variable that this rank writes
-	 * @param rank The rank of the variable
-	 * @param localSizes The size of the local array, including ghost cells, in each dimension
-	 * @param localStarts The first element of the local array that is written in each dimension
-	 * @param counts The number of elements written in each dimension
-	 * @param globalSizes The size of the whole variable across all ranks in each dimension
-	 * @param globalStarts The position of the written elements in the whole variable in each dimension
-	 */
-	struct blockInfo{
+		//Rank, and the core index of the first element and number of elements in each dimension
 		size_t rank = 0;
-		std::array<size_t, maximumRank> localSizes{};
-		std::array<size_t, maximumRank> localStarts{};
-		std::array<size_t, maximumRank> counts{};
-		std::array<size_t, maximumRank> globalSizes{};
-		std::array<size_t, maximumRank> globalStarts{};
+		std::array<SIGNED_INDEX_TYPE, maximumRank> starts{};
+		std::array<size_t, maximumRank> sizes{};
+		bool written = false;
+		//Key-value pairs that are written with the data
+		std::map<std::string, std::string> keyValues;
+		dataInfo() = default;
+		dataInfo(const char* meshName, const size_t elementSize, const std::type_info* type) : meshName(meshName), elementSize(elementSize), type(type){};
 	};
 
 	//Map from mesh name to mesh info
@@ -264,6 +409,48 @@ class writer {
 	std::unordered_map<std::string, std::unordered_map<std::string,dataInfo>> dataMap;
 	//For writers that have globally unique names, map from data name to mesh name
 	std::unordered_map<std::string, std::pair<std::string,size_t>> dataNameToMeshNameMap;
+
+	//Structure to hold blob info. A blob is a distributed array that is not associated with a mesh
+	struct blobInfo{
+		size_t rank;
+		std::array<size_t, maximumRank> sizes;
+		size_t elementSize;
+		const std::type_info* type = nullptr;
+		bool written = false;
+		//Key-value pairs that are written with the blob
+		std::map<std::string, std::string> keyValues;
+	};
+
+	//Map from blob name to blob info. Blob names are their own namespace
+	std::unordered_map<std::string, blobInfo> blobMap;
+
+	//Structure to hold axis info. An axis is a whole one dimensional array, which meshes refer to by name
+	struct axisInfo{
+		//Core index of the first element
+		SIGNED_INDEX_TYPE start = 0;
+		size_t size = 0;
+		//The number of ghost cells below and above the domain
+		size_t lowerGhosts = 0;
+		size_t upperGhosts = 0;
+		size_t elementSize = 0;
+		const std::type_info* type = nullptr;
+		bool written = false;
+		//Key-value pairs that are written with the axis
+		std::map<std::string, std::string> keyValues;
+	};
+
+	//Map from axis name to axis info
+	std::unordered_map<std::string, axisInfo> axisMap;
+
+	//Structure to hold info about a file name
+	struct nameInfo{
+		size_t dumpNumber = 0;
+	};
+
+	//Map from file name, relative to the output directory and with its metavariables, to name info. Kept between files
+	std::map<std::string, nameInfo> nameMap;
+	//Whether the run was restarted from a restart dump
+	bool restartedRun = false;
 	//List of acceptable types for meshes
 	//std::vector<const std::type_info*> allowedMeshTypes;
 	//List of acceptable types for data
@@ -278,7 +465,6 @@ class writer {
 	bool dataRegistered=false; // Has any data been registered
 	bool meshWritten=false; // Has any mesh been written
 	bool dataWritten=false; // Has any data been written
-	bool timeSet=false; // Has the time been set
 	bool jobNameSet=false; // Has the job name been set
 
 	bool verbose=false; // Should the writer be verbose
@@ -290,6 +476,8 @@ class writer {
 		meshMap.clear();
 		dataMap.clear();
 		dataNameToMeshNameMap.clear();
+		blobMap.clear();
+		axisMap.clear();
 		isOpen=false;
 		registerStarted=false;
 		writeStarted=false;
@@ -297,7 +485,6 @@ class writer {
 		dataRegistered=false;
 		meshWritten=false;
 		dataWritten=false;
-		timeSet=false;
 		jobNameSet=false;
 	}
 
@@ -420,27 +607,18 @@ class writer {
 	 * @brief common actions for registering any mesh
 	 * @param name The name of the mesh
 	 * @throws std::invalid_argument if a mesh with that name is already registered
-	 * @throws std::invalid_argument if the type is not allowed
 	 */
 	void registerMeshCommon(const char* name){
-		//using p = typename use_allowedMeshTypes<primitive>::type;
-		//static_assert(typeInTuple<T, allowedMeshTypes, 0>(), "Type not allowed");
 		if (meshMap.find(name)!=meshMap.end()){
 			throw std::invalid_argument("Mesh already registered");
 		}
-		//Check if the type is allowed
-		/*if (!allowedMeshTypes.empty()){ //Not registering any types means all types are allowed
-			if (!std::any_of(allowedMeshTypes.begin(), allowedMeshTypes.end(), [](const std::type_info* type){return typeid(T)==*type;})){
-				throw std::invalid_argument("Type not allowed");
-			}
-		}*/
-		
 		//Create the empty data entry for this mesh
 		if (dataMap.find(name)==dataMap.end()){
 			dataMap[name] = std::unordered_map<std::string, dataInfo>();
 		}
 	}
 
+	template<typename T>
 	void registerDataCommon(const char* name, const char* meshName){
 		testMeshRegistered(meshName);	
 		if (dataMap[meshName].find(name)!=dataMap[meshName].end()){
@@ -490,126 +668,31 @@ class writer {
 		if (meshInfo.second>1){
 			throw std::logic_error("Data is not uniquely registered");
 		}
-	}	
-
-	/**
-	 * @brief Write a registered mesh, taking the coordinates from the axis registry
-	 * @tparam T_mesh The type of the axes of the mesh
-	 * @param name The name of the mesh
-	 * @param info The information about the mesh
-	 */
-	template<typename T_mesh>
-	void writeRectilinearMeshTyped(const char* name, meshInfo &info){
-		const rlMeshInfo &specificInfo = std::get<rlMeshInfo>(info.specificInfo);
-		//Every rank holds the whole of each axis
-		std::array<portableWrapper::hostArray<T_mesh, 1>, maximumRank> axisArrays;
-		std::array<const T_mesh*, maximumRank> axes{};
-		for (size_t i = 0; i < specificInfo.rank; ++i){
-			h.axisRegistry.fillPPAxis(specificInfo.axisNames[i], axisArrays[i], specificInfo.staggers[i]);
-			axes[i] = &axisArrays[i](h.axisRegistry.getDimension(specificInfo.axisNames[i]).getDomainLB(specificInfo.staggers[i]));
-		}
-		static_cast<T_core*>(this)->writeRectilinearMeshImpl(name, info, axes);
 	}
 
 	/**
-	 * @brief Set the type of a mesh and the function that writes it from the type handle of its axes
-	 * @tparam I The index in the list of allowed mesh types of the type to test
-	 * @param info The information about the mesh
-	 * @param type The type handle of the axes
-	 * @throws std::invalid_argument if the type of the axes cannot be written
-	 */
-	template<size_t I = 0>
-	void setMeshType(meshInfo &info, SAMS::typeHandle type){
-		if constexpr (I >= std::tuple_size_v<defaultAllowedMeshTypes>) {
-			throw std::invalid_argument("Type of mesh axes cannot be written");
-		} else {
-			using T = std::tuple_element_t<I, defaultAllowedMeshTypes>;
-			if (type == SAMS::gettypeRegistry().getTypeID<T>()) {
-				info.type = &typeid(T);
-				info.writeMeshFn = &writer::template writeRectilinearMeshTyped<T>;
-				return;
-			}
-			setMeshType<I + 1>(info, type);
-		}
-	}
-
-	/**
-	 * @brief Set the type of a dataset and the function that writes it from the type handle of its variable
-	 * @tparam I The index in the list of allowed data types of the type to test
-	 * @param info The information about the data
-	 * @param type The type handle of the variable
-	 * @throws std::invalid_argument if the type of the variable cannot be written
-	 */
-	template<size_t I = 0>
-	void setDataType(dataInfo &info, SAMS::typeHandle type){
-		if constexpr (I >= std::tuple_size_v<defaultAllowedDataTypes>) {
-			throw std::invalid_argument("Type of variable cannot be written");
-		} else {
-			using T = std::tuple_element_t<I, defaultAllowedDataTypes>;
-			if (type == SAMS::gettypeRegistry().getTypeID<T>()) {
-				info.elementSize = sizeof(T);
-				info.type = &typeid(T);
-				info.writeFn = &writer::template writeDataTyped<T>;
-				return;
-			}
-			setDataType<I + 1>(info, type);
-		}
-	}
-
-	/**
-	 * @brief Write a registered dataset from its variable in the variable registry
-	 * @tparam T_data The type of the variable
-	 * @param name The name of the data
-	 * @param dInfo The information about the data
-	 * @param mInfo The information about the mesh that the data is on
-	 */
-	template<typename T_data>
-	void writeDataTyped(const char* name, dataInfo &dInfo, meshInfo &mInfo){
-		const SAMS::variableDef &varDef = h.variableRegistry.getVariable(dInfo.varName);
-		blockInfo block;
-		block.rank = static_cast<size_t>(varDef.getRank());
-		for (size_t i = 0; i < block.rank; ++i){
-			const SAMS::dimension &dim = varDef.getDimension(static_cast<int>(i));
-			//The local array is all of the memory of the variable on this rank, including ghost cells
-			block.localSizes[i] = static_cast<size_t>(dim.getLocalUB() - dim.getLocalLB() + 1);
-			block.localStarts[i] = static_cast<size_t>(dim.getLocalDomainLB() - dim.getLocalLB());
-			block.counts[i] = dim.getLocalDomainCount();
-			block.globalSizes[i] = dim.getDomainCount();
-			block.globalStarts[i] = static_cast<size_t>(dim.getGlobalDomainLB() - dim.getDomainLB());
-		}
-		writeDataOnHost<T_data, 1>(name, varDef, block, dInfo, mInfo);
-	}
-
-	/**
-	 * @brief Copy the data of a variable to the host if it is not already there and write it. The copy is released as soon as it is written
-	 * @tparam T_data The type of the data
-	 * @tparam R The rank to test the variable against
-	 * @param name The name of the data
-	 * @param varDef The variable to write
-	 * @param block The part of the variable that this rank writes
-	 * @param dInfo The information about the data
-	 * @param mInfo The information about the mesh that the data is on
+	 * @brief Build the decomposition of the part of a distributed array that this rank holds, and the communicator of the ranks that write it
+	 * @param part The part of the array that this rank holds, and where it is in the whole array
+	 * @param decomp The decomposition to fill. Its communicator is MPI_COMM_NULL if this rank does not write, and is kept by the MPIManager
 	 */
 	template<typename T_data, int R>
-	void writeDataOnHost(const char* name, const SAMS::variableDef &varDef, const blockInfo &block, dataInfo &dInfo, meshInfo &mInfo){
-		if constexpr (R > SAMS::MAX_RANK) {
-			throw std::runtime_error("Rank of variable is too high to write");
-		} else {
-			if (varDef.getRank() != R) {
-				writeDataOnHost<T_data, R + 1>(name, varDef, block, dInfo, mInfo);
-				return;
-			}
-			if (varDef.getMemorySpace() == portableWrapper::arrayTags::host) {
-				static_cast<T_core*>(this)->writeDataImpl(name, static_cast<const T_data*>(varDef.getDataPtr<T_data>()), block, dInfo, mInfo);
-			} else {
-				portableWrapper::portableArrayManager manager;
-				portableWrapper::portableArray<T_data, R, portableWrapper::arrayTags::accelerated> device;
-				varDef.fillPPArray(device);
-				auto host = manager.makeHostAvailable(device);
-				static_cast<T_core*>(this)->writeDataImpl(name, static_cast<const T_data*>(host.data()), block, dInfo, mInfo);
-				manager.deallocate(host);
-			}
+	void makeDecomposition(const localVariablePart<T_data, R> &part, decomposition &decomp){
+		decomp = partDecomposition(part);
+		//Ranks along an MPI direction that the array is not split across hold the same part, so only the first of them writes
+		auto &mpi = h.MPIManager;
+		const auto dims = mpi.getDims();
+		[[maybe_unused]] bool split = false;
+		std::array<bool, SAMS::MPI_DECOMPOSITION_RANK> keepDirections;
+		for (int d = 0; d < mpi.Dims; ++d){
+			keepDirections[d] = part.splitDirections[d] || dims[d] == 1;
+			if (!keepDirections[d]) split = true;
 		}
+		//The communicator of the ranks that write. It is the main communicator unless some ranks do not write
+		decomp.comm = mpi.getComm();
+		#ifdef USE_MPI
+		//Every rank asks for the communicator of the ranks that write, because making it takes every rank. It is MPI_COMM_NULL on the other ranks
+		if (split) decomp.comm = mpi.getWriterComm(keepDirections);
+		#endif
 	}
 
 	protected:
@@ -619,36 +702,108 @@ class writer {
 	}
 
 	public:
-	~writer(){
-		if (isOpen) closeFile();
-	}
 	/**
 	 * @brief Open a file for writing. This should be called before any other functions are called.
+	 * @param info The dump. Its name without the writer's extension is filename
 	 */
-	void openFile(const char* filename) {
+	void openFile(const dumpInfo &info) {
 		if (isOpen) throw std::runtime_error("Writer is already connected to a file");
 		clear();
-		this->filename = filename;
+		const std::string name = baseName(info);
+		metavariables values;
+		values.dumpNumber = nameMap[info.name].dumpNumber++;
+		//Time coalesced output goes to one file, so it has no dump number
+		metavariableFlags flags;
+		flags.dumpNumber = info.attemptTimeCoalescence && supportsMultipleTimesteps;
+		this->filename = metavariableName::expand(metavariableName::removeMetadata(name, flags), values) + std::string(extension);
 		//Should this be optional? Is it meaningful to not have an openFileImpl?
-		if constexpr (has_openFileImpl<T_core, decltype(filename)>) {
-			static_cast<T_core*>(this)->openFileImpl(filename);
+		if constexpr (has_openFileImpl<T_core, const dumpInfo&>) {
+			static_cast<T_core*>(this)->openFileImpl(info);
 		}
 		isOpen=true;
 	}
 
 	/**
-	 * @brief Set the timestep/iteration. This should be called before any data or mesh is registered unless a writer supports multiple timesteps in a single file. If it supports multiple timesteps then this function being called should mean that a new timestep is being started.
-	 * @param time The time to set
-	 * @param iteration The iteration to set. This is optional and defaults to 0.
+	 * @brief Build the decomposition of a distributed output that is not a variable in the variable registry. The local array holds exactly this rank's part of the output
+	 * @details A simulationAxis dimension is decomposed like that axis of the axis registry at its staggering. An integral dimension is that many elements, which every rank holds.
+	 * Ranks along an MPI direction that no dimension is decomposed along hold the same part, so only the first of them writes
+	 * @param dimensions The dimensions of the output
 	 */
-	void setTime(double time, size_t iteration=0){
-		if constexpr (!supportsMultipleTimesteps) {
-			if (meshRegistered || dataRegistered) throw std::runtime_error("Trying to set time after mesh or data has been registered");
-			if (timeSet) throw std::runtime_error("Trying to set time more than once");
+	template<typename... T_dimensions>
+	decomposition makeDecomposition(const T_dimensions&... dimensions){
+		static_assert(sizeof...(T_dimensions) >= 1 && sizeof...(T_dimensions) <= maximumRank, "Rank must be between 1 and the maximum rank");
+		decomposition decomp;
+		//The MPI directions that the output is split across
+		std::array<bool, SAMS::MPI_DECOMPOSITION_RANK> splitDirections{};
+		size_t i = 0;
+		auto addDimension = [&](const auto &dimension){
+			using T_dimension = std::decay_t<decltype(dimension)>;
+			static_assert(std::is_same_v<T_dimension, simulationAxis> || std::is_integral_v<T_dimension>, "A dimension must be a simulationAxis or an integral size");
+			if constexpr (std::is_same_v<T_dimension, simulationAxis>){
+				const SAMS::dimension &dim = h.axisRegistry.getDimension(dimension.name);
+				decomp.counts[i] = static_cast<size_t>(dim.getLocalDomainUB(dimension.stagger) - dim.getLocalDomainLB(dimension.stagger) + 1);
+				decomp.globalStarts[i] = static_cast<size_t>(dim.getGlobalDomainLB(dimension.stagger) - dim.getDomainLB(dimension.stagger));
+				const int mpiAxis = static_cast<int>(dim.mpiAxis);
+				if (mpiAxis >= 0) splitDirections[mpiAxis] = true;
+			} else {
+				decomp.counts[i] = static_cast<size_t>(dimension);
+			}
+			decomp.localSizes[i] = decomp.counts[i];
+			++i;
+		};
+		(addDimension(dimensions), ...);
+		//Ranks along an MPI direction that the output is not split across hold the same part, so only the first of them writes
+		auto &mpi = h.MPIManager;
+		const auto dims = mpi.getDims();
+		[[maybe_unused]] bool split = false;
+		std::array<bool, SAMS::MPI_DECOMPOSITION_RANK> keepDirections;
+		for (int d = 0; d < mpi.Dims; ++d){
+			keepDirections[d] = splitDirections[d] || dims[d] == 1;
+			if (!keepDirections[d]) split = true;
 		}
-		timeSet=true;
-		if constexpr (has_setTimeImpl<T_core, decltype(time), decltype(iteration)>) {
-			static_cast<T_core*>(this)->setTimeImpl(time, iteration);
+		//The communicator of the ranks that write. It is the main communicator unless some ranks do not write
+		decomp.comm = mpi.getComm();
+		#ifdef USE_MPI
+		//Every rank asks for the communicator of the ranks that write, because making it takes every rank. It is MPI_COMM_NULL on the other ranks
+		if (split) decomp.comm = mpi.getWriterComm(keepDirections);
+		#endif
+		return decomp;
+	}
+
+	/**
+	 * @brief Write the state of the writer to a restart dump
+	 * @param target The writer of the restart dump
+	 */
+	template<typename T_target>
+	void writeRestart(T_target &target) const
+	{
+		const std::string prefix = "writers/" + std::string(writerName) + "/";
+		target.template setKeyValue<uint64_t>((prefix + "count").c_str(), nameMap.size());
+		size_t i = 0;
+		for (const auto &[name, entry] : nameMap)
+		{
+			target.template setKeyValue<std::string>((prefix + "name_" + std::to_string(i)).c_str(), name);
+			target.template setKeyValue<uint64_t>((prefix + "number_" + std::to_string(i)).c_str(), entry.dumpNumber);
+			++i;
+		}
+	}
+
+	/**
+	 * @brief Read the state of the writer from a restart dump
+	 * @param source The reader of the restart dump
+	 */
+	template<typename T_source>
+	void restart(T_source &source)
+	{
+		restartedRun = true;
+		const std::string prefix = "writers/" + std::string(writerName) + "/";
+		//A writer that wrote nothing before the restart has no state
+		if (!source.hasKeyValue((prefix + "count").c_str())) return;
+		const size_t count = source.template readKeyValue<uint64_t>((prefix + "count").c_str());
+		for (size_t i = 0; i < count; ++i)
+		{
+			const std::string name = source.template readKeyValue<std::string>((prefix + "name_" + std::to_string(i)).c_str());
+			nameMap[name].dumpNumber = source.template readKeyValue<uint64_t>((prefix + "number_" + std::to_string(i)).c_str());
 		}
 	}
 
@@ -666,129 +821,213 @@ class writer {
 
 	/**
 	 * @brief Set a key-value pair in the global scope. This is optional and a writer must not require it.
+	 * @tparam T The type that the value is stored as: double, int64_t, uint64_t or std::string. It is always given, and the value is converted to it
 	 * @param key The key to set
 	 * @param value The value to set
 	 */
-	void setKeyValue(const char* key, const char* value){
+	template<typename T>
+	void setKeyValue(const char* key, const std::type_identity_t<T> &value){
+		static_assert(isKeyValueType<T>, "A key-value pair must be a double, int64_t, uint64_t or std::string");
 		if (verbose && !supportsKeyValue) std::cout << "Warning: Writer does not support key-value pairs, ignoring setKeyValue call\n";
-		if constexpr (has_setKeyValue<T_core, decltype(key), decltype(value)>) {
-			static_cast<T_core*>(this)->setKeyValue(key, value);
+		if constexpr (has_setKeyValueImpl<T_core, const char*, const T&>) {
+			static_cast<T_core*>(this)->template setKeyValueImpl<T>(key, value);
 		}
 	}
 
 	/**
-	 * @brief Set a key-value pair on a specific mesh. This is optional and a writer must not require it.
+	 * @brief Set a key-value pair on a specific mesh. The pair is kept until the mesh is written, and is written with it. This is optional and a writer must not require it.
 	 * @param meshName The name of the mesh
 	 * @param key The key to set
 	 * @param value The value to set
-	 * @throws std::runtime_error if the mesh is not registered
+	 * @throws std::invalid_argument if the mesh is not registered
+	 * @throws std::runtime_error if the mesh has already been written
 	 */
 	void setMeshKeyValue(const char* meshName, const char* key, const char* value){
 		if (verbose && !supportsMeshKeyValue) std::cout << "Warning: Writer does not support mesh key-value pairs, ignoring setMeshKeyValue call\n";
-		testMeshRegistered(meshName);
-		if constexpr (has_setMeshKeyValue<T_core, decltype(meshName), decltype(key), decltype(value)>) {
-			static_cast<T_core*>(this)->setMeshKeyValue(meshName, key, value);
-		}
+		if (std::string(key).find('/') != std::string::npos) throw std::invalid_argument(std::string("Key ") + key + " of a mesh cannot be in a namespace");
+		if (!testMeshRegistered(meshName)) throw std::invalid_argument(std::string("Mesh ") + meshName + " is not registered");
+		meshInfo &info = meshMap[meshName];
+		if (info.written) throw std::runtime_error(std::string("Mesh ") + meshName + " has already been written, so a key-value pair cannot be set on it");
+		info.keyValues[key] = value;
 	}
 
 	/**
-	 * @brief Set a key-value pair on a specific dataset. This is optional and a writer must not require it.
+	 * @brief Set a key-value pair on a specific dataset. The pair is kept until the data is written, and is written with it. This is optional and a writer must not require it.
 	 * @param meshName The name of the mesh
 	 * @param dataName The name of the data
 	 * @param key The key to set
 	 * @param value The value to set
+	 * @throws std::invalid_argument if the data is not registered
+	 * @throws std::runtime_error if the data has already been written
 	 */
 	void setDataKeyValue(const char* meshName, const char* dataName, const char* key, const char* value){
 		if (verbose && !supportsDataKeyValue) std::cout << "Warning: Writer does not support data key-value pairs, ignoring setDataKeyValue call\n";
+		if (std::string(key).find('/') != std::string::npos) throw std::invalid_argument(std::string("Key ") + key + " of a dataset cannot be in a namespace");
 		testDataOnMesh(meshName, dataName);
-		if constexpr (has_setDataKeyValue<T_core, decltype(meshName), decltype(dataName), decltype(key), decltype(value)>) {
-			static_cast<T_core*>(this)->setDataKeyValue(meshName, dataName, key, value);
-		}
+		dataInfo &info = dataMap[meshName][dataName];
+		if (info.written) throw std::runtime_error(std::string("Data ") + dataName + " on mesh " + meshName + " has already been written, so a key-value pair cannot be set on it");
+		info.keyValues[key] = value;
 	}
 
 	/**
-	 * @brief Register an ND rectilinear mesh. This should be called before any data is written.
-	 * @param name The name of the mesh
-	 * @param axis0 The name and staggering of the axis in the first dimension
-	 * @param axis1 - axis7 The name and staggering of the axis in each further dimension. Dimensions that are not used are left with an empty name
-	 * @details The global size of the mesh in each dimension is taken from the axis registry. The type of the mesh is the type of its axes
-	 * @throws std::invalid_argument if the mesh is already registered
-	 * @throws std::invalid_argument if the axes have different types or their type cannot be written
+	 * @brief Set a key-value pair on a specific blob. The pair is kept until the blob is written, and is written with it
+	 * @param blobName The name of the blob
+	 * @param key The key to set
+	 * @param value The value to set
+	 * @throws std::invalid_argument if the key is in a namespace
 	 */
-	void registerRectilinearMesh(const char* name, const meshAxis &axis0, const meshAxis &axis1 = {}, const meshAxis &axis2 = {}, const meshAxis &axis3 = {},
-		const meshAxis &axis4 = {}, const meshAxis &axis5 = {}, const meshAxis &axis6 = {}, const meshAxis &axis7 = {}){
-		startMeshRegister();
-		registerMeshCommon(name);
-		const std::array<const meshAxis*, maximumRank> axes = {&axis0, &axis1, &axis2, &axis3, &axis4, &axis5, &axis6, &axis7};
-		rlMeshInfo newInfo;
-		SAMS::typeHandle meshType;
-		for (const meshAxis *axis : axes){
-			if (axis->name.empty()) break;
-			const SAMS::dimension &dim = h.axisRegistry.getDimension(axis->name);
-			//Every axis of the mesh must have the same type
-			const SAMS::typeHandle axisType = h.axisRegistry.getAxis(axis->name).axisData.at(axis->stagger).at(portableWrapper::arrayTags::host).axisType;
-			if (newInfo.rank == 0) {
-				meshType = axisType;
-			} else if (axisType != meshType) {
-				throw std::invalid_argument("Axes of mesh have different types");
-			}
-			newInfo.axisNames[newInfo.rank] = axis->name;
-			newInfo.staggers[newInfo.rank] = axis->stagger;
-			newInfo.sizes[newInfo.rank] = dim.getDomainCount(axis->stagger);
-			newInfo.zones *= newInfo.sizes[newInfo.rank];
-			newInfo.rank++;
-		}
-		meshMap[name].specificInfo = newInfo;
-		setMeshType(meshMap[name], meshType);
-		auto &info = meshMap[name];
-		auto &specificInfo = std::get<rlMeshInfo>(info.specificInfo);
-		meshMap[name].zones = specificInfo.zones;
+	void setBlobKeyValue(const char* blobName, const char* key, const char* value){
+		if (std::string(key).find('/') != std::string::npos) throw std::invalid_argument(std::string("Key ") + key + " of a blob cannot be in a namespace");
+		blobMap.at(blobName).keyValues[key] = value;
+	}
 
-		//This is the specific call for rectilinear meshes
-		static_cast<T_core*>(this)->registerRectilinearMeshImpl(name, specificInfo);
-		//This is a generic call that will be called for any mesh
-		if constexpr(has_registerMeshImpl<T_core, decltype(name), decltype(info)>) {
-			static_cast<T_core*>(this)->registerMeshImpl(name, info);
+	/**
+	 * @brief Set a key-value pair on a specific axis. The pair is kept until the axis is written, and is written with it
+	 * @param axisName The name of the axis
+	 * @param key The key to set
+	 * @param value The value to set
+	 * @throws std::invalid_argument if the key is in a namespace
+	 */
+	void setAxisKeyValue(const char* axisName, const char* key, const char* value){
+		if (std::string(key).find('/') != std::string::npos) throw std::invalid_argument(std::string("Key ") + key + " of an axis cannot be in a namespace");
+		axisMap.at(axisName).keyValues[key] = value;
+	}
+
+	/**
+	 * @brief Write the deck, as the text of an EPOCH deck
+	 * @param deck The deck
+	 */
+	void writeDeck(const SAMS::KVS &deck){
+		if constexpr (has_writeDeckImpl<T_core, const std::string&>) {
+			static_cast<T_core*>(this)->writeDeckImpl(SAMS::KVSConversion::toEPOCHString(deck));
 		}
 	}
 
 	/**
-	 * @brief Write a ND rectilinear mesh. This should be called after the mesh has been registered.
-	 * This it to support writers like NetCDF that require the mesh to be defined before it is written.
-	 * The coordinates of the mesh are taken from the axis registry
+	 * @brief Register an axis. An axis is a whole one dimensional array that meshes refer to by name. It is written by rank 0
+	 * @tparam T_axis The type of the axis
+	 * @param name The name of the axis, which can be in a namespace
+	 * @param start The core index of the first element of the axis
+	 * @param size The number of elements of the axis
+	 * @param lowerGhosts The number of ghost cells below the domain
+	 * @param upperGhosts The number of ghost cells above the domain
+	 * @throws std::invalid_argument if the axis is already registered
+	 */
+	template<typename T_axis>
+		void registerAxis(const char* name, SIGNED_INDEX_TYPE start, size_t size, size_t lowerGhosts, size_t upperGhosts){
+			if (axisMap.find(name)!=axisMap.end()) throw std::invalid_argument("Axis already registered");
+			startRegister();
+			axisInfo &info = axisMap[name];
+			info.start = start;
+			info.size = size;
+			info.lowerGhosts = lowerGhosts;
+			info.upperGhosts = upperGhosts;
+			info.elementSize = sizeof(T_axis);
+			info.type = &typeid(std::decay_t<T_axis>);
+			static_cast<T_core*>(this)->registerAxisImpl(name, info);
+		}
+
+	/**
+	 * @brief Write an axis. Every rank holds the whole axis, and rank 0 writes it
+	 * @tparam T_axis The type of the axis
+	 * @param name The name of the axis
+	 * @param data The whole axis
+	 */
+	template<typename T_axis>
+		void writeAxis(const char* name, const T_axis *data){
+			axisInfo &info = axisMap.at(name);
+			info.written=true;
+			startWrite();
+			static_cast<T_core*>(this)->writeAxisImpl(name, data, info);
+		}
+
+	/**
+	 * @brief Register an ND rectilinear mesh. Each dimension of the mesh is a range of cells of an axis. This should be called before any data is written.
 	 * @param name The name of the mesh
-	 * @throws std::runtime_error if the mesh is not registered
+	 * @param axes The name of the axis in each dimension
+	 * @param starts The core index of the first plotted cell of the axis in each dimension
+	 * @param sizes The number of plotted cells of the axis in each dimension
+	 * @throws std::invalid_argument if the mesh is already registered
+	 */
+	template<size_t R>
+		void registerRectilinearMesh(const char* name, const std::array<std::string, R> &axes, const std::array<SIGNED_INDEX_TYPE, R> &starts, const std::array<size_t, R> &sizes){
+			static_assert(R >= 1 && R <= maximumRank, "Mesh rank must be between 1 and the maximum rank");
+			startMeshRegister();
+			registerMeshCommon(name);
+			meshInfo &info = meshMap[name];
+			rlMeshInfo specificInfo;
+			specificInfo.rank = R;
+			specificInfo.zones = 1;
+			for (size_t i = 0; i < R; ++i){
+				specificInfo.axes[i] = axes[i];
+				specificInfo.starts[i] = starts[i];
+				specificInfo.sizes[i] = sizes[i];
+				specificInfo.zones *= sizes[i];
+			}
+			info.specificInfo = specificInfo;
+			info.zones = specificInfo.zones;
+			static_cast<T_core*>(this)->registerRectilinearMeshImpl(name, std::get<rlMeshInfo>(info.specificInfo));
+			//This is a generic call that will be called for any mesh
+			if constexpr(has_registerMeshImpl<T_core, decltype(name), decltype(info)>) {
+				static_cast<T_core*>(this)->registerMeshImpl(name, info);
+			}
+		}
+
+	/**
+	 * @brief Write an ND rectilinear mesh. A mesh holds no values of its own, so this writes which range of which axis is each dimension of the mesh, and the key-value pairs of the mesh
+	 * @param name The name of the mesh
 	 * @throws std::runtime_error if the mesh has already been written
 	 */
 	void writeRectilinearMesh(const char* name){
-		if (!testMeshRegistered(name)) throw std::runtime_error("Mesh is not registered");
-		auto &meshInfo = meshMap[name];
-		if (meshInfo.written) throw std::runtime_error("Mesh has already been written!");
+		meshInfo &info = meshMap.at(name);
+		if (info.written) throw std::runtime_error("Mesh has already been written!");
 		startMeshWrite();
-		(this->*meshInfo.writeMeshFn)(name, meshInfo);
-		meshInfo.written=true;
+		static_cast<T_core*>(this)->writeRectilinearMeshImpl(name, info);
+		info.written=true;
 	}
 
 	/**
 	 * @brief Register data against a mesh. This should be called before any data is written.
-	 * The data is taken from a variable in the variable registry, which also gives its type
+	 * @template T_data The type of the data. This must be a type that the underlying writer can handle.
+	 * Stick to basic types like int, float, double, etc. and you'll be fine.
 	 * @param name The name of the data
 	 * @param meshName The name of the mesh that the data is associated with
-	 * @param varName The name of the variable in the variable registry
 	 * @throws std::invalid_argument if the data is already registered
-	 * @throws std::invalid_argument if the variable does not lie on the axes of the mesh
-	 * @throws std::invalid_argument if the type of the variable cannot be written
+	 * @throws std::runtime_error if the mesh is not registered
+	 * @throws std::runtime_error if the data type does not match the registered type
+	 * @throws std::runtime_error if the mesh is not registered
+	 * @throws std::runtime_error if the data is not registered
 	 */
-		void registerData(const char* name, const char* meshName, const char* varName){
-			registerDataCommon(name, meshName);
-			//The variable must lie on the axes of the mesh with the same staggering
-			const SAMS::variableDef &varDef = h.variableRegistry.getVariable(varName);
-			const rlMeshInfo &specificInfo = std::get<rlMeshInfo>(meshMap[meshName].specificInfo);
-			if (static_cast<size_t>(varDef.getRank()) != specificInfo.rank) throw std::invalid_argument("Rank of variable does not match rank of mesh");
-			for (size_t i = 0; i < specificInfo.rank; ++i){
-				const SAMS::dimension &dim = varDef.getDimension(static_cast<int>(i));
-				if (dim.axisName != specificInfo.axisNames[i] || dim.stagger != specificInfo.staggers[i]) throw std::invalid_argument("Axes of variable do not match axes of mesh");
-			}
+	template<typename T_data=double>
+		void registerData(const char* name, const char* meshName){
+			//The data matches its mesh exactly
+			const rlMeshInfo &rlInfo = std::get<rlMeshInfo>(meshMap.at(meshName).specificInfo);
+			registerDataWithSizes<T_data>(name, meshName, rlInfo.rank, rlInfo.starts.data(), rlInfo.sizes.data());
+		}
+
+	/**
+	 * @brief Register data against a mesh that it does not match exactly. This should be called before any data is written.
+	 * @param name The name of the data
+	 * @param meshName The name of the mesh that the data is associated with
+	 * @param starts The core index of the first element in each dimension
+	 * @param sizes The number of elements in each dimension
+	 */
+	template<typename T_data, size_t R>
+		void registerData(const char* name, const char* meshName, const std::array<SIGNED_INDEX_TYPE, R> &starts, const std::array<size_t, R> &sizes){
+			registerDataWithSizes<T_data>(name, meshName, R, starts.data(), sizes.data());
+		}
+
+	/**
+	 * @brief Register data with its own starts and sizes
+	 * @param name The name of the data
+	 * @param meshName The name of the mesh that the data is associated with
+	 * @param rank The rank of the data
+	 * @param starts The core index of the first element in each dimension
+	 * @param sizes The number of elements in each dimension
+	 */
+	template<typename T_data>
+		void registerDataWithSizes(const char* name, const char* meshName, size_t rank, const SIGNED_INDEX_TYPE *starts, const size_t *sizes){
+			registerDataCommon<T_data>(name, meshName);
 			if (dataMap[meshName].find(name)!=dataMap[meshName].end()) throw std::invalid_argument("Data already registered");
 			if constexpr (!supportsPerMeshDataNames) {
 				//If we don't have support for per mesh data names, we need to check that the name is unique across all meshes and throw an exception if it is not
@@ -800,47 +1039,138 @@ class writer {
 				pair.first = meshName;
 				pair.second++;
 			} 
-			dataMap[meshName][name] = dataInfo(meshName, varName);
+			dataMap[meshName][name] = dataInfo(meshName, sizeof(T_data), &typeid(std::decay_t<T_data>));
 			auto &dataInfo = dataMap[meshName][name];
 			auto &meshInfo = meshMap[meshName];
-			//The type of the data is the type of the variable
-			setDataType(dataInfo, varDef.getType());
+			dataInfo.rank = rank;
+			std::copy(starts, starts + rank, dataInfo.starts.begin());
+			std::copy(sizes, sizes + rank, dataInfo.sizes.begin());
 			startDataRegister();
 			static_cast<T_core*>(this)->registerDataImpl(name, meshName, dataInfo, meshInfo);
 		}
 
 	/**
-	 * @brief Write data against a mesh. This should be called after the data has been registered.
-	 * The data is taken from the variable that it was registered with. Each rank writes its own part of the variable
+	 * @brief Register data with type info provided by a pointer to the data. This should be called before any data is written. DOES NOT WRITE DATA
+	 * @template T_data The type of the data. This must be a type that the underlying writer can handle.
+	 * Stick to basic types like int, float, double, etc. and you'll be fine.
 	 * @param name The name of the data
 	 * @param meshName The name of the mesh that the data is associated with
-	 * @throws std::invalid_argument if the data is not registered
+	 * @param data A data pointer having the type of the data. This is only used to get the type info for the data.
+	 * @details This is a convenience function that allows you to register data without having to specify the type. The type is determined from the pointer. This is because the "object.template method" syntax is not very clear
 	 */
-	void writeData(const char* name, const char* meshName) {
-		testDataOnMesh(meshName, name);
-		auto &dataInfo = dataMap[meshName][name];
-		auto &meshInfo = meshMap[dataInfo.meshName];
-		if (dataInfo.written) {
-			std::cerr << "Data item " << name << " on mesh " << meshName << " has already been written and is being written again!\n";
-		}
-		dataInfo.written=true;
-		startDataWrite();
-		(this->*dataInfo.writeFn)(name, dataInfo, meshInfo);
+	template<typename T>
+	void registerData(const char* name, const char* meshName, [[maybe_unused]] T* data)
+	{
+		registerData<T>(name, meshName);
 	}
 
 	/**
-	 * @brief Write data against a mesh. This should be called after the data has been registered.
-	 * This is a convenience function that allows you to write data without having to specify the mesh name. The mesh name is determined from the data name. This is only valid if the data name is unique across all meshes.
+	 * @brief Write the part of a distributed dataset that this rank holds. This should be called after the data has been registered.
+	 * @template T_data The type of the data. This must be a type that the underlying writer can handle.
+	 * Stick to basic types like int, float, double, etc. and you'll be fine.
 	 * @param name The name of the data
+	 * @param meshName The name of the mesh that the data is associated with
+	 * @param data The local array that holds the part of the data on this rank
+	 * @param part The part of the data that this rank holds, where it is in the local array, and the communicator of the ranks that write
 	 * @throws std::invalid_argument if the data is not registered
+	 * @throws std::runtime_error if the data type does not match the registered type
 	 */
-	void writeData(const char* name) {
-		//Find the mesh name from the data name
-		testDataUnique(name);
-		const auto& pair = dataNameToMeshNameMap[name];
-		std::string meshName = pair.first;
-		writeData(name, meshName.c_str());
-	}
+	template<typename T_data>
+		void writeData(const char* name, const char* meshName, const T_data *data, const decomposition &part) {
+			testDataOnMesh(meshName, name);
+			auto &dataInfo = dataMap[meshName][name];
+			auto &meshInfo = meshMap[dataInfo.meshName];
+			if (dataInfo.written) {
+				std::cerr << "Data item " << name << " on mesh " << meshName << " has already been written and is being written again!\n";
+			}
+			dataInfo.written=true;
+			if (&typeid(std::decay_t<T_data>)!=dataInfo.type) throw std::invalid_argument("Type of data when writing does not match type of data when registering");
+			startDataWrite();
+			static_cast<T_core*>(this)->writeDataImpl(name, data, part, dataInfo, meshInfo);
+		}
+
+	/**
+	 * @brief Write the part of a distributed dataset that this rank holds. This should be called after the data has been registered.
+	 * This is a convenience function that allows you to write data without having to specify the mesh name. The mesh name is determined from the data name. This is only valid if the data name is unique across all meshes.
+	 * @template T_data The type of the data. This must be a type that the underlying writer can handle.
+	 * Stick to basic types like int, float, double, etc. and you'll be fine.
+	 * This version is a convenience function where the mesh name is not required. It only works if the data name is unique
+	 * @param name The name of the data
+	 * @param data The local array that holds the part of the data on this rank
+	 * @param part The part of the data that this rank holds, where it is in the local array, and the communicator of the ranks that write
+	 * @throws std::invalid_argument if the data is not registered
+	 * @throws std::runtime_error if the data type does not match the registered type
+	 */
+	template<typename T_data>
+		void writeData(const char* name, const T_data *data, const decomposition &part) {
+			//Find the mesh name from the data name
+			testDataUnique(name);
+			const auto& pair = dataNameToMeshNameMap[name];
+			std::string meshName = pair.first;
+			writeData(name, meshName.c_str(), data, part);
+		}
+
+	/**
+	 * @brief Write the part of a variable that this rank holds. This should be called after the data has been registered.
+	 * The mesh name is determined from the data name, so this is only valid if the data name is unique across all meshes
+	 * @param name The name of the data
+	 * @param part The part of the variable that this rank holds, and where it is in the whole variable
+	 * @throws std::invalid_argument if the rank of the part does not match the rank of the mesh
+	 */
+	template<typename T_data, int R>
+		void writeData(const char* name, const localVariablePart<T_data, R> &part){
+			//Find the mesh name from the data name
+			testDataUnique(name);
+			const std::string meshName = dataNameToMeshNameMap[name].first;
+			if (static_cast<size_t>(R) != dataMap[meshName][name].rank) throw std::invalid_argument("Rank of data does not match registered rank");
+			decomposition decomp;
+			makeDecomposition(part, decomp);
+			writeData(name, meshName.c_str(), part.array.data(), decomp);
+		}
+
+	/**
+	 * @brief Register a blob. A blob is a distributed array that is not associated with a mesh
+	 * @tparam T_data The type of the blob
+	 * @param name The name of the blob
+	 * @param sizes The global size of the blob in each dimension
+	 * @throws std::invalid_argument if the blob is already registered
+	 */
+	template<typename T_data, size_t R>
+		void registerBlob(const char* name, const std::array<size_t, R> &sizes){
+			static_assert(R >= 1 && R <= maximumRank, "Blob rank must be between 1 and the maximum rank");
+			if (blobMap.find(name)!=blobMap.end()) throw std::invalid_argument("Blob already registered");
+			startRegister();
+			blobInfo &info = blobMap[name];
+			info.rank = R;
+			std::copy(sizes.begin(), sizes.end(), info.sizes.begin());
+			info.elementSize = sizeof(T_data);
+			info.type = &typeid(std::decay_t<T_data>);
+			static_cast<T_core*>(this)->registerBlobImpl(name, info);
+		}
+
+	/**
+	 * @brief Write the part of a blob that this rank holds. This should be called after the blob has been registered
+	 * @param name The name of the blob
+	 * @param part The part of the blob that this rank holds, and where it is in the whole blob
+	 * @throws std::invalid_argument if the blob is not registered
+	 * @throws std::invalid_argument if the rank or type of the part does not match the registered blob
+	 */
+	template<typename T_data, int R>
+		void writeBlob(const char* name, const localVariablePart<T_data, R> &part){
+			auto it = blobMap.find(name);
+			if (it==blobMap.end()) throw std::invalid_argument("Blob not registered");
+			blobInfo &info = it->second;
+			if (static_cast<size_t>(R) != info.rank) throw std::invalid_argument("Rank of blob does not match registered rank");
+			if (&typeid(std::decay_t<T_data>)!=info.type) throw std::invalid_argument("Type of blob when writing does not match type of blob when registering");
+			if (info.written) {
+				std::cerr << "Blob " << name << " has already been written and is being written again!\n";
+			}
+			info.written=true;
+			decomposition decomp;
+			makeDecomposition(part, decomp);
+			startWrite();
+			static_cast<T_core*>(this)->writeBlobImpl(name, part.array.data(), decomp, info);
+		}
 
 	//Flush file to disk
 	void flushFile() {
@@ -878,7 +1208,17 @@ class writer {
 				}
 			}
 		}
-	
+		//Loop over all blobs
+		for (auto &pair : blobMap) {
+			if (!pair.second.written) {
+				if (!errorState) {
+					errorState = true;
+					std::cerr << "\n******************************\n**** ERRORS ON FILE CLOSE ****\n******************************\n\n";
+				}
+				std::cerr << "Blob " << pair.first << " was defined but has not been written!\n";
+			}
+		}
+
 		static_cast<T_core*>(this)->closeFileImpl();
 		clear();
 	}
@@ -887,6 +1227,7 @@ class writer {
 class demoFile : public writer<demoFile> {
 	public:
 	constexpr static const char* writerName = "demoFile";
+	constexpr static const char* extension = "";
 	constexpr static bool registerAfterWrite=false;
 	const static meshDataOrder registerOrder=meshDataOrder::noOrder;
 	const static meshDataOrder writeOrder=meshDataOrder::noOrder;
@@ -895,42 +1236,33 @@ class demoFile : public writer<demoFile> {
 	using writerMeshInfo = writer<demoFile>::meshInfo;
 	using writerRLMeshInfo  = writer<demoFile>::rlMeshInfo;
 	using writerDataInfo = writer<demoFile>::dataInfo;
-	using writerBlockInfo = writer<demoFile>::blockInfo;
 
 	using allowedMeshTypes_impl = std::tuple<float, double>;
 
-	void openFileImpl(const char* filename){std::cout << "Opening " << filename << "\n";}
+	void openFileImpl([[maybe_unused]] const dumpInfo &info){std::cout << "Opening " << this->filename << "\n";}
 
 	void startRegisterImpl(){}
 	void startWriteImpl(){}
 
-	void registerRectilinearMeshImpl(const char* name, const writerRLMeshInfo &info){
-		std::cout << "Rectilinear mesh registration called\n";
-		std::cout << "Registering mesh \"" << name << "\" with rank " << info.rank << "\n";
-		//Print the sizes
-		std::cout << "Sizes: ";
-		for (size_t i = 0; i < info.rank; ++i) std::cout << info.sizes[i] << " ";
-		std::cout << "\n";
+	void registerAxisImpl(const char* name, [[maybe_unused]] writer<demoFile>::axisInfo &info){
+		std::cout << "Registering axis \"" << name << "\" with size " << info.size << "\n";
 	}
 
-	void registerMeshImpl(const char* name, writerMeshInfo &info){
-		const writerRLMeshInfo &specificInfo = std::get<writerRLMeshInfo>(info.specificInfo);
-		std::cout << "Generic registerMeshImpl called\n";
-		std::cout << "Registering mesh \"" << name << "\" with rank " << specificInfo.rank << "\n";
-		//Print the sizes
-		std::cout << "Sizes: ";
-		for (size_t i = 0; i < specificInfo.rank; ++i) std::cout << specificInfo.sizes[i] << " ";
-		std::cout << "\n";
-	}
-
-	//Write rectilinear mesh of any rank
 	template <typename T_data>
-		void writeRectilinearMeshImpl(const char* name, writerMeshInfo &info, [[maybe_unused]] const std::array<const T_data*, maximumRank> &axes){
-			auto specificInfo = std::get<rlMeshInfo>(info.specificInfo);
-			std::cout << "Writing mesh \"" << name << "\" ";
-			for (size_t i = 0; i < specificInfo.rank; ++i) std::cout << (i > 0 ? "x" : "") << specificInfo.sizes[i];
-			std::cout << "\n";
+		void writeAxisImpl(const char* name, [[maybe_unused]] const T_data *data, [[maybe_unused]] writer<demoFile>::axisInfo &info){
+			std::cout << "Writing axis \"" << name << "\" with size " << info.size << "\n";
 		}
+
+	void registerRectilinearMeshImpl(const char* name, const writerRLMeshInfo &info){
+		std::cout << "Registering mesh \"" << name << "\" with rank " << info.rank << "\n";
+		for (size_t i = 0; i < info.rank; ++i){
+			std::cout << "Axis " << info.axes[i] << " from cell " << info.starts[i] << " for " << info.sizes[i] << " cells\n";
+		}
+	}
+
+	void writeRectilinearMeshImpl(const char* name, [[maybe_unused]] writerMeshInfo &info){
+		std::cout << "Writing mesh \"" << name << "\"\n";
+	}
 
 	void registerDataImpl(const char* name, const char* meshName, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo){
 		auto specificMeshInfo = std::get<rlMeshInfo>(meshInfo.specificInfo);
@@ -946,7 +1278,7 @@ class demoFile : public writer<demoFile> {
 
 	//Write data against a mesh
 	template<typename T_data>
-		void writeDataImpl(const char* name, [[maybe_unused]] const T_data *data, [[maybe_unused]] const writerBlockInfo &block, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo) {
+		void writeDataImpl(const char* name, [[maybe_unused]] const T_data *data, [[maybe_unused]] const decomposition &part, [[maybe_unused]] writerDataInfo &dataInfo, [[maybe_unused]] writerMeshInfo &meshInfo) {
 			auto specificMeshInfo = std::get<rlMeshInfo>(meshInfo.specificInfo);
 			std::cout << "Writing data \"" << name << "\" on mesh \"" << dataInfo.meshName << "\" with size " << specificMeshInfo.sizes[0];
 			if (specificMeshInfo.rank > 1) {
@@ -967,6 +1299,13 @@ class demoFile : public writer<demoFile> {
 	void closeFileImpl() {
 		std::cout << "Closing file " << this->filename << "\n";
 	}
+
+	//Close the file while the members that closing it uses still exist
+	~demoFile(){
+		if (this->isOpen) this->closeFile();
+	}
 };
+
+} // namespace SAMS::IO
 
 #endif

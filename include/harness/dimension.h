@@ -535,6 +535,40 @@ namespace SAMS{
             return getDomainCount(stagger);
         }
 
+        /**
+         * Get the number of ghost cells on the lower side of the dimension
+         */
+        COUNT_TYPE getLowerGhosts() const
+        {
+            return lowerGhosts;
+        }
+
+        /**
+         * Get the number of ghost cells on the lower side of the dimension for a given staggering type
+         * @param s The staggering type
+         */
+        COUNT_TYPE getLowerGhosts(staggerType s) const
+        {
+            return lowerGhosts + static_cast<COUNT_TYPE>(getstaggerRegistry().getLowerAdjust(s) - getstaggerRegistry().getLowerAdjust(stagger));
+        }
+
+        /**
+         * Get the number of ghost cells on the upper side of the dimension
+         */
+        COUNT_TYPE getUpperGhosts() const
+        {
+            return upperGhosts;
+        }
+
+        /**
+         * Get the number of ghost cells on the upper side of the dimension for a given staggering type
+         * @param s The staggering type
+         */
+        COUNT_TYPE getUpperGhosts(staggerType s) const
+        {
+            return upperGhosts + static_cast<COUNT_TYPE>(getstaggerRegistry().getUpperAdjust(s) - getstaggerRegistry().getUpperAdjust(stagger));
+        }
+
         //Get information about the local MPI decomposition on the local rank
 
         /**

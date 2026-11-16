@@ -361,6 +361,57 @@ namespace portableWrapper{
         #error "Kokkos offset view is not available in this version of Kokkos. Please upgrade to Kokkos 3.0 or later to use this feature."
         #endif
 
+        /**
+         * A portableArray that points at the memory of a Kokkos View without owning it. Its lower bounds are 0
+         */
+        template<typename T_view>
+        UNREPEATED auto fromView(const T_view &view) {
+            static_assert(!requires(const T_view &v){ v.begin(0); }, "fromView takes a View. Use fromOffsetView for an OffsetView");
+            using T = typename T_view::non_const_value_type;
+            constexpr int rank = static_cast<int>(T_view::rank);
+            constexpr arrayTags tag = std::is_same_v<typename T_view::memory_space, Kokkos::HostSpace> ? arrayTags::host : arrayTags::accelerated;
+            SIGNED_INDEX_TYPE lbounds[rank], sizes[rank], strides[rank];
+            for (int i = 0; i < rank; ++i){
+                lbounds[i] = 0;
+                sizes[i] = view.extent(i);
+                strides[i] = view.stride(i);
+            }
+            portableArray<T, rank, tag> array;
+            array.bindStrided(const_cast<T*>(view.data()), lbounds, sizes, strides);
+            return array;
+        }
+
+        /**
+         * A portableArray that points at the memory of a Kokkos OffsetView without owning it, with the same lower bounds
+         */
+        template<typename T_view>
+        UNREPEATED auto fromOffsetView(const T_view &view) {
+            static_assert(requires(const T_view &v){ v.begin(0); }, "fromOffsetView takes an OffsetView. Use fromView for a View");
+            using T = typename T_view::non_const_value_type;
+            constexpr int rank = static_cast<int>(T_view::rank);
+            constexpr arrayTags tag = std::is_same_v<typename T_view::memory_space, Kokkos::HostSpace> ? arrayTags::host : arrayTags::accelerated;
+            SIGNED_INDEX_TYPE lbounds[rank], sizes[rank], strides[rank];
+            for (int i = 0; i < rank; ++i){
+                lbounds[i] = view.begin(i);
+                sizes[i] = view.extent(i);
+                strides[i] = view.stride(i);
+            }
+            portableArray<T, rank, tag> array;
+            array.bindStrided(const_cast<T*>(view.data()), lbounds, sizes, strides);
+            return array;
+        }
+
+        /**
+         * An uninitialised contiguous view with the extents of a view, in its memory space
+         */
+        template<typename T_data, int rank, typename T_view>
+        UNREPEATED auto contiguousLike(const T_view &view)
+        {
+            return [&]<size_t... I>(std::index_sequence<I...>){
+                return Kokkos::View<typename deepPointer<T_data, rank>::type, typename T_view::memory_space>(Kokkos::view_alloc(Kokkos::WithoutInitializing, "contiguous"), view.extent(I)...);
+            }(std::make_index_sequence<rank>{});
+        }
+
         template<typename T_data, int rankS, int rankD, arrayTags tagS, arrayTags tagD>
         UNREPEATED void copyData(portableArray<T_data, rankD, tagD> &destination, const portableArray<T_data, rankS, tagS> &source) {
 
@@ -371,9 +422,25 @@ namespace portableWrapper{
                 Kokkos::deep_copy(destinationView, sourceView);
             } else {
                 auto sourceView = kokkos::toView(source);
-                auto hostSrc = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), sourceView);
                 auto destinationView = kokkos::toView(destination);
-                Kokkos::deep_copy(destinationView, hostSrc);
+                //Contiguous views with the same layout can be copied directly between memory spaces, without a host mirror
+                bool sameLayout = sourceView.span_is_contiguous() && destinationView.span_is_contiguous();
+                for (int i = 0; i < rankS && sameLayout; ++i){
+                    sameLayout = source.getSize(i) == destination.getSize(i) && source.getStride(i) == destination.getStride(i);
+                }
+                if (sameLayout){
+                    Kokkos::deep_copy(destinationView, sourceView);
+                } else {
+                    //Only contiguous views cross memory spaces, and strides only change within a memory space. A mirror of a host view is the view itself
+                    auto contiguousSrc = contiguousLike<T_data, rankS>(sourceView);
+                    Kokkos::deep_copy(contiguousSrc, sourceView);
+                    auto hostSrc = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), contiguousSrc);
+                    auto contiguousDst = contiguousLike<T_data, rankD>(destinationView);
+                    auto hostDst = Kokkos::create_mirror_view(Kokkos::HostSpace(), contiguousDst);
+                    Kokkos::deep_copy(hostDst, hostSrc);
+                    Kokkos::deep_copy(contiguousDst, hostDst);
+                    Kokkos::deep_copy(destinationView, contiguousDst);
+                }
             }
         }
 
@@ -381,13 +448,14 @@ namespace portableWrapper{
          * Function to print Kokkos information
          * This function prints the Kokkos execution space and concurrency information.
          */
-        UNREPEATED void printInfo(){
-            SAMS::cout << "Kokkos" << std::endl;
-            SAMS::cout << "version: " << KOKKOS_VERSION_MAJOR << "." << KOKKOS_VERSION_MINOR << "." << KOKKOS_VERSION_PATCH << std::endl;
+        template<typename T_stream>
+        UNREPEATED void printInfo(T_stream &out){
+            out << "Kokkos" << std::endl;
+            out << "version: " << KOKKOS_VERSION_MAJOR << "." << KOKKOS_VERSION_MINOR << "." << KOKKOS_VERSION_PATCH << std::endl;
             // Get the Kokkos execution space
             auto exec_space = KOKKOS_EXECUTION_SPACE();
-            SAMS::cout << "Kokkos execution space: " << exec_space.name() << std::endl;
-            SAMS::cout << "Kokkos concurrency: " << exec_space.concurrency() << std::endl;
+            out << "Kokkos execution space: " << exec_space.name() << std::endl;
+            out << "Kokkos concurrency: " << exec_space.concurrency() << std::endl;
         }
 
 

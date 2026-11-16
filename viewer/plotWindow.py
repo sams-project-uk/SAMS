@@ -1,14 +1,18 @@
-#Window showing a visualisation of one variable from a SAMS HDF5 output file
+#Window showing a visualisation of one variable from a SAMS output file
 import tkinter as tk
 
 import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-import hdf5File
 import plot1D
 import plot2D
-import plot3D
+#The 3D view needs pyvista. Without it the 3D view is not available
+try:
+    import plot3D
+    has3D = True
+except ImportError:
+    has3D = False
 
 #Axes with this many cells or fewer are ignorable, and the variable is plotted without them
 maxIgnorableCells = 3
@@ -34,16 +38,29 @@ def linePositions(coords, cells):
     return positions
 
 
+def timeText(time):
+    #The time of a dump as text, which is N/A for a dump that does not have its time
+    return "time = " + (format(time, "g") if time is not None else "N/A")
+
+
 def plotValue(figure, varName, data):
     #A variable with no axes left to plot is shown as its value
     figure.clear()
     figure.text(0.5, 0.5, varName + " = " + str(data), ha="center", va="center")
 
 
-def openPlotWindow(root, h5file, varName, viewDims):
-    #Open a window showing a visualisation of a variable
-    data = hdf5File.readVariable(h5file, varName)
-    axes = hdf5File.readAxes(h5file, varName, data.shape)
+def openPlotWindow(root, fileFormat, dump, varName, step, viewDims, clipGhosts):
+    #Open a window showing a visualisation of a variable at a step. fileFormat is the module that reads the format of the open file dump
+    #The window always shows that step, and gives its time in its title
+    data = fileFormat.readVariable(dump, varName, step)
+    axes = fileFormat.readAxes(dump, varName, data.shape, step)
+    title = varName + " (" + timeText(fileFormat.readTime(dump, step)) + ")"
+
+    #Leave out the ghost cells if they are clipped. The coordinates of each axis are clipped with the data
+    if clipGhosts:
+        slices = fileFormat.readPlottedSlices(dump, varName, data.shape, step)
+        data = data[slices]
+        axes = [(name, coords[dimSlice] if coords is not None else None) for (name, coords), dimSlice in zip(axes, slices)]
 
     #Remove the ignorable axes by taking the middle cell along each of them
     keptAxes = []
@@ -63,11 +80,11 @@ def openPlotWindow(root, h5file, varName, viewDims):
 
     #viewDims is the number of axes of the view that was chosen. A view with fewer axes than the variable shows a slice or a line through it
     if data.ndim == 3 and viewDims == 3:
-        plot3D.open3DWindow(varName, data, keptAxes)
+        plot3D.open3DWindow(title, data, keptAxes)
         return
 
     window = tk.Toplevel(root)
-    window.title(varName)
+    window.title(title)
     figure = Figure(figsize=(7, 6))
     canvas = FigureCanvasTkAgg(figure, master=window)
     toolbar = NavigationToolbar2Tk(canvas, window, pack_toolbar=False)

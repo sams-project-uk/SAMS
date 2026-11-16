@@ -193,6 +193,23 @@ namespace{
               std::forward<F>(f), t, std::make_index_sequence<N>{});
         }
 
+      /**
+       * Host only version of apply, for functions that can only run on the host
+       */
+      template <typename F, typename Tuple, std::size_t... I>
+        inline decltype(auto) applyHost_impl(F &&f, Tuple &&t, std::index_sequence<I...>)
+        {
+          return f(get<I>(t)...);
+        }
+
+      template <typename F, typename Tuple>
+        inline decltype(auto) applyHost(F &&f, Tuple &&t)
+        {
+          constexpr std::size_t N = tuple_size<std::remove_reference_t<Tuple>>::value;
+          return applyHost_impl(
+              std::forward<F>(f), t, std::make_index_sequence<N>{});
+        }
+
         /**
          * Forward declaration of tuple_cat_impl.
          */

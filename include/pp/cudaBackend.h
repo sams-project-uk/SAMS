@@ -246,7 +246,7 @@ namespace portableWrapper
             template <int level, bool sendAll, int rank, typename T_func, typename T_tuple, typename T_cRange, typename... T_others>
             DEVICEPREFIX INLINE void forEachCUDACore(const T_func &func, T_tuple tuple, N_ary_tuple_type_t<SIGNED_INDEX_TYPE, rank> chunkTuple, T_cRange cRange, T_others... others)
             {
-                constexpr int rlevel = (rank-1) - level - portableWrapper::max(0, rank-3);
+                constexpr int rlevel = (rank-1) - level;
                 constexpr UNSIGNED_INDEX_TYPE tupleOffset = sendAll ? 1 : 0;
                 if constexpr(sendAll && level == 0) GET<0>(tuple).active =true;
                 SIGNED_INDEX_TYPE lower_bound, upper_bound;
@@ -277,25 +277,24 @@ namespace portableWrapper
                         SIGNED_INDEX_TYPE thread_local_index = [lower_bound, ichunk, upper_bound, &chunkOffset]()
                         {
                             SIGNED_INDEX_TYPE offset;
-                            if constexpr (level == rank-portableWrapper::max(3,rank)+0)
+                            if constexpr (level == rank-3+0)
                             {
                                 offset = blockIdx.z * blockDim.z + threadIdx.z + lower_bound + chunkOffset;
                                 chunkOffset+= blockDim.z * gridDim.z; // Increment chunkOffset for the next chunk
                             }
-                            else if constexpr (level == rank-portableWrapper::max(3,rank)+1)
+                            else if constexpr (level == rank-3+1)
                             {
                                 offset = blockIdx.y * blockDim.y + threadIdx.y + lower_bound + chunkOffset;
                                 chunkOffset+= blockDim.y * gridDim.y; // Increment chunkOffset for the next chunk
                             }
-                            else if constexpr (level == rank-portableWrapper::max(3,rank)+2)
+                            else if constexpr (level == rank-3+2)
                             {
                                 offset = blockIdx.x * blockDim.x + threadIdx.x + lower_bound + chunkOffset;
                                 chunkOffset+= blockDim.x * gridDim.x; // Increment chunkOffset for the next chunk
                             }
                             return offset;
                         }();
-                        constexpr int loopedIndices = portableWrapper::max(0, rank-3);
-                        GET<level+loopedIndices+tupleOffset>(tuple) = thread_local_index;
+                        GET<level+tupleOffset>(tuple) = thread_local_index;
                         if (thread_local_index <= upper_bound || sendAll){
                             if constexpr(sendAll) GET<0>(tuple).active &= (thread_local_index <= upper_bound); 
 
@@ -632,15 +631,16 @@ namespace portableWrapper
         /**
          * Function to print CUDA device information
          */
-        UNREPEATED void printInfo(){
-            SAMS::cout << "CUDA" << std::endl;
+        template<typename T_stream>
+        UNREPEATED void printInfo(T_stream &out){
+            out << "CUDA" << std::endl;
             int device;
             CUDA_ERROR_CHECK(cudaGetDevice(&device));
             cudaDeviceProp prop;
             CUDA_ERROR_CHECK(cudaGetDeviceProperties(&prop, device));
-            SAMS::cout << "CUDA device: " << prop.name << std::endl;
-            SAMS::cout << "CUDA device compute capability: " << prop.major << "." << prop.minor << std::endl;
-            SAMS::cout << "CUDA device total memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
+            out << "CUDA device: " << prop.name << std::endl;
+            out << "CUDA device compute capability: " << prop.major << "." << prop.minor << std::endl;
+            out << "CUDA device total memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
         }
 
         UNREPEATED void initialize(int &argc, char *argv[])

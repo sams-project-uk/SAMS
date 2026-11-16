@@ -22,9 +22,9 @@ namespace SAMS {
 
     //Perhaps move to harnessDef.h later?
     inline const int majorVersion = 0;
-    inline const int minorVersion = 0;
-    inline const int patchVersion = 3;
-    inline const char versionString[] = "";
+    inline const int minorVersion = 1;
+    inline const int patchVersion = 0;
+    inline const char versionString[] = "Beta";
     inline const int logoWidth = 52;
 
     #include <unistd.h>
@@ -83,7 +83,7 @@ namespace SAMS {
         SAMS::cout << std::string(logoWidth + 1, '=') << std::endl;
         SAMS::cout << "Run information:" << std::endl;
         SAMS::cout << std::string(logoWidth + 1, '=') << std::endl;
-        portableWrapper::printParallelizationInfo();
+        portableWrapper::printParallelizationInfo(SAMS::cout);
         SAMS::cout << std::string(logoWidth + 1, '=') << std::endl;
         SAMS::debug1 <<"Debug level 1 output enabled\n";
         SAMS::debug2 <<"Debug level 2 output enabled\n";

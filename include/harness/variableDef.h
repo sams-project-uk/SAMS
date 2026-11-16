@@ -50,14 +50,21 @@ namespace SAMS {
         std::array<dimension, MAX_RANK> dimensions;
         std::array<MPIAxis, MAX_RANK> mpiAxes;
         std::array<bool, MAX_RANK*2> isEdge;
-        MPI_Datatype mpiType;
-        MPI_Datatype mpiSend[2*MAX_RANK]; //Array of MPI_Datatypes for sending in each dimension (lower and upper)
-        MPI_Datatype mpiRecv[2*MAX_RANK]; //Array of MPI_Datatypes for receiving in each dimension (lower and upper)
-        MPI_Datatype mpiSendPacked[2*MAX_RANK]; //Array of contiguous MPI_Datatypes for sending packed faces of accelerated variables
-        MPI_Datatype mpiRecvPacked[2*MAX_RANK]; //Array of contiguous MPI_Datatypes for receiving packed faces of accelerated variables
+        SAMSMPI::datatype mpiType;
+        SAMSMPI::datatype mpiSend[2*MAX_RANK]; //Array of MPI_Datatypes for sending in each dimension (lower and upper)
+        SAMSMPI::datatype mpiRecv[2*MAX_RANK]; //Array of MPI_Datatypes for receiving in each dimension (lower and upper)
+        SAMSMPI::datatype mpiSendPacked[2*MAX_RANK]; //Array of contiguous MPI_Datatypes for sending packed faces of accelerated variables
+        SAMSMPI::datatype mpiRecvPacked[2*MAX_RANK]; //Array of contiguous MPI_Datatypes for receiving packed faces of accelerated variables
         MPIManager<MPI_DECOMPOSITION_RANK>::subarrayInfo sendInfo[2*MAX_RANK]; //The faces that are sent, for packing accelerated variables
         MPIManager<MPI_DECOMPOSITION_RANK>::subarrayInfo recvInfo[2*MAX_RANK]; //The faces that are received, for unpacking accelerated variables
-        std::array<std::array<std::vector<std::shared_ptr<boundaryConditions>>, 2>, MAX_RANK> boundaryConditionList;
+        /**
+         * A boundary condition on an edge, and whether it is applied there
+         */
+        struct boundaryConditionEntry{
+            std::shared_ptr<boundaryConditions> bc;
+            bool active = true;
+        };
+        std::array<std::array<std::vector<boundaryConditionEntry>, 2>, MAX_RANK> boundaryConditionList;
 
         /**
          * Pointer to the data. This is a void pointer because the type is not known at compile time.
@@ -95,10 +102,10 @@ namespace SAMS {
          */
         void initMPITypeArrays(){
             for(int i=0; i<2*MAX_RANK; i++){
-                mpiSend[i] = MPI_DATATYPE_NULL;
-                mpiRecv[i] = MPI_DATATYPE_NULL;
-                mpiSendPacked[i] = MPI_DATATYPE_NULL;
-                mpiRecvPacked[i] = MPI_DATATYPE_NULL;
+                mpiSend[i] = SAMSMPI::datatypeNull;
+                mpiRecv[i] = SAMSMPI::datatypeNull;
+                mpiSendPacked[i] = SAMSMPI::datatypeNull;
+                mpiRecvPacked[i] = SAMSMPI::datatypeNull;
             }
         }
 
@@ -107,6 +114,19 @@ namespace SAMS {
          */
         std::array<dimension, MAX_RANK>& getDimensions() {
             return dimensions;
+        }
+
+        /**
+         * Set whether a boundary condition is applied on an edge of a dimension
+         * @param dim The dimension (0 to rank-1)
+         * @param edge The edge (SAMS::domain::edges)
+         * @param bc The boundary condition, as returned when it was added
+         * @param active True to apply the boundary condition, false not to
+         */
+        void setBoundaryConditionActive(int dim, SAMS::domain::edges edge, const std::shared_ptr<boundaryConditions> &bc, bool active){
+            for(auto &entry : boundaryConditionList[dim][static_cast<int>(edge)]){
+                if(entry.bc == bc) entry.active = active;
+            }
         }
 
     public:
@@ -331,7 +351,7 @@ namespace SAMS {
             return varType;
         }
 
-        MPI_Datatype getMPIType() const {
+        SAMSMPI::datatype getMPIType() const {
             return mpiType;
         }
 
@@ -410,7 +430,7 @@ namespace SAMS {
             if(dim<0 || dim>=rank){
                 throw std::runtime_error("Error: variableDef addBoundaryCondition dimension out of range\n");
             }
-            boundaryConditionList[dim][static_cast<int>(edge)].push_back(bc);
+            boundaryConditionList[dim][static_cast<int>(edge)].push_back({bc, true});
             return bc;
         }
 
@@ -538,6 +558,66 @@ namespace SAMS {
         }
 
         /**
+         * Apply a boundary condition on an edge of a dimension
+         * @param dim The dimension (0 to rank-1)
+         * @param edge The edge (SAMS::domain::edges)
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void activateBoundaryCondition(int dim, SAMS::domain::edges edge, const std::shared_ptr<boundaryConditions> &bc){
+            setBoundaryConditionActive(dim, edge, bc, true);
+        }
+
+        /**
+         * Apply a boundary condition on both edges of a dimension
+         * @param dim The dimension (0 to rank-1)
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void activateBoundaryCondition(int dim, const std::shared_ptr<boundaryConditions> &bc){
+            activateBoundaryCondition(dim, SAMS::domain::edges::lower, bc);
+            activateBoundaryCondition(dim, SAMS::domain::edges::upper, bc);
+        }
+
+        /**
+         * Apply a boundary condition on both edges of all dimensions
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void activateBoundaryCondition(const std::shared_ptr<boundaryConditions> &bc){
+            for(int dim=0; dim<rank; dim++){
+                activateBoundaryCondition(dim, bc);
+            }
+        }
+
+        /**
+         * Stop applying a boundary condition on an edge of a dimension
+         * @param dim The dimension (0 to rank-1)
+         * @param edge The edge (SAMS::domain::edges)
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void deactivateBoundaryCondition(int dim, SAMS::domain::edges edge, const std::shared_ptr<boundaryConditions> &bc){
+            setBoundaryConditionActive(dim, edge, bc, false);
+        }
+
+        /**
+         * Stop applying a boundary condition on both edges of a dimension
+         * @param dim The dimension (0 to rank-1)
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void deactivateBoundaryCondition(int dim, const std::shared_ptr<boundaryConditions> &bc){
+            deactivateBoundaryCondition(dim, SAMS::domain::edges::lower, bc);
+            deactivateBoundaryCondition(dim, SAMS::domain::edges::upper, bc);
+        }
+
+        /**
+         * Stop applying a boundary condition on both edges of all dimensions
+         * @param bc The boundary condition, as returned when it was added
+         */
+        void deactivateBoundaryCondition(const std::shared_ptr<boundaryConditions> &bc){
+            for(int dim=0; dim<rank; dim++){
+                deactivateBoundaryCondition(dim, bc);
+            }
+        }
+
+        /**
          * Call all boundary conditions on an edge and dimension
          * @param dim The dimension to call the boundary conditions on (0 to rank-1)
          * @param edge The edge to call the boundary conditions on (SAMS::domain::edges)
@@ -550,8 +630,8 @@ namespace SAMS {
                 //Not on a real boundary, so nothing to do
                 return;
             }
-            for(auto &bc : boundaryConditionList[dim][static_cast<int>(edge)]){
-                bc->apply(dim, edge);
+            for(auto &entry : boundaryConditionList[dim][static_cast<int>(edge)]){
+                if(entry.active) entry.bc->apply(dim, edge);
             }
         }
 

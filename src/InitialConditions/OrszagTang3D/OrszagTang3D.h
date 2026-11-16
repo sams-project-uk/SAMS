@@ -28,6 +28,9 @@ namespace examples
 
         inline static constexpr auto nameType = SAMS::makeName("OrszagTang3D") + T_EOS::name;
 
+        //Amplitude of the velocity perturbation that varies in z
+        SAMS::T_dataType epsilon = 0.2;
+
     public:
         /**
          * Name of the simulation. Must be unique across all simulations in the executable.
@@ -35,9 +38,20 @@ namespace examples
         constexpr static std::string_view name = nameType;
 
         /**
+         * One sentence description of the package
+         */
+        constexpr static std::string_view description = "Three dimensional Orszag-Tang vortex, with a velocity perturbation that varies in z";
+
+        /**
          * Initial conditions should not be timed
          */
         constexpr static bool timeSimulation = false;
+
+        /**
+         * Set the deck keys that the deck does not set
+         * @param kvs The key value store
+         */
+        void defaultDeck(SAMS::KVS &kvs);
 
         /**
          * Set up the LARE style simulation control variables
@@ -45,14 +59,14 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void controlVariables(typename LARE::LARE3D<T_EOS>::simulationData &data);
+        void controlVariables(typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::KVS &kvs);
 
         /**
          * Set up the simulation domain
          * @param harness SAMS harness
-         * @param data LARE3D simulation data
+         * @param kvs The key value store
          */
-        void setDomain(SAMS::harness &harness, typename LARE::LARE3D<T_EOS>::simulationData &data);
+        void setDomain(SAMS::harness &harness, SAMS::KVS &kvs);
 
         /**
          * Set boundary conditions for the simulation
@@ -66,26 +80,6 @@ namespace examples
          * @param data LARE3D simulation data
          */
         void initialConditions(SAMS::harness &harnessRef, typename LARE::LARE3D<T_EOS>::simulationData &data);
-
-       /**
-         * Check whether to terminate the simulation
-         * @param terminate Boolean flag to set to true to terminate the simulation
-         * @param data LARE3D simulation data
-         * @param tData SAMS time state data
-         * This function checks whether the simulation should terminate based on LARE3D data.
-         * It sets the terminate flag to true if the simulation should end.
-         */
-        void queryTerminate(bool &terminate, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
-
-        /**
-         * Check whether to output data to disk
-         * @param shouldOutput Boolean flag to set to true to output data
-         * @param data LARE3D simulation data
-         * @param tData SAMS time state data
-         * This function checks whether data should be output to disk based on LARE3D data.
-         * It returns true if data should be output.
-         */
-        void queryOutput(bool &shouldOutput, typename LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
     };
 
     #define EOS_DEF(value) extern template class OrszagTang3D<value>;

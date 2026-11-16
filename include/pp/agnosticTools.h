@@ -35,9 +35,9 @@ namespace portableWrapper
         Host version
         */
         template <typename T_func, typename T_tuple>
-        HOSTINLINE DEVICEPREFIX auto applyToDataHost(const T_func &func, T_tuple &tuple)
+        HOSTINLINE auto applyToDataHost(const T_func &func, T_tuple &tuple)
         {
-            return APPLY(func, tuple);
+            return APPLYHOST(func, tuple);
         }
 
 }

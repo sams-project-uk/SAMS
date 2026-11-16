@@ -34,7 +34,6 @@ namespace examples
         void setInflowXbcs(SAMS::variableDef &varDef, SAMS::T_dataType clampValue);
         void setZeroGradientXbcs(SAMS::variableDef &varDef);
         void setMirrorYbcs(SAMS::variableDef &varDef);
-        void setZeroGradientYbcs(SAMS::variableDef &varDef);
         void setScalarBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue);
         void setScalarBcs(std::string varName, SAMS::harness &harness);
         void setYParallelVectorBcs(std::string varName, SAMS::harness &harness, SAMS::T_dataType clampValue);
@@ -49,11 +48,17 @@ namespace examples
         constexpr static std::string_view name = nameType;
 
         /**
-         * Initial conditions should not be timed
+         * Emery is not just an initial condition, so time it
          */
-        constexpr static bool timeSimulation = false;
+        constexpr static bool timeSimulation = true;
 
         using dataPack = emeryParams;
+
+        /**
+         * Set the deck keys that the deck does not set
+         * @param kvs The key value store
+         */
+        void defaultDeck(SAMS::KVS &kvs);
 
         /**
          * Set up the LARE style simulation control variables
@@ -61,14 +66,14 @@ namespace examples
          * when we have multiple core solvers.
          * @param data LARE3D simulation data
          */
-        void controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
+        void controlVariables(LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams, SAMS::KVS &kvs);
 
         /**
          * Set up the simulation domain
          * @param harness SAMS harness
-         * @param data LARE3D simulation data
+         * @param kvs The key value store
          */
-        void setDomain(SAMS::harness &harness, LARE::LARE3D<T_EOS>::simulationData &data);
+        void setDomain(SAMS::harness &harness, SAMS::KVS &kvs);
 
         /**
          * Set boundary conditions for the simulation
@@ -82,24 +87,6 @@ namespace examples
          * @param data LARE3D simulation data
          */
         void initialConditions(SAMS::harness &harnessRef, LARE::LARE3D<T_EOS>::simulationData &data, emeryParams &problemParams);
-
-       /**
-         * Check whether to terminate the simulation
-         * @param terminate Boolean flag to set to true to terminate the simulation
-         * @param data LARE3D simulation data
-         * This function checks whether the simulation should terminate based on LARE3D data.
-         * It sets the terminate flag to true if the simulation should end.
-         */
-        void queryTerminate(bool &terminate, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
-
-        /**
-         * Check whether to output data to disk
-         * @param shouldOutput Boolean flag to set to true to output data
-         * @param data LARE3D simulation data
-         * This function checks whether data should be output to disk based on LARE3D data.
-         * It returns true if data should be output.
-         */
-        void queryOutput(bool &shouldOutput, LARE::LARE3D<T_EOS>::simulationData &data, SAMS::timeState &tData);
 
         /**
          * Execute the first half of the timestep for the Emery Wind Tunnel problem

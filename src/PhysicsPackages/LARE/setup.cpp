@@ -128,6 +128,18 @@ namespace LARE
         data.ny_global = axRegistry.getDimension("Y").getGlobalDomainCount(SAMS::staggerType::CENTRED);
         data.nz_global = axRegistry.getDimension("Z").getGlobalDomainCount(SAMS::staggerType::CENTRED);
 
+        // Domain limits are the first and last cell edges
+        hostLineArray xEdges, yEdges, zEdges;
+        axRegistry.fillPPAxis("X", xEdges, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPAxis("Y", yEdges, SAMS::staggerType::HALF_CELL);
+        axRegistry.fillPPAxis("Z", zEdges, SAMS::staggerType::HALF_CELL);
+        data.x_min = xEdges(0);
+        data.x_max = xEdges(data.nx_global);
+        data.y_min = yEdges(0);
+        data.y_max = yEdges(data.ny_global);
+        data.z_min = zEdges(0);
+        data.z_max = zEdges(data.nz_global);
+
         using Range = pw::Range;
         // Grab the final variable sizes from the registry and wrap the arrays
         varRegistry.fillPPArray("energy_electron", data.energy_electron);
@@ -262,15 +274,9 @@ namespace LARE
     template<typename T_EOS>
     void LARE3D<T_EOS>::allocate_remap(SAMS::harness &harness, simulationData &data, remapData & remap_data)
     {
-        T_sizeType nx, ny, nz;
         using Range = pw::Range;
 
-        auto &axRegistry = harness.axisRegistry;
         auto &remapManager = harness.memoryRegistry.getArrayManager();
-        // Centred since LARE thinks in terms of cell centres for nx, ny, nz
-        nx = axRegistry.getLocalDomainElements("X", SAMS::staggerType::CENTRED);
-        ny = axRegistry.getLocalDomainElements("Y", SAMS::staggerType::CENTRED);
-        nz = axRegistry.getLocalDomainElements("Z", SAMS::staggerType::CENTRED);
 
         //Could use registry for all these also
         remapManager.allocate(remap_data.rho1, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
@@ -293,8 +299,8 @@ namespace LARE
 
         pw::portableArrayManager localManager;
 
-        auto hyv = localManager.create<double>(pw::Range(-2, data.nx + 2));
-        auto hzv = localManager.create<double>(pw::Range(-2, data.nx + 2), pw::Range(-2, data.ny + 2));
+        auto hyv = localManager.create<SAMS::T_dataType>(pw::Range(-2, data.nx + 2));
+        auto hzv = localManager.create<SAMS::T_dataType>(pw::Range(-2, data.nx + 2), pw::Range(-2, data.ny + 2));
 
         data.length_x = data.x_max - data.x_min;
         data.length_y = data.y_max - data.y_min;

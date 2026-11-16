@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-#Viewer for SAMS HDF5 output files
+#Viewer for SAMS output files in the HDF5, ADIOS2 and simple formats
 #Shows a list of the variables in a file. Clicking on a variable opens a window showing it
-#Usage: ./viewer.py [file.h5]
+#Usage: ./viewer.py {file.h5, file.bp or directory}
 import sys
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
 
-import hdf5File
 import plotWindow
 
+if len(sys.argv) != 2:
+    print("Usage: ./viewer.py {file.h5, file.bp or directory}")
+    sys.exit(1)
+path = sys.argv[1]
 
 root = tk.Tk()
 root.withdraw()
@@ -18,7 +21,7 @@ root.withdraw()
 splash = tk.Toplevel(root)
 splash.withdraw()
 splash.title("SAMS viewer")
-tk.Label(splash, text="Starting SAMS viewer", padx=20, pady=20).pack()
+tk.Label(splash, text="Loading " + sys.argv[1] if len(sys.argv) > 1 else "Starting SAMS viewer", padx=20, pady=20).pack()
 #Centre the splash on the screen
 splash.update_idletasks()
 splashX = (splash.winfo_screenwidth() - splash.winfo_reqwidth()) // 2
@@ -37,18 +40,22 @@ warmCanvas.wait_visibility()
 splash.update()
 splash.withdraw()
 
-if len(sys.argv) > 1:
-    path = sys.argv[1]
+#The format is chosen from the path. Only the module of that format is imported, so only its library is needed
+if path.endswith(".h5"):
+    import hdf5File as fileFormat
+    valid = fileFormat.isHDF5File(path)
+elif path.rstrip("/").endswith(".bp"):
+    import adios2File as fileFormat
+    valid = fileFormat.isADIOS2File(path)
 else:
-    path = filedialog.askopenfilename(title="Open SAMS HDF5 file", filetypes=[("HDF5 files", "*.h5")])
-    if not path:
-        sys.exit()
-if not hdf5File.isHDF5File(path):
-    messagebox.showerror("Cannot open file", path + " is not an HDF5 file")
+    import simpleFile as fileFormat
+    valid = fileFormat.isSimpleFile(path)
+if not valid:
+    messagebox.showerror("Cannot open file", path + " is not a SAMS output file")
     sys.exit(1)
-h5file = hdf5File.openFile(path)
-variables = hdf5File.listVariables(h5file)
-shapes = hdf5File.readShapes(h5file, variables)
+dump = fileFormat.openFile(path)
+variables = fileFormat.listVariables(dump)
+shapes = fileFormat.readShapes(dump, variables)
 
 root.title(path)
 listbox = tk.Listbox(root, width=40, height=max(10, min(len(variables), 40)))
@@ -64,18 +71,19 @@ def openVariable(viewDims):
         return
     chosen = selection[0]
     try:
-        plotWindow.openPlotWindow(root, h5file, variables[chosen], viewDims)
+        plotWindow.openPlotWindow(root, fileFormat, dump, variables[chosen], step.get(), viewDims, clipGhosts.get())
     except Exception as error:
         messagebox.showerror("Cannot show " + variables[chosen], str(error))
 
 
 def updateButtons(event):
     #A view can have no more axes than the variable has to plot. A variable with no axes to plot is shown by the 1D view
+    #The 3D view is only available when pyvista is
     selection = listbox.curselection()
     plottedAxes = plotWindow.countPlottedAxes(shapes[variables[selection[0]]]) if selection else -1
     visualise1D.configure(state=tk.NORMAL if plottedAxes >= 0 else tk.DISABLED)
     visualise2D.configure(state=tk.NORMAL if plottedAxes >= 2 else tk.DISABLED)
-    visualise3D.configure(state=tk.NORMAL if plottedAxes == 3 else tk.DISABLED)
+    visualise3D.configure(state=tk.NORMAL if plottedAxes == 3 and plotWindow.has3D else tk.DISABLED)
 
 
 visualise3D = tk.Button(root, text="Visualise (3D)", command=lambda: openVariable(3), state=tk.DISABLED)
@@ -84,7 +92,25 @@ visualise2D = tk.Button(root, text="Visualise (2D)", command=lambda: openVariabl
 visualise2D.pack(side=tk.BOTTOM, fill=tk.X)
 visualise1D = tk.Button(root, text="Visualise (1D)", command=lambda: openVariable(1), state=tk.DISABLED)
 visualise1D.pack(side=tk.BOTTOM, fill=tk.X)
+#Clip each variable to the area that its mesh plots, leaving out any ghost cells
+clipGhosts = tk.BooleanVar(value=False)
+tk.Checkbutton(root, text="Clip ghost cells", variable=clipGhosts).pack(side=tk.BOTTOM, anchor=tk.W)
+#The step that new windows show. A window keeps the step that it was opened with. The choice is only shown for a file with more than one step
+stepCount = fileFormat.stepCount(dump)
+step = tk.IntVar(value=stepCount - 1)
+if stepCount > 1:
+    stepRow = tk.Frame(root)
+    stepRow.pack(side=tk.BOTTOM, fill=tk.X)
+    tk.Label(stepRow, text="Step").pack(side=tk.LEFT)
+    stepTime = tk.Label(stepRow)
+
+    def showTime():
+        stepTime.configure(text=plotWindow.timeText(fileFormat.readTime(dump, step.get())))
+
+    tk.Spinbox(stepRow, from_=0, to=stepCount - 1, textvariable=step, width=6, command=showTime).pack(side=tk.LEFT)
+    stepTime.pack(side=tk.LEFT)
+    showTime()
 listbox.bind("<<ListboxSelect>>", updateButtons)
 root.deiconify()
 root.mainloop()
-h5file.close()
+dump.close()

@@ -2,19 +2,35 @@
 
 ## Purpose
 
-This document gives a brief overview of how to write a problem package for the parabolic solver. The parabolic solver is designed to solve problems of the form
+This document gives a brief overview of how to write a problem package for the parabolic solver. The parabolic solver solves
 
 $$
-\beta \frac{\partial u}{\partial t} = \mathcal{L} u
+\beta \left( u - u_0 \right) = \mathcal{L} u
 $$
 
-where $u$ is the field being evolved, $\beta$ is the prefactor of the time derivative, and $\mathcal{L}$ is a linear operator whose stencil reaches at most one cell from the centre in each direction, which is up to 27 points. Both $\beta$ and $\mathcal{L}$ can vary in space and time. The solver can cope with any such operator provided that the matrix representing $\mathcal{L}$ is diagonally dominant, with a negative diagonal. The included problems are for diffusion, where
+for $u$, where $u_0$ is the field before the solve, $\beta$ is a positive coefficient, and $\mathcal{L}$ is a linear operator whose stencil reaches at most one cell from the centre in each direction, which is up to 27 points. The problem supplies $\beta$, $\mathcal{L}$ and $u_0$, and both $\beta$ and $\mathcal{L}$ can vary in space and from one solve to the next.
+
+The commonest use is an implicit timestep of
+
+$$
+\beta_t \frac{\partial u}{\partial t} = \mathcal{L} u
+$$
+
+for which $\beta = \beta_t / \Delta t$ and $u_0$ is the field at the start of the step. The same form covers steady problems with a screening term, such as the group equations of SNB nonlocal heat transport,
+
+$$
+\frac{H}{\lambda} - \nabla \cdot \left( \frac{\lambda}{3} \nabla H \right) = S
+$$
+
+for which $\beta = 1 / \lambda$ and $u_0 = \lambda S$.
+
+The solver can cope with any such operator provided that the matrix representing $\mathcal{L}$ is diagonally dominant, with a negative diagonal. The included problems are for diffusion, where
 
 $$
 \mathcal{L} u = \nabla \cdot \left( \mathbf{A} \cdot \nabla u \right)
 $$
 
-and $\mathbf{A}$ is a diffusion tensor. For example, the Braginskii diffusion problem has a tensor that depends on local temperature, density, and magnetic field. Isotropic thermal conduction uses a 7-point stencil, and Braginskii thermal conduction uses a 19-point stencil.
+and $\mathbf{A}$ is a diffusion tensor. For example, the Braginskii diffusion problem has a tensor that depends on local temperature, density, and magnetic field, and uses a 19-point stencil.
 
 ## Levels
 
@@ -32,13 +48,13 @@ The level type is defined by the solver, and its full layout is in the Doxygen d
 
 ## The problem specification
 
-A problem package is a class template, for example `braginskii<T_species, T_eos>` or `isotropic<T_species, T_eos>`, that tells the solver which equation to solve. The solvers, `mg`, `petscMatrix` and `petscNoMatrix` in `SAMS::parabolic`, are templates on the problem class and use the members described here. The problem class must be trivially copyable, because it is copied into kernels.
+A problem package is a class or class template, for example `braginskii<T_eos>`, that tells the solver which equation to solve. The solvers, `mg`, `petscMatrix` and `petscNoMatrix` in `SAMS::parabolic`, are templates on the problem class and use the members described here. The problem class must be trivially copyable, because it is copied into kernels.
 
 ### Mandatory fields
 
 A hook is called with the arguments that its entry lists, followed by any data packs that it names as parameters. In the list below, `{packs}` stands for those packs: it can be zero or more items from the `dataPack` entries of the solver, and they are found by type. A hook that needs none does not name any.
 
-- `name`: a `SAMS::constexprName` that identifies the problem. Each solver appends its own suffix to make the name of its package, so `isotropic_electron` gives `isotropic_electron_mg`.
+- `name`: a `SAMS::constexprName` that identifies the problem. Each solver appends its own suffix to make the name of its package, so `diffusion` gives `diffusion_mg`.
 - `memoryName`: a `SAMS::constexprName` that the arrays and axes of the problem are registered under. It leaves out what is not needed to tell the memory apart, such as the species, so that problems for different species share it.
 - `stencilSize`: a `static constexpr int` giving the number of entries of the stencil, which is at most 27.
 - `dataPack`: the type of the data pack that the problem needs from the runner, or a `SAMS::dataPacks::multiPack` of several. If you need no data pack, use void.
@@ -50,11 +66,14 @@ A hook is called with the arguments that its entry lists, followed by any data p
 - `registerSecondaryVariables(harness, axisLevels, {packs})`: registers the arrays of `levelData` on every level.
 - `getVariables(harness, {packs})`: gets the variables of the problem from the variable registry. It is called at the same time as `getVariables` in the runner.
 - `getSecondaryVariables(harness, levels, {packs})`: gets the arrays of `levelData` for every level.
-- `prepareSolve(levels, {packs})`: called at the start of each solve. It populates the arrays of `levelData` that are needed, on every level.
+- `problemCount()`: the number of subproblems that the solver solves in turn in each timestep. A problem with one equation returns 1.
+- `prepareSolve(levels, problemIndex, ts, {packs})`: called at the start of the solve of each subproblem. It populates the arrays of `levelData` that are needed, on every level. `ts` is the `SAMS::timeState` of the step.
 - `initialConditions(harness, {packs})`: called at the same time as `initialConditions` in the runner. An initial conditions package normally sets the constants of the problem, so this can be empty.
 - `setBoundaryConditions(harness, {packs})`: sets the boundary conditions of the variables of the problem. It is called at the same time as `setBoundaryConditions` in the runner.
-- `beforeSolve(harness, {packs})` and `afterSolve(harness, {packs})`: called by the solver before and after the solve of each timestep, not between iterations.
-- `makeStencil(level)`: returns the operator of a level.
+- `getBoundaryType(kvs, problemIndex, dimension, edge)`: the boundary condition of the evolved field of a subproblem on one edge of the domain, which the solvers apply.
+- `beforeAllSolves(harness, {packs})` and `afterAllSolves(harness, {packs})`: called by the solver once before and once after the solves of all of the subproblems of each timestep.
+- `beforeSolve(harness, problemIndex, {packs})` and `afterSolve(harness, problemIndex, {packs})`: called by the solver before and after the solve of each subproblem, not between iterations.
+- `makeStencil(level, problemIndex)`: returns the operator of a level for a subproblem.
 
 ### `name`
 
@@ -76,7 +95,7 @@ inline static constexpr auto memoryName = SAMS::makeName("diffusion");
 
 ### `stencilSize`
 
-`stencilSize` is a `static constexpr int` giving the number of entries of the stencil, which are the cell and its neighbours. It must not be more than 27, because the stencil reaches at most one cell in each direction. For the 7-point stencil of isotropic conduction:
+`stencilSize` is a `static constexpr int` giving the number of entries of the stencil, which are the cell and its neighbours. It must not be more than 27, because the stencil reaches at most one cell in each direction. For a 7-point stencil:
 
 ```cpp
 static constexpr int stencilSize = 7;
@@ -121,7 +140,7 @@ struct levelData
 `stencil` is the type of the operator object that `makeStencil` returns for one level. It is copied into kernels, so it holds only arrays, and its functions are device functions. It provides two functions that the solvers call, and one optional function, each for the cell $(i, j, k)$:
 
 - `coefficients(i, j, k, a)` fills `a` with the `stencilSize` coefficients of the discretised operator $\mathcal{L}$ in the cell. `a[s]` multiplies `u` in the cell at `stencilCellOffset(s, ...)`, and the entry whose offset is {0, 0, 0} is the cell itself. `parabolic::stencilView<problem>` wraps `a`, sets it to zero and finds an entry from its position, so `view[parabolic::at<1, 0, 0>]` is the coefficient of the cell at $i + 1$.
-- `beta(i, j, k)` returns $\beta$ in the cell.
+- `beta(i, j, k)` returns $\beta$ in the cell. The solvers never use the timestep themselves, so for a timestep the problem builds it in, as $\beta_t / \Delta t$, in `prepareSolve`.
 - `fluxWeights(i, j, k)` is optional, and the solvers do not call it. A problem written in the flux form provides it, so that `coefficients` can be built from it by a helper that guarantees conservation. It returns the weights of the fluxes out of the cell, as described in the flux form section of the advanced example.
 
 ```cpp
@@ -130,8 +149,8 @@ struct stencil
 	volumeArray conductivity;
 	volumeArray betaArray;
 
-	DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const;
-	DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const;
+	DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, SAMS::T_dataType *a) const;
+	DEVICEPREFIX SAMS::T_dataType beta(size_t i, size_t j, size_t k) const;
 };
 ```
 
@@ -204,7 +223,7 @@ Here and in the later examples, `level` is the level type of the solver.
 
 ### `prepareSolve`
 
-`prepareSolve(levels, {packs})` is called at the start of each solve, after `beforeSolve` and after the solver has applied the boundary conditions of the evolved variable. Its purpose is to populate the arrays of `levelData` that are needed, on every level, from the old field. The stencil of each level then computes the coefficients of the discretised operator $\mathcal{L}$ and $\beta$ from those arrays.
+`prepareSolve(levels, problemIndex, ts, {packs})` is called at the start of the solve of each subproblem, after `beforeSolve` and after the solver has applied the boundary conditions of the evolved variable. Its purpose is to populate the arrays of `levelData` that are needed, on every level, from the old field. The stencil of each level then computes the coefficients of the discretised operator $\mathcal{L}$ and $\beta$ from those arrays. `ts` is the `SAMS::timeState` of the step, which the solver passes so that a time dependent problem can set $\beta = \beta_t / \Delta t$ from `ts.dt`.
 
 ### `initialConditions`
 
@@ -212,20 +231,33 @@ Here and in the later examples, `level` is the level type of the solver.
 
 ### `setBoundaryConditions`
 
-`setBoundaryConditions(harness, {packs})` sets the boundary conditions of the variables that the problem registered. It is called at the same time as `setBoundaryConditions` in the runner. The solver applies the boundary conditions of the evolved variable before each solve.
+`setBoundaryConditions(harness, {packs})` sets the boundary conditions of the variables that the problem registered. It is called at the same time as `setBoundaryConditions` in the runner. The solver applies the boundary conditions of the evolved variable before each solve. The conditions on the edges of the domain during the solve come from `getBoundaryType`.
+
+### `getBoundaryType`
+
+`getBoundaryType(kvs, problemIndex, dimension, edge)` returns the boundary condition of the evolved field of a subproblem on one edge of the domain, as a `parabolic::tcBoundaryType`. `dimension` is 0, 1 or 2 and `edge` is `SAMS::domain::edges::lower` or `upper`. The solvers call it in their own `setBoundaryConditions`, and apply the conditions in the way that suits each of them. The `type` is one of:
+
+- `periodic`, `zeroGradient` and `floatingMirror`: these have their normal meaning.
+- `fixedMirror`: a mirror about `value`.
+- `clamp`: the ghost cells are set to `value`.
+- `expression`: the ghost cells are set from the deck expression in `text`, which needs the deck parser.
+- `fixedGhosts`: the ghost cells keep the values that `beforeSolve` and the boundary conditions of the field gave them, and are fixed for the solve.
+
+`parabolic::readBoundaryType(kvs, name, dimension, edge)` reads the condition from the deck, as the thermal conduction problems do. It looks in `/ThermalConduction/boundaries`, which accepts `periodic`, `zero_gradient`, `fixed_energy`, `clamp(v)`, `mirror(v)`, `mirror` and `expression(e)`. If that has no key for the edge, it takes the condition of `name` in `/boundaries`, where `periodic`, `zero_gradient` and `mirror` carry over, and anything else is `fixedGhosts`.
 
 ### `beforeSolve`
 
-`beforeSolve(harness, {packs})` is called by the solver once at the start of each timestep, and not between iterations. It runs before the solver applies the boundary conditions of the evolved variable and before `prepareSolve`. Its purpose is to set the evolved variable $u$ from the variables of the rest of the simulation. For example, the thermal conduction problems evolve the temperature, so it converts the energy to the temperature:
+`beforeSolve(harness, problemIndex, {packs})` is called by the solver once at the start of the solve of each subproblem, and not between iterations. It runs before the solver applies the boundary conditions of the evolved variable and before `prepareSolve`. Its purpose is to set the evolved variable $u$ from the variables of the rest of the simulation. For example, the thermal conduction problems evolve the temperature, so it converts the energy to the temperature:
 
 ```cpp
-void beforeSolve(SAMS::harness &harness, const lareData &lare)
+void beforeSolve(SAMS::harness &harness, SAMS::T_sizeType problemIndex, const parameters &params, const lareData &lare)
 {
 	auto &varRegistry = harness.variableRegistry;
-	// The energy needs its boundary conditions before it is converted
-	varRegistry.applyBoundaryConditions(species::fieldName());
+	// The energy of the species of the subproblem needs its boundary conditions before it is converted
+	const char *energyName = params.species[problemIndex].energyName;
+	varRegistry.applyBoundaryConditions(energyName);
 	volumeArray energy, temperature;
-	varRegistry.fillPPArray(species::fieldName(), energy);
+	varRegistry.fillPPArray(energyName, energy);
 	varRegistry.fillPPArray(fieldName(), temperature);
 	const SAMS::variableDef &def = varRegistry.getVariable(fieldName());
 	const auto &eos = lare.eos;
@@ -241,15 +273,15 @@ void beforeSolve(SAMS::harness &harness, const lareData &lare)
 
 ### `afterSolve`
 
-`afterSolve(harness, {packs})` is called by the solver once after the solve of each timestep, and not between iterations. Its purpose is to set the variables of the rest of the simulation from the evolved variable $u$, which is the opposite of `beforeSolve`. For example, the thermal conduction problems convert the temperature back to the energy:
+`afterSolve(harness, problemIndex, {packs})` is called by the solver once after the solve of each subproblem, and not between iterations. Its purpose is to set the variables of the rest of the simulation from the evolved variable $u$, which is the opposite of `beforeSolve`. For example, the thermal conduction problems convert the temperature back to the energy:
 
 ```cpp
-void afterSolve(SAMS::harness &harness, const lareData &lare)
+void afterSolve(SAMS::harness &harness, SAMS::T_sizeType problemIndex, const parameters &params, const lareData &lare)
 {
 	auto &varRegistry = harness.variableRegistry;
-	// The energy is set from the temperature that was evolved
+	// The energy of the species of the subproblem is set from the temperature that was evolved
 	volumeArray energy, temperature;
-	varRegistry.fillPPArray(species::fieldName(), energy);
+	varRegistry.fillPPArray(params.species[problemIndex].energyName, energy);
 	varRegistry.fillPPArray(fieldName(), temperature);
 	const SAMS::variableDef &def = varRegistry.getVariable(fieldName());
 	const auto &eos = lare.eos;
@@ -263,12 +295,33 @@ void afterSolve(SAMS::harness &harness, const lareData &lare)
 }
 ```
 
-### `makeStencil`
+### Subproblems: `problemCount`, `beforeAllSolves` and `afterAllSolves`
 
-`makeStencil(level)` returns the `stencil` of a level. The solver calls it when it needs the operator of that level, after `prepareSolve` has populated the arrays of `levelData`. It copies those arrays from the level into the stencil, together with anything else that `coefficients` needs, such as the cell widths of the level. The stencil is copied into kernels, so it holds the arrays and not the level. For example:
+A problem can solve several equations of the same form in each timestep, such as one for each energy group of a multigroup model. `problemCount()` returns how many. The solver solves them in turn, from 0 to `problemCount() - 1`, and passes the index of the one it is solving to `beforeSolve`, `prepareSolve`, `makeStencil` and `afterSolve`, which give that subproblem its field, coefficients and operator. The PETSc solvers keep a separate preconditioner for each subproblem, because their operators can differ greatly.
+
+`beforeAllSolves(harness, {packs})` is called once at the start of each timestep, before the first subproblem, and `afterAllSolves(harness, {packs})` once after the last. They are for work that is shared by the subproblems, such as setting up the groups before the solves and combining their results after them. A problem with one equation returns 1 from `problemCount()`, ignores the index, and leaves both of these empty:
 
 ```cpp
-stencil makeStencil(const level &l) const
+size_t problemCount() const
+{
+	return 1;
+}
+
+void beforeAllSolves(SAMS::harness &harness)
+{
+}
+
+void afterAllSolves(SAMS::harness &harness)
+{
+}
+```
+
+### `makeStencil`
+
+`makeStencil(level, problemIndex)` returns the `stencil` of a level for a subproblem. The solver calls it when it needs the operator of that level, after `prepareSolve` has populated the arrays of `levelData`. It copies those arrays from the level into the stencil, together with anything else that `coefficients` needs, such as the cell widths of the level. The stencil is copied into kernels, so it holds the arrays and not the level. For example:
+
+```cpp
+stencil makeStencil(const level &l, size_t problemIndex) const
 {
 	stencil s;
 	s.conductivity = l.data.conductivity;
@@ -323,8 +376,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -349,7 +402,7 @@ The stencil is the cell and the six cardinal points in each dimension, which are
 
 ### Step 2: the stencil
 
-The stencil can compute the coefficients directly from the cell widths, so no arrays of coefficients are needed in this simple case. `makeStencil` only has the level, so `levelData` holds the constants, and `prepareSolve` copies them from the parameters into every level. `makeStencil` copies the constants and the cell widths of the level into the stencil. `coefficients` is the equation above, and `beta` is constant. There is no `fluxWeights`, because the solvers only call those two, and `fluxWeights` is only for the flux form described in the advanced example:
+The stencil can compute the coefficients directly from the cell widths, so no arrays of coefficients are needed in this simple case. `makeStencil` only has the level, so `levelData` holds the constants, and `prepareSolve` copies them from the parameters into every level. `makeStencil` copies the constants and the cell widths of the level into the stencil. `coefficients` is the equation above, and `beta` is the constant $\beta / \Delta t$, which `prepareSolve` sets from the timestep it is given. There is no `fluxWeights`, because the solvers only call those two, and `fluxWeights` is only for the flux form described in the advanced example:
 
 ```cpp
 struct diffusion
@@ -361,8 +414,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -384,23 +437,23 @@ struct diffusion
 	// The constants are copied to every level, because makeStencil only has the level
 	struct levelData
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 
 	struct stencil
 	{
 		lineArray dx, dy, dz;
-		double kappa;
-		double betaValue;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType betaValue;
 
-		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const
+		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, SAMS::T_dataType *a) const
 		{
 			// The cell volume, and the distances to the centres of the neighbours in each direction
-			const double v = dx(i) * dy(j) * dz(k);
-			const double hxm = 0.5 * (dx(i - 1) + dx(i)), hxp = 0.5 * (dx(i) + dx(i + 1));
-			const double hym = 0.5 * (dy(j - 1) + dy(j)), hyp = 0.5 * (dy(j) + dy(j + 1));
-			const double hzm = 0.5 * (dz(k - 1) + dz(k)), hzp = 0.5 * (dz(k) + dz(k + 1));
+			const SAMS::T_dataType v = dx(i) * dy(j) * dz(k);
+			const SAMS::T_dataType hxm = 0.5 * (dx(i - 1) + dx(i)), hxp = 0.5 * (dx(i) + dx(i + 1));
+			const SAMS::T_dataType hym = 0.5 * (dy(j - 1) + dy(j)), hyp = 0.5 * (dy(j) + dy(j + 1));
+			const SAMS::T_dataType hzm = 0.5 * (dz(k - 1) + dz(k)), hzp = 0.5 * (dz(k) + dz(k + 1));
 			using parabolic::at;
 			// The view finds each coefficient from the position of its cell relative to the cell, and starts them at zero
 			parabolic::stencilView<diffusion> coefficient(a);
@@ -413,13 +466,13 @@ struct diffusion
 			coefficient[at<0, 0, 0>] = -(coefficient[at<-1, 0, 0>] + coefficient[at<1, 0, 0>] + coefficient[at<0, -1, 0>] + coefficient[at<0, 1, 0>] + coefficient[at<0, 0, -1>] + coefficient[at<0, 0, 1>]);
 		}
 
-		DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType beta(size_t i, size_t j, size_t k) const
 		{
 			return betaValue;
 		}
 	};
 
-	stencil makeStencil(const level &l) const
+	stencil makeStencil(const level &l, size_t problemIndex) const
 	{
 		stencil s;
 		s.dx = l.dxc;
@@ -430,12 +483,12 @@ struct diffusion
 		return s;
 	}
 
-	void prepareSolve(std::vector<level> &levels, const parameters &params) const
+	void prepareSolve(std::vector<level> &levels, SAMS::T_sizeType problemIndex, const SAMS::timeState &ts, const parameters &params) const
 	{
 		for (level &l : levels)
 		{
 			l.data.kappa = params.kappa;
-			l.data.beta = params.beta;
+			l.data.beta = params.beta / ts.dt;
 		}
 	}
 };
@@ -455,8 +508,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -478,23 +531,23 @@ struct diffusion
 	// The constants are copied to every level, because makeStencil only has the level
 	struct levelData
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 
 	struct stencil
 	{
 		lineArray dx, dy, dz;
-		double kappa;
-		double betaValue;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType betaValue;
 
-		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const
+		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, SAMS::T_dataType *a) const
 		{
 			// The cell volume, and the distances to the centres of the neighbours in each direction
-			const double v = dx(i) * dy(j) * dz(k);
-			const double hxm = 0.5 * (dx(i - 1) + dx(i)), hxp = 0.5 * (dx(i) + dx(i + 1));
-			const double hym = 0.5 * (dy(j - 1) + dy(j)), hyp = 0.5 * (dy(j) + dy(j + 1));
-			const double hzm = 0.5 * (dz(k - 1) + dz(k)), hzp = 0.5 * (dz(k) + dz(k + 1));
+			const SAMS::T_dataType v = dx(i) * dy(j) * dz(k);
+			const SAMS::T_dataType hxm = 0.5 * (dx(i - 1) + dx(i)), hxp = 0.5 * (dx(i) + dx(i + 1));
+			const SAMS::T_dataType hym = 0.5 * (dy(j - 1) + dy(j)), hyp = 0.5 * (dy(j) + dy(j + 1));
+			const SAMS::T_dataType hzm = 0.5 * (dz(k - 1) + dz(k)), hzp = 0.5 * (dz(k) + dz(k + 1));
 			using parabolic::at;
 			// The view finds each coefficient from the position of its cell relative to the cell, and starts them at zero
 			parabolic::stencilView<diffusion> coefficient(a);
@@ -507,13 +560,13 @@ struct diffusion
 			coefficient[at<0, 0, 0>] = -(coefficient[at<-1, 0, 0>] + coefficient[at<1, 0, 0>] + coefficient[at<0, -1, 0>] + coefficient[at<0, 1, 0>] + coefficient[at<0, 0, -1>] + coefficient[at<0, 0, 1>]);
 		}
 
-		DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType beta(size_t i, size_t j, size_t k) const
 		{
 			return betaValue;
 		}
 	};
 
-	stencil makeStencil(const level &l) const
+	stencil makeStencil(const level &l, size_t problemIndex) const
 	{
 		stencil s;
 		s.dx = l.dxc;
@@ -524,12 +577,12 @@ struct diffusion
 		return s;
 	}
 
-	void prepareSolve(std::vector<level> &levels, const parameters &params) const
+	void prepareSolve(std::vector<level> &levels, SAMS::T_sizeType problemIndex, const SAMS::timeState &ts, const parameters &params) const
 	{
 		for (level &l : levels)
 		{
 			l.data.kappa = params.kappa;
-			l.data.beta = params.beta;
+			l.data.beta = params.beta / ts.dt;
 		}
 	}
 
@@ -555,7 +608,7 @@ struct diffusion
 
 ### Step 4: the remaining hooks
 
-The parameters are set by an initial conditions package, and the problem has no boundary conditions of its own. The field is $u$ itself, so there is nothing to convert before or after the solve. These hooks are still required, and are empty. This is the complete class:
+The parameters are set by an initial conditions package, and the problem has no boundary conditions of its own, so `getBoundaryType` makes every edge `fixedGhosts`. The field is $u$ itself, so there is nothing to convert before or after the solve. The other hooks are still required, and are empty. This is the complete class:
 
 ```cpp
 struct diffusion
@@ -567,8 +620,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -590,23 +643,23 @@ struct diffusion
 	// The constants are copied to every level, because makeStencil only has the level
 	struct levelData
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 
 	struct stencil
 	{
 		lineArray dx, dy, dz;
-		double kappa;
-		double betaValue;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType betaValue;
 
-		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const
+		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, SAMS::T_dataType *a) const
 		{
 			// The cell volume, and the distances to the centres of the neighbours in each direction
-			const double v = dx(i) * dy(j) * dz(k);
-			const double hxm = 0.5 * (dx(i - 1) + dx(i)), hxp = 0.5 * (dx(i) + dx(i + 1));
-			const double hym = 0.5 * (dy(j - 1) + dy(j)), hyp = 0.5 * (dy(j) + dy(j + 1));
-			const double hzm = 0.5 * (dz(k - 1) + dz(k)), hzp = 0.5 * (dz(k) + dz(k + 1));
+			const SAMS::T_dataType v = dx(i) * dy(j) * dz(k);
+			const SAMS::T_dataType hxm = 0.5 * (dx(i - 1) + dx(i)), hxp = 0.5 * (dx(i) + dx(i + 1));
+			const SAMS::T_dataType hym = 0.5 * (dy(j - 1) + dy(j)), hyp = 0.5 * (dy(j) + dy(j + 1));
+			const SAMS::T_dataType hzm = 0.5 * (dz(k - 1) + dz(k)), hzp = 0.5 * (dz(k) + dz(k + 1));
 			using parabolic::at;
 			// The view finds each coefficient from the position of its cell relative to the cell, and starts them at zero
 			parabolic::stencilView<diffusion> coefficient(a);
@@ -619,13 +672,13 @@ struct diffusion
 			coefficient[at<0, 0, 0>] = -(coefficient[at<-1, 0, 0>] + coefficient[at<1, 0, 0>] + coefficient[at<0, -1, 0>] + coefficient[at<0, 1, 0>] + coefficient[at<0, 0, -1>] + coefficient[at<0, 0, 1>]);
 		}
 
-		DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType beta(size_t i, size_t j, size_t k) const
 		{
 			return betaValue;
 		}
 	};
 
-	stencil makeStencil(const level &l) const
+	stencil makeStencil(const level &l, size_t problemIndex) const
 	{
 		stencil s;
 		s.dx = l.dxc;
@@ -636,12 +689,12 @@ struct diffusion
 		return s;
 	}
 
-	void prepareSolve(std::vector<level> &levels, const parameters &params) const
+	void prepareSolve(std::vector<level> &levels, SAMS::T_sizeType problemIndex, const SAMS::timeState &ts, const parameters &params) const
 	{
 		for (level &l : levels)
 		{
 			l.data.kappa = params.kappa;
-			l.data.beta = params.beta;
+			l.data.beta = params.beta / ts.dt;
 		}
 	}
 
@@ -671,11 +724,29 @@ struct diffusion
 	{
 	}
 
-	void beforeSolve(SAMS::harness &harness)
+	parabolic::tcBoundaryType getBoundaryType(SAMS::KVS &kvs, SAMS::T_sizeType problemIndex, int dimension, SAMS::domain::edges edge) const
+	{
+		return {parabolic::boundaryType::fixedGhosts};
+	}
+
+	size_t problemCount() const
+	{
+		return 1;
+	}
+
+	void beforeAllSolves(SAMS::harness &harness)
 	{
 	}
 
-	void afterSolve(SAMS::harness &harness)
+	void afterAllSolves(SAMS::harness &harness)
+	{
+	}
+
+	void beforeSolve(SAMS::harness &harness, size_t problemIndex)
+	{
+	}
+
+	void afterSolve(SAMS::harness &harness, size_t problemIndex)
 	{
 	}
 };
@@ -712,8 +783,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -741,8 +812,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -789,14 +860,14 @@ struct diffusion
 			return w;
 		}
 
-		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const
+		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, SAMS::T_dataType *a) const
 		{
 			// The helper makes the coefficients from the weights of the fluxes through the faces of this cell. It uses the fluxes
 			// through the faces on the low side from the cells before it, so that both cells that share a face use the same flux
 			parabolic::fluxDivergence::coefficientsFromFluxes<diffusion>(*this, i, j, k, a);
 		}
 
-		DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType beta(size_t i, size_t j, size_t k) const
 		{
 			return betaArray(i, j, k);
 		}
@@ -819,8 +890,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -867,14 +938,14 @@ struct diffusion
 			return w;
 		}
 
-		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const
+		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, SAMS::T_dataType *a) const
 		{
 			// The helper makes the coefficients from the weights of the fluxes through the faces of this cell. It uses the fluxes
 			// through the faces on the low side from the cells before it, so that both cells that share a face use the same flux
 			parabolic::fluxDivergence::coefficientsFromFluxes<diffusion>(*this, i, j, k, a);
 		}
 
-		DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType beta(size_t i, size_t j, size_t k) const
 		{
 			return betaArray(i, j, k);
 		}
@@ -912,7 +983,7 @@ struct diffusion
 
 ### Step 4: populating the level data
 
-`prepareSolve` fills the arrays of `levelData` on every level, using the cell widths of that level. The conductance of the edge $i$ is $\kappa \, \Delta y_j \Delta z_k / h_i$, with $h_i = \tfrac{1}{2} (\Delta x_i + \Delta x_{i+1})$, and it is set on the range of the edges in its direction. $\beta$ is a constant, so it is set on every level without restricting it. `makeStencil` copies the arrays of a level into a `stencil`. The kernels capture copies of the arrays and the constants, and not the problem or the parameters:
+`prepareSolve` fills the arrays of `levelData` on every level, using the cell widths of that level. The conductance of the edge $i$ is $\kappa \, \Delta y_j \Delta z_k / h_i$, with $h_i = \tfrac{1}{2} (\Delta x_i + \Delta x_{i+1})$, and it is set on the range of the edges in its direction. $\beta / \Delta t$ is a constant, so it is set on every level without restricting it. `makeStencil` copies the arrays of a level into a `stencil`. The kernels capture copies of the arrays and the constants, and not the problem or the parameters:
 
 ```cpp
 struct diffusion
@@ -925,8 +996,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -973,14 +1044,14 @@ struct diffusion
 			return w;
 		}
 
-		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const
+		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, SAMS::T_dataType *a) const
 		{
 			// The helper makes the coefficients from the weights of the fluxes through the faces of this cell. It uses the fluxes
 			// through the faces on the low side from the cells before it, so that both cells that share a face use the same flux
 			parabolic::fluxDivergence::coefficientsFromFluxes<diffusion>(*this, i, j, k, a);
 		}
 
-		DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType beta(size_t i, size_t j, size_t k) const
 		{
 			return betaArray(i, j, k);
 		}
@@ -1014,9 +1085,9 @@ struct diffusion
 		parabolic::fillArrayLevels(harness, memory, "beta", levels, [](level &l) -> volumeArray & { return l.data.beta; });
 	}
 
-	void prepareSolve(std::vector<level> &levels, const parameters &params) const
+	void prepareSolve(std::vector<level> &levels, SAMS::T_sizeType problemIndex, const SAMS::timeState &ts, const parameters &params) const
 	{
-		const double kappa = params.kappa, betaValue = params.beta;
+		const SAMS::T_dataType kappa = params.kappa, betaValue = params.beta / ts.dt;
 		for (level &l : levels)
 		{
 			const volumeArray cx = l.data.cx, cy = l.data.cy, cz = l.data.cz, beta = l.data.beta;
@@ -1048,7 +1119,7 @@ struct diffusion
 		}
 	}
 
-	stencil makeStencil(const level &l) const
+	stencil makeStencil(const level &l, size_t problemIndex) const
 	{
 		stencil s;
 		s.cx = l.data.cx;
@@ -1064,7 +1135,7 @@ If $\beta$ varied in space, it would be set on the finest level and averaged ont
 
 ### Step 5: the remaining hooks
 
-The problem has no initial conditions to set, because an initial conditions package sets the parameters, and no boundary conditions of its own. The field is $u$ itself, so there is nothing to convert before or after the solve. The hooks are still required, and are empty. This is the complete class:
+The problem has no initial conditions to set, because an initial conditions package sets the parameters, and no boundary conditions of its own, so `getBoundaryType` makes every edge `fixedGhosts`. The field is $u$ itself, so there is nothing to convert before or after the solve. The other hooks are still required, and are empty. This is the complete class:
 
 ```cpp
 struct diffusion
@@ -1077,8 +1148,8 @@ struct diffusion
 
 	struct parameters
 	{
-		double kappa;
-		double beta;
+		SAMS::T_dataType kappa;
+		SAMS::T_dataType beta;
 	};
 	using dataPack = parameters;
 
@@ -1125,14 +1196,14 @@ struct diffusion
 			return w;
 		}
 
-		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, double *a) const
+		DEVICEPREFIX void coefficients(size_t i, size_t j, size_t k, SAMS::T_dataType *a) const
 		{
 			// The helper makes the coefficients from the weights of the fluxes through the faces of this cell. It uses the fluxes
 			// through the faces on the low side from the cells before it, so that both cells that share a face use the same flux
 			parabolic::fluxDivergence::coefficientsFromFluxes<diffusion>(*this, i, j, k, a);
 		}
 
-		DEVICEPREFIX double beta(size_t i, size_t j, size_t k) const
+		DEVICEPREFIX SAMS::T_dataType beta(size_t i, size_t j, size_t k) const
 		{
 			return betaArray(i, j, k);
 		}
@@ -1174,17 +1245,35 @@ struct diffusion
 	{
 	}
 
-	void beforeSolve(SAMS::harness &harness)
+	parabolic::tcBoundaryType getBoundaryType(SAMS::KVS &kvs, SAMS::T_sizeType problemIndex, int dimension, SAMS::domain::edges edge) const
+	{
+		return {parabolic::boundaryType::fixedGhosts};
+	}
+
+	size_t problemCount() const
+	{
+		return 1;
+	}
+
+	void beforeAllSolves(SAMS::harness &harness)
 	{
 	}
 
-	void afterSolve(SAMS::harness &harness)
+	void afterAllSolves(SAMS::harness &harness)
 	{
 	}
 
-	void prepareSolve(std::vector<level> &levels, const parameters &params) const
+	void beforeSolve(SAMS::harness &harness, size_t problemIndex)
 	{
-		const double kappa = params.kappa, betaValue = params.beta;
+	}
+
+	void afterSolve(SAMS::harness &harness, size_t problemIndex)
+	{
+	}
+
+	void prepareSolve(std::vector<level> &levels, SAMS::T_sizeType problemIndex, const SAMS::timeState &ts, const parameters &params) const
+	{
+		const SAMS::T_dataType kappa = params.kappa, betaValue = params.beta / ts.dt;
 		for (level &l : levels)
 		{
 			const volumeArray cx = l.data.cx, cy = l.data.cy, cz = l.data.cz, beta = l.data.beta;
@@ -1216,7 +1305,7 @@ struct diffusion
 		}
 	}
 
-	stencil makeStencil(const level &l) const
+	stencil makeStencil(const level &l, size_t problemIndex) const
 	{
 		stencil s;
 		s.cx = l.data.cx;

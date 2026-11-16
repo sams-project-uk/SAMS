@@ -18,6 +18,7 @@
 #include "streams.h"
 #include "handles.h"
 #include <complex>
+#include <cstdint>
 
 namespace SAMS
 {
@@ -41,6 +42,10 @@ namespace SAMS
 
     // The indexType is the signed version of sizeType
     using T_indexType = std::make_signed<T_sizeType>::type;
+
+    // The small sizeType and its signed version
+    using T_smallSizeType = uint32_t;
+    using T_smallIndexType = std::make_signed<T_smallSizeType>::type;
 
     /**
      * Maximum rank of a variable

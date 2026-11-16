@@ -599,6 +599,18 @@ namespace SAMS
             }
 
             /**
+             * Return the lower and upper boundaries of the domain
+             * @tparam T_array The data type of the array (default T_dataType) - Must match the type used to create the axis
+             * @return The lower and upper boundaries
+             */
+            template<typename T_array=T_dataType>
+            std::array<T_array, 2> getDomainRange()
+            {
+                auto edges = getPPAxis<T_array, portableWrapper::arrayTags::host>(staggerType::HALF_CELL);
+                return {edges(dim.getDomainLB(staggerType::HALF_CELL)), edges(dim.getDomainUB(staggerType::HALF_CELL))};
+            }
+
+            /**
              * Fill a performance portable array with an axis
              * @param array The performance portable array to fill
              * @param stagger The staggering type of the axis
@@ -1138,6 +1150,18 @@ namespace SAMS
         {
             auto &ax = getAxis(name);
             return ax.dim.mpiAxis;
+        }
+
+        /**
+         * Get the type of the values of the given axis
+         * @param name The name of the axis
+         * @param stagger The staggering type
+         * @return The type handle of the values of the axis
+         */
+        SAMS::typeHandle getAxisType(const std::string &name, staggerType stagger)
+        {
+            auto &ax = getAxis(name);
+            return ax.axisData[stagger][portableWrapper::arrayTags::host].axisType;
         }
 
         /**

@@ -43,7 +43,7 @@ namespace portableWrapper
          * @param cRange The range to iterate over
          */
         template <typename T_func, typename T_cRange>
-        HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(T_func func,T_cRange cRange)
+        HOSTINLINE void forEachParallel(T_func func,T_cRange cRange)
         {
             auto range = getRange(cRange);
             T_indexType lower_bound1 = range.lower_bound; T_indexType upper_bound1 = range.upper_bound;
@@ -61,7 +61,7 @@ namespace portableWrapper
          * @param cRange2 The second range to iterate over
          */
         template <typename T_func, typename T_cRange1, typename T_cRange2>
-        HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2)
+        HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2)
         {
             //Yes, this could be done with a structured binding, but it causes
             //CLANG frontend to crash when parsing
@@ -91,7 +91,7 @@ namespace portableWrapper
          * @param cRange3 The third range to iterate over
          */
         template <typename T_func, typename T_cRange1, typename T_cRange2, typename T_cRange3>
-        HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3)
+        HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3)
         {
             auto range1 = getRange(cRange1);
             auto range2 = getRange(cRange2);
@@ -125,7 +125,7 @@ namespace portableWrapper
          * @param cRange4 The fourth range to iterate over
          */
         template <typename T_func, typename T_cRange1, typename T_cRange2, typename T_cRange3, typename T_cRange4>
-        HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4)
+        HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4)
         {
                 auto range1 = getRange(cRange1); 
                 auto range2 = getRange(cRange2);
@@ -165,7 +165,7 @@ namespace portableWrapper
          * @param cRange5 The fifth range to iterate over
          */
         template <typename T_func, typename T_cRange1, typename T_cRange2, typename T_cRange3, typename T_cRange4, typename T_cRange5>
-        HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4, T_cRange5 cRange5)
+        HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4, T_cRange5 cRange5)
         {
             auto range1 = getRange(cRange1);
             auto range2 = getRange(cRange2);
@@ -211,7 +211,7 @@ namespace portableWrapper
      * @param cRange6 The sixth range to iterate over
      */
     template <typename T_func, typename T_cRange1, typename T_cRange2, typename T_cRange3, typename T_cRange4, typename T_cRange5, typename T_cRange6>
-    HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4, T_cRange5 cRange5, T_cRange6 cRange6)
+    HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4, T_cRange5 cRange5, T_cRange6 cRange6)
     {
         auto range1 = getRange(cRange1);
         auto range2 = getRange(cRange2);
@@ -263,7 +263,7 @@ namespace portableWrapper
      * @param cRange7 The seventh range to iterate over
      */
     template <typename T_func, typename T_cRange1, typename T_cRange2, typename T_cRange3, typename T_cRange4, typename T_cRange5, typename T_cRange6, typename T_cRange7>
-    HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4, T_cRange5 cRange5, T_cRange6 cRange6, T_cRange7 cRange7)
+    HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4, T_cRange5 cRange5, T_cRange6 cRange6, T_cRange7 cRange7)
     {
         auto range1 = getRange(cRange1);
         auto range2 = getRange(cRange2);
@@ -321,7 +321,7 @@ namespace portableWrapper
      * @param cRange8 The eighth range to iterate over
      */
     template <typename T_func, typename T_cRange1, typename T_cRange2, typename T_cRange3, typename T_cRange4, typename T_cRange5, typename T_cRange6, typename T_cRange7, typename T_cRange8>
-    HOSTDEVICEPREFIX HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4, T_cRange5 cRange5, T_cRange6 cRange6, T_cRange7 cRange7, T_cRange8 cRange8)
+    HOSTINLINE void forEachParallel(T_func func,T_cRange1 cRange1, T_cRange2 cRange2, T_cRange3 cRange3, T_cRange4 cRange4, T_cRange5 cRange5, T_cRange6 cRange6, T_cRange7 cRange7, T_cRange8 cRange8)
     {
         auto range1 = getRange(cRange1);
         auto range2 = getRange(cRange2);

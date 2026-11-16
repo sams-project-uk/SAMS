@@ -4,6 +4,13 @@
 #include "shared_data.h"
 #include "runner.h"
 
+namespace LARE{
+    /**
+     * Data for the LARE3D style initial conditions. Defined in lareic.h
+     */
+    struct icData;
+}
+
 /**
  * Simple class to implement the old LARE3D style boundary conditions
  */
@@ -12,13 +19,14 @@ class LAREBoundaryConditions : public SAMS::boundaryConditions
 {
     public:
 
-    void(*fn)(typename LARE::LARE3D<T_EOS>::simulationData &, SAMS::timeState &, int, SAMS::domain::edges) = nullptr;
+    void(*fn)(typename LARE::LARE3D<T_EOS>::simulationData &, LARE::icData &, SAMS::timeState &, int, SAMS::domain::edges) = nullptr;
     typename LARE::LARE3D<T_EOS>::simulationData &data;
+    LARE::icData &icd;
     SAMS::timeState &time;
-    
-    LAREBoundaryConditions(void(*function)(typename LARE::LARE3D<T_EOS>::simulationData &, SAMS::timeState &, int , SAMS::domain::edges),
-                           LARE::LARE3D<T_EOS>::simulationData &simData, SAMS::timeState &timeStateRef)
-        : fn(function), data(simData), time(timeStateRef)
+
+    LAREBoundaryConditions(void(*function)(typename LARE::LARE3D<T_EOS>::simulationData &, LARE::icData &, SAMS::timeState &, int , SAMS::domain::edges),
+                           LARE::LARE3D<T_EOS>::simulationData &simData, LARE::icData &icdRef, SAMS::timeState &timeStateRef)
+        : fn(function), data(simData), icd(icdRef), time(timeStateRef)
     {
     }
 
@@ -30,12 +38,7 @@ class LAREBoundaryConditions : public SAMS::boundaryConditions
      */
     void apply(int dimension, SAMS::domain::edges edge) override
     {
-        fn(data, time, dimension, edge);
-    }
-
-    SAMS::boundaryConditions* clone() const override
-    {
-        return new LAREBoundaryConditions(*this);
+        fn(data, icd, time, dimension, edge);
     }
 };
 

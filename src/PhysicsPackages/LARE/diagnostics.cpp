@@ -18,11 +18,8 @@
 #endif
 #endif
 
-#if defined(USE_HDF5)
-#include "io/writerHDF5.h"
-#else
-#include "io/writerSimple.h"
-#endif
+#include "io/writers.h"
+#include "io/readers.h"
 #include "shared_data.h"
 #include "mpiManager.h"
 #include "shared_data.h"
@@ -32,74 +29,113 @@ namespace LARE
 
     namespace pw = portableWrapper;
 
+    /**
+     * Register the outputs that LARE3D can write. They are all written by default and needed for a restart
+     * @param outputs The registry of outputs
+     */
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::registerOutputVariables(SAMS::outputRegistry &outputs)
+    {
+        rhoOutput = outputs.registerOutput("rho", "Mass density");
+        energyElectronOutput = outputs.registerOutput("energy_electron", "Specific internal energy of the electrons");
+        energyIonOutput = outputs.registerOutput("energy_ion", "Specific internal energy of the ions");
+        vxOutput = outputs.registerOutput("vx", "Velocity in the x direction, at the cell vertices");
+        vyOutput = outputs.registerOutput("vy", "Velocity in the y direction, at the cell vertices");
+        vzOutput = outputs.registerOutput("vz", "Velocity in the z direction, at the cell vertices");
+        bxOutput = outputs.registerOutput("bx", "Magnetic field in the x direction, at the cell faces normal to x");
+        byOutput = outputs.registerOutput("by", "Magnetic field in the y direction, at the cell faces normal to y");
+        bzOutput = outputs.registerOutput("bz", "Magnetic field in the z direction, at the cell faces normal to z");
+    }
+
+    /**
+     * Register the output meshes
+     * @tparam T_writer The writer type
+     * @param regWriter The writer for variables in the registries
+     * @param level The outputs that the dump writes
+     */
     template<typename T_EOS>
     template<typename T_writer>
-    void LARE3D<T_EOS>::registerOutputMeshes(writer<T_writer> &writer)
+    void LARE3D<T_EOS>::registerDumpMeshes(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &regWriter, [[maybe_unused]] const SAMS::outputLevel &level)
     {
         using SAMS::staggerType;
         // One mesh for each combination of staggers of the output variables
-        writer.registerRectilinearMesh("MeshCC", {"X", staggerType::CENTRED}, {"Y", staggerType::CENTRED}, {"Z", staggerType::CENTRED});
-        writer.registerRectilinearMesh("MeshNode", {"X", staggerType::HALF_CELL}, {"Y", staggerType::HALF_CELL}, {"Z", staggerType::HALF_CELL});
-        writer.registerRectilinearMesh("MeshFaceX", {"X", staggerType::HALF_CELL}, {"Y", staggerType::CENTRED}, {"Z", staggerType::CENTRED});
-        writer.registerRectilinearMesh("MeshFaceY", {"X", staggerType::CENTRED}, {"Y", staggerType::HALF_CELL}, {"Z", staggerType::CENTRED});
-        writer.registerRectilinearMesh("MeshFaceZ", {"X", staggerType::CENTRED}, {"Y", staggerType::CENTRED}, {"Z", staggerType::HALF_CELL});
+        regWriter.registerRectilinearMesh("MeshCC", {{"X", staggerType::CENTRED}, {"Y", staggerType::CENTRED}, {"Z", staggerType::CENTRED}});
+        regWriter.registerRectilinearMesh("MeshNode", {{"X", staggerType::HALF_CELL}, {"Y", staggerType::HALF_CELL}, {"Z", staggerType::HALF_CELL}});
+        regWriter.registerRectilinearMesh("MeshFaceX", {{"X", staggerType::HALF_CELL}, {"Y", staggerType::CENTRED}, {"Z", staggerType::CENTRED}});
+        regWriter.registerRectilinearMesh("MeshFaceY", {{"X", staggerType::CENTRED}, {"Y", staggerType::HALF_CELL}, {"Z", staggerType::CENTRED}});
+        regWriter.registerRectilinearMesh("MeshFaceZ", {{"X", staggerType::CENTRED}, {"Y", staggerType::CENTRED}, {"Z", staggerType::HALF_CELL}});
     }
 
+    /**
+     * Register the output variables that the dump writes
+     * @tparam T_writer The writer type
+     * @param regWriter The writer for variables in the registries
+     * @param level The outputs that the dump writes
+     */
     template<typename T_EOS>
     template<typename T_writer>
-    void LARE3D<T_EOS>::registerOutputVariables(writer<T_writer> &writer, simulationData &)
+    void LARE3D<T_EOS>::registerDumpVariables(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &regWriter, const SAMS::outputLevel &level, simulationData &)
     {
-        writer.registerData("rho", "MeshCC", "rho");
-        writer.registerData("energy_electron", "MeshCC", "energy_electron");
-        writer.registerData("energy_ion", "MeshCC", "energy_ion");
-        writer.registerData("vx", "MeshNode", "vx");
-        writer.registerData("vy", "MeshNode", "vy");
-        writer.registerData("vz", "MeshNode", "vz");
-        writer.registerData("bx", "MeshFaceX", "bx");
-        writer.registerData("by", "MeshFaceY", "by");
-        writer.registerData("bz", "MeshFaceZ", "bz");
+        // Restart dumps write the variables with their ghost cells
+        const bool restart = level.isActive("restart");
+        auto registerVariable = [&](const SAMS::outputHandle &handle, const char* name, const char* meshName){
+            if (!level.includes(handle)) return;
+            if (restart) regWriter.template registerDataWithGhosts<T_dataType, 3>(name, meshName, name);
+            else regWriter.template registerData<T_dataType, 3>(name, meshName, name);
+        };
+        registerVariable(rhoOutput, "rho", "MeshCC");
+        registerVariable(energyElectronOutput, "energy_electron", "MeshCC");
+        registerVariable(energyIonOutput, "energy_ion", "MeshCC");
+        registerVariable(vxOutput, "vx", "MeshNode");
+        registerVariable(vyOutput, "vy", "MeshNode");
+        registerVariable(vzOutput, "vz", "MeshNode");
+        registerVariable(bxOutput, "bx", "MeshFaceX");
+        registerVariable(byOutput, "by", "MeshFaceY");
+        registerVariable(bzOutput, "bz", "MeshFaceZ");
     }
 
+    /**
+     * Write the output meshes that are not written through the registry writer
+     * @tparam T_writer The writer type
+     */
     template<typename T_EOS>
     template<typename T_writer>
-    void LARE3D<T_EOS>::writeOutputMeshes(writer<T_writer> &writer){
-        writer.writeRectilinearMesh("MeshCC");
-        writer.writeRectilinearMesh("MeshNode");
-        writer.writeRectilinearMesh("MeshFaceX");
-        writer.writeRectilinearMesh("MeshFaceY");
-        writer.writeRectilinearMesh("MeshFaceZ");
-    }
-
-    template<typename T_EOS>
-    template<typename T_writer>
-    void LARE3D<T_EOS>::writeOutputVariables(writer<T_writer> &writer)
+    void LARE3D<T_EOS>::writeDumpMeshes(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &, const SAMS::outputLevel &)
     {
-        writer.writeData("rho");
-        writer.writeData("energy_electron");
-        writer.writeData("energy_ion");
-        writer.writeData("vx");
-        writer.writeData("vy");
-        writer.writeData("vz");
-        writer.writeData("bx");
-        writer.writeData("by");
-        writer.writeData("bz");
     }
 
-//Need a better solution than this against future additions of writers
-//Perhaps another X macro?
-#if defined(USE_HDF5)
-//Instantiate the templates for HDF5 writer
-    template void LARE3D<LARE::idealGas>::registerOutputMeshes<HDF5File>(writer<HDF5File> &writer);
-    template void LARE3D<LARE::idealGas>::registerOutputVariables<HDF5File>(writer<HDF5File> &writer, simulationData &data);
-    template void LARE3D<LARE::idealGas>::writeOutputMeshes<HDF5File>(writer<HDF5File> &writer);
-    template void LARE3D<LARE::idealGas>::writeOutputVariables<HDF5File>(writer<HDF5File> &writer);
-#else
-//Instantiate the templates for simple writer
-    template void LARE3D<LARE::idealGas>::registerOutputMeshes<simpleFile>(writer<simpleFile> &writer);
-    template void LARE3D<LARE::idealGas>::registerOutputVariables<simpleFile>(writer<simpleFile> &writer, simulationData &data);
-    template void LARE3D<LARE::idealGas>::writeOutputMeshes<simpleFile>(writer<simpleFile> &writer);
-    template void LARE3D<LARE::idealGas>::writeOutputVariables<simpleFile>(writer<simpleFile> &writer);
-#endif
+    /**
+     * Write the output variables that are not written through the registry writer
+     * @tparam T_writer The writer type
+     */
+    template<typename T_EOS>
+    template<typename T_writer>
+    void LARE3D<T_EOS>::writeDumpVariables(SAMS::IO::writer<T_writer> &, SAMS::IO::registryWriter<T_writer> &, const SAMS::outputLevel &)
+    {
+    }
+
+    /**
+     * Read the variables of LARE3D from a restart dump, which holds them with their ghost cells
+     * @tparam T_reader The reader type
+     * @param regReader The reader for variables in the registries
+     */
+    template<typename T_EOS>
+    template<typename T_reader>
+    void LARE3D<T_EOS>::restart(SAMS::IO::reader<T_reader> &, SAMS::IO::registryReader<T_reader> &regReader)
+    {
+        regReader.template readDataWithGhosts<T_dataType, 3>("rho", "rho");
+        regReader.template readDataWithGhosts<T_dataType, 3>("energy_electron", "energy_electron");
+        regReader.template readDataWithGhosts<T_dataType, 3>("energy_ion", "energy_ion");
+        regReader.template readDataWithGhosts<T_dataType, 3>("vx", "vx");
+        regReader.template readDataWithGhosts<T_dataType, 3>("vy", "vy");
+        regReader.template readDataWithGhosts<T_dataType, 3>("vz", "vz");
+        regReader.template readDataWithGhosts<T_dataType, 3>("bx", "bx");
+        regReader.template readDataWithGhosts<T_dataType, 3>("by", "by");
+        regReader.template readDataWithGhosts<T_dataType, 3>("bz", "bz");
+    }
+
+    #include "./instantiateWriters.h"
+    #include "./instantiateReaders.h"
 
     template<typename T_EOS>
     void LARE3D<T_EOS>::energy_correction(simulationData &data)
@@ -112,6 +148,7 @@ namespace LARE
                 data.energy_ion(ix, iy, iz) += 0.5 * dke;
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+				energy_bcs(true);
     }
 
     #include "./instantiate.h"
