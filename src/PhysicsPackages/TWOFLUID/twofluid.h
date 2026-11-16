@@ -234,6 +234,8 @@ namespace TWOFLUID
 	    // sources change, so ghost cells always match the interior they mirror.
 	    SAMS::harness *harness_ptr = nullptr;
 	    SAMS::T_dataType dt_previous = 0.0;  // last time step, for dt_max_growth
+            portableWrapper::portableArrayManager conservedManager; // check_conservation's oldData (allocated in copyState)
+            bool conserved_allocated = false;
             // check_source_energy state: per x index, cumulative change of internal energy (cells) and kinetic
             // energy (vertices) over all source half-steps; snapshot of the per-index energies before a half-step
             std::vector<double> se_dint, se_dkin, se_int0, se_kin0;
@@ -380,13 +382,22 @@ namespace TWOFLUID
                 };
             void defaultValues(data_two_fluid_source & plasma_source);
             void allocate(data_two_fluid_source &plasma_source,SAMS::harness &harness);
-            void allocate_conserved(oldData &oldData,SAMS::harness &harness);
             void registerVariables(SAMS::harness &harness,data_two_fluid_source &plasma_source);
             
             void registerAxes(SAMS::harness &harness,data_two_fluid_source &plasma_source)
             {
                 auto &axisReg = harness.axisRegistry;
-                if (plasma_source.ion_rec_nlevel) {axisReg.registerLogicalAxis("species");}
+                axisReg.registerLogicalAxis("species"); // always: see the n-level arrays in registerVariables
+            }
+
+            // Size the "species" axis of the n-level arrays. Runs in setDomain, after the problem's
+            // controlVariables (so ion_rec_nlevel is known) and before getVariables. With ion_rec_nlevel the
+            // rate functions use levels 0..nLevels (nLevels = 6, TwoFluid.cpp), i.e. 7 entries; otherwise one
+            // entry, so the always-registered level arrays cost about one grid-sized array each.
+            void setDomain(SAMS::harness &harness, data_two_fluid_source &plasma_source)
+            {
+                harness.axisRegistry.setDomainValues("species", plasma_source.ion_rec_nlevel ? 7 : 1,
+                                                     [](COUNT_TYPE i){ return i; });
             }
             
             void initialiseSource(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
@@ -408,7 +419,6 @@ namespace TWOFLUID
             void getVariables(data_two_fluid_source &plasma_source,oldData &oldData, SAMS::harness &harness){
                 harness_ptr = &harness; // for refreshSourceGhosts()
                 allocate(plasma_source, harness);
-                if (plasma_source.check_conservation) {allocate_conserved(oldData,harness);}
             }
             void beforeStartOfTimestep(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 if (plasma_source.debug_twofluid_steps) {printf("beforeStartofTimestep start \n");}

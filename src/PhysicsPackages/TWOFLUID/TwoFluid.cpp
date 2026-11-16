@@ -128,7 +128,11 @@ namespace TWOFLUID
 //        printf("before Levels \n");
 //        debug_rates(plasma_source,"before levels");
 
-if (plasma_source.ion_rec_nlevel) {
+// n-level arrays: registered unconditionally (registration precedes defaultValues/controlVariables, so an
+// ion_rec_nlevel set in a problem's controlVariables is not yet known here). Their "species" axis has no
+// elements unless the problem sets it (axisRegistry.setDomainValues("species", N, ...) in setDomain), so
+// they take no memory with ion_rec_nlevel off; they are fetched only with ion_rec_nlevel.
+{
 
         varRegistry.registerVariable<LARE::T_dataType>("level_populations", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts), SAMS::dimension("species",0));
 
@@ -158,27 +162,8 @@ if (plasma_source.ion_rec_nlevel) {
         
         //////////////////////////////////////////////////////////////
         
-        if (plasma_source.check_source) {
-            varRegistry.registerVariable<T_dataType>("PIPconserve/rho", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
-        
-            varRegistry.registerVariable<T_dataType>("PIPconserve/energy", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
-            
-            varRegistry.registerVariable<T_dataType>("PIPconserve/vx",  pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
-            
-            varRegistry.registerVariable<T_dataType>("PIPconserve/vy",  pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
-            
-            varRegistry.registerVariable<T_dataType>("PIPconserve/vz",  pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
-            
-            varRegistry.registerVariable<T_dataType>("PIPconserve/rho_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
-            
-            varRegistry.registerVariable<T_dataType>("PIPconserve/energy_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
-            
-            varRegistry.registerVariable<T_dataType>("PIPconserve/vx_n",  pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
-            
-            varRegistry.registerVariable<T_dataType>("PIPconserve/vy_n",  pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
-            
-            varRegistry.registerVariable<T_dataType>("PIPconserve/vz_n",  pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
-        }
+        // check_conservation's copies of the old state (oldData) are scratch arrays, allocated in copyState on
+        // first use; they used to be registered here under check_source but fetched under check_conservation.
         
 //debug_rates(plasma_source,"registerVars end");
     }
@@ -246,36 +231,7 @@ if (plasma_source.ion_rec_nlevel) {
     
     
 /////////////////////////////////////////////////////////////////////////////////
-    template<typename T_EOS>
-    void PIP<T_EOS>::allocate_conserved(oldData &oldData,SAMS::harness &harness){
-        //data_two_fluid_source plasma_source;
-        //data_two_fluid_source neutral_source;
-       
-        auto &axRegistry = harness.axisRegistry;
-        auto &varRegistry = harness.variableRegistry;
-        
-        using Range = pw::Range;
-        varRegistry.fillPPArray("PIPconserve/rho", oldData.rho);
-        pw::assign(oldData.rho, 0.0);
-        varRegistry.fillPPArray("PIPconserve/energy", oldData.energy);
-        pw::assign(oldData.energy, 0.0);
-        varRegistry.fillPPArray("PIPconserve/vx", oldData.vx);
-        pw::assign(oldData.vx, 0.0);
-        varRegistry.fillPPArray("PIPconserve/vy", oldData.vy);
-        pw::assign(oldData.vy, 0.0);
-        varRegistry.fillPPArray("PIPconserve/vz", oldData.vz);
-        pw::assign(oldData.vz, 0.0);
-        varRegistry.fillPPArray("PIPconserve/rho_n", oldData.rho_n);
-        pw::assign(oldData.rho_n, 0.0);
-        varRegistry.fillPPArray("PIPconserve/energy_n", oldData.energy_n);
-        pw::assign(oldData.energy_n, 0.0);
-        varRegistry.fillPPArray("PIPconserve/vx_n", oldData.vx_n);
-        pw::assign(oldData.vx_n, 0.0);
-        varRegistry.fillPPArray("PIPconserve/vy_n", oldData.vy_n);
-        pw::assign(oldData.vy_n, 0.0);
-        varRegistry.fillPPArray("PIPconserve/vz", oldData.vz_n);
-        pw::assign(oldData.vz_n, 0.0);        
-    }    
+
 ////////////////////////////////////////////////////////////////////////////////////////
      template<typename T_EOS>
     void PIP<T_EOS>::get_two_fluid_source(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
@@ -1451,9 +1407,18 @@ static LARE::T_dataType loglinear_interp(LARE::T_dataType v0, LARE::T_dataType v
         LARE::LARE3DNF<T_EOS>::simulationData &source_n,
         oldData &dest)
     {
-       printf("%p %p\n",
-       source.vx.data(),
-       dest.vx.data());
+        if (!conserved_allocated) {
+            // Scratch copies of the old state for check_conservation, shaped like the live arrays
+            auto alloc = [&](LARE::volumeArray &d, LARE::volumeArray &src) {
+                conservedManager.allocate(d, src.getRange(0), src.getRange(1), src.getRange(2));
+                portableWrapper::assign(d, 0.0);
+            };
+            alloc(dest.rho, source.rho);     alloc(dest.energy, source.energy_ion);
+            alloc(dest.vx, source.vx);       alloc(dest.vy, source.vy);       alloc(dest.vz, source.vz);
+            alloc(dest.rho_n, source_n.rho); alloc(dest.energy_n, source_n.energy);
+            alloc(dest.vx_n, source_n.vx);   alloc(dest.vy_n, source_n.vy);   alloc(dest.vz_n, source_n.vz);
+            conserved_allocated = true;
+        }
         for (int ix=0; ix<=source.nx; ix++)
         {
             for (int iy=0; iy<=source.ny; iy++)
