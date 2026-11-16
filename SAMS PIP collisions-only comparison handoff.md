@@ -998,7 +998,7 @@ dt ≤ `dt_multiplier` / (fastest of the following rates):
 - **At α0 = 1** results are bit-identical to before (`runs/srcenergy_a1_dtv`, `runs/srcenergy_a1_dtm`): LARE's CFL step binds there.
 - **At α0 = 100** the momentum rate is about 340, so the limit rises from 2.4×10⁻⁴ (with the 0.1) to 2.4×10⁻³, about the CFL step. Those runs become much faster, with the exchange taken in fairly large explicit steps (dt × rate up to 0.8). Compare with the earlier α0 = 100 runs (dt about 9.5×10⁻⁴ under the old absolute-rate limit) before relying on it.
 
-### Existing bug found: `vertex_rates` can't be switched on
+### Existing bug found: `vertex_rates` can't be switched on (fixed: see the next section)
 
 `plasma_source.vertex_rates = true` (set in `TwoFluidTest`) crashes at start-up, before any time step, with "Error: variable PIPSource/rho_p_ac_vertex not found in registry" (`TwoFluid.cpp:230`, `fillPPArray`).
 - **Likely cause:** the registration (line 144) and the fetch are both conditional on `vertex_rates`, and the flag from `TwoFluidTest` probably arrives after PIP registers its variables.
@@ -1007,3 +1007,25 @@ dt ≤ `dt_multiplier` / (fastest of the following rates):
 ### Still running
 
 `runs/scan_a1_allfix` (α0 = 1, every correction). Its comparison will go into `runs/scan/compare_rme/a1_allfix_*`.
+
+## Status update, 16 Nov 2026 (17:15): PIP flag-dependent registrations fixed
+
+**The common cause:** the runner sets packages up in this order (`include/runner/runner.h:634-640`, stage list at ~150):
+
+registerAxes → registerVariables → defaultValues → controlVariables → setDomain → getVariables
+
+A flag set in a problem's `controlVariables` (as `TwoFluidTest` sets all of `plasma_source`) is therefore not yet known when PIP registers its variables. Every registration that depended on such a flag failed in `getVariables`.
+
+| Flag | Problem | Fix | Commit |
+| --- | --- | --- | --- |
+| `vertex_rates` | `PIPSource/{rho_p,rho_n}_ac_vertex` and `{gm_ion,gm_rec}_vertex` were registered only if the flag was on; the run stopped with "variable PIPSource/rho_p_ac_vertex not found in registry" | always registered; fetched and used only with the flag | `e7b1db0` |
+| `ion_rec_nlevel` | the `species` axis (`registerAxes`) and `level_populations`/`level_rates` were registered only if the flag was on | always registered. A new PIP `setDomain` hook sizes `species` to 7 with `ion_rec_nlevel` (levels 0..nLevels, nLevels = 6 in the rate functions), otherwise to 1. An unsized axis is not allowed ("dimension zones not set"). With the flag off the level arrays cost about one grid-sized array each. | this commit |
+| `check_conservation` | its `oldData` copies (`PIPconserve/*`) were registered under `check_source` but fetched under `check_conservation`, and `oldData.vz_n` was fetched from `PIPconserve/vz`, so the old v\_z and v\_z,n were the same array | not registered at all. `copyState` allocates them on first use, shaped like the live arrays (`conservedManager`). | this commit |
+
+**Checks** (α0 = 1, L = 25, dx = 0.04, t = 1, `runs/srcenergy_a1_{reg2,cc,vr2}`):
+- **Bit-identical:** the default mode, `check_conservation` on and `vertex_rates` on all match their references, with no new snapshot fields.
+- **`vertex_rates`** now runs. With `vertex_frictional_heating` the source step conserves energy to 10⁻¹⁸. It differs from the cell-average rates by under 1% in ρ\_n and e\_n and by 3–4% in v\_y (`runs/srcenergy_a1_vr`).
+- **`check_conservation`** now runs. It prints its diagnostic every step, and `copyState` still prints two pointers every step (an old debug line, left as it is).
+- **`ion_rec_nlevel`** itself was not run: it needs the n-level rate data. Only its registration and sizing are now independent of when the flag is set.
+
+**Build options:** `runs/srcenergy_build.sh` now also takes `VR=on` (`vertex_rates`) and `CC=on` (`check_conservation`).
