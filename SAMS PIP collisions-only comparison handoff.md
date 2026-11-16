@@ -977,3 +977,33 @@ python3 /home/snow/Documents/SAMS/TwoFluidWIP/scripts/collonly_compare.py --pip 
 
    The neutral plateau at α0 = 1 shows the same too-dense, too-cool signature (ρ\_n +15%, T\_n −23%).
 3. Then: the other α0 with every correction, the LARE developers (`rme`, `rke_3d_fix`, the resistive crash), and production (dx = 0.02, L = 2000, t = 100).
+
+## Status update, 16 Nov 2026 (17:00): collisional time-step limit made explicit (`58139db`)
+
+### `set_dt_collisional` now
+
+dt ≤ `dt_multiplier` / (fastest of the following rates):
+
+| Rate | Where | What |
+| --- | --- | --- |
+| **Momentum exchange**, α(ρ\_n + ρ\_p) | the vertices the exchange updates (0..n) | dv\_p/dt = αρ\_n(v\_n − v\_p) and dv\_n/dt = −αρ\_p(v\_n − v\_p) leave the centre-of-mass velocity fixed and relax the drift at α(ρ\_n + ρ\_p): the stiffness of the exchange. It uses the same vertex values as the exchange: `rho_n_ac_vertex + rho_p_ac_vertex` with `vertex_rates`, otherwise the 8-cell averages of α and ρ. |
+| \|dm/dt\|/ρ, each fluid | interior cells | ionisation and recombination |
+| \|de/dt\|/e, each fluid | interior cells | heating: thermal exchange, friction, ionisation potential. This also covers the thermal relaxation, ~α(ρ\_p + ρ\_n/2). |
+
+**Why not |dv/dt|/|v|:** v can be zero (the symmetry plane, gas at rest), and the ratio is not Galilean invariant.
+
+**The 0.1 factor is gone:** it was left over from debugging the rates. The explicit momentum exchange is stable for dt·α(ρ\_n + ρ\_p) < 2.
+
+**Checks:**
+- **At α0 = 1** results are bit-identical to before (`runs/srcenergy_a1_dtv`, `runs/srcenergy_a1_dtm`): LARE's CFL step binds there.
+- **At α0 = 100** the momentum rate is about 340, so the limit rises from 2.4×10⁻⁴ (with the 0.1) to 2.4×10⁻³, about the CFL step. Those runs become much faster, with the exchange taken in fairly large explicit steps (dt × rate up to 0.8). Compare with the earlier α0 = 100 runs (dt about 9.5×10⁻⁴ under the old absolute-rate limit) before relying on it.
+
+### Existing bug found: `vertex_rates` can't be switched on
+
+`plasma_source.vertex_rates = true` (set in `TwoFluidTest`) crashes at start-up, before any time step, with "Error: variable PIPSource/rho_p_ac_vertex not found in registry" (`TwoFluid.cpp:230`, `fillPPArray`).
+- **Likely cause:** the registration (line 144) and the fetch are both conditional on `vertex_rates`, and the flag from `TwoFluidTest` probably arrives after PIP registers its variables.
+- **Not caused by the limiter change, and not fixed.** Reproduce with `VR=on VFH=on runs/srcenergy_build.sh ...` (`runs/srcenergy_a1_dtv_vr`).
+
+### Still running
+
+`runs/scan_a1_allfix` (α0 = 1, every correction). Its comparison will go into `runs/scan/compare_rme/a1_allfix_*`.
