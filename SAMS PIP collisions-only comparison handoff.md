@@ -1163,3 +1163,18 @@ python3 /home/snow/Documents/SAMS/TwoFluidWIP/scripts/collonly_compare.py --pip 
 ```
 
 `runs/scan_a1_allfix` (every correction, but with the double p dV) is superseded. Its t = 10 numbers in the 17:20 section are kept only for the record.
+
+### `rke` fixes pure hydro completely (18:10)
+
+`RKE=on` (`rke` + `rke_3d_fix` in both packages); plasma and neutral give identical numbers:
+
+| Test | Shock vs exact | Plateau ρ | Plateau T | Energy flux mismatch | Same test without `rke` |
+| --- | --- | --- | --- | --- | --- |
+| Sod, γ 1.4 (`runs/hydro_sod_rke`) | +0.4 cells | −0.01% | +0.01% | 1×10⁻⁴ | −0.7 cells, +0.3%, −0.4%, 3×10⁻³ |
+| Mach ≈ 20, `dt_multiplier` 0.8 (`runs/hydro_collide_rke_dtm0.8`) | **1.007** (+1.3 cells) | −0.5% | +0.6% | 0.35% | 0.878, +10.8%, −12.5%, 7.4% |
+| Mach ≈ 20, `dt_multiplier` 0.4 (`runs/hydro_collide_rke_dtm0.4`) | **1.007** (+1.4 cells) | −0.3% | +0.5% | 0.26% | 0.937, +5.2%, −6.5%, 3.8% |
+
+**Reading:**
+- **Kinetic-energy loss only:** in pure hydro the whole strong-shock error is the remap's kinetic-energy loss, and `rke` with the 3D fix returns it. That includes the extra loss at large Courant numbers.
+- **No smaller time step needed:** with `rke` on, the default `dt_multiplier` (0.8) is as good as 0.4.
+- **For the two-fluid runs:** `rke` + `rke_3d_fix` must be on in **both** fluids, and `rme` in the plasma, which has field. That is what the running α0 = 1 rerun uses.
