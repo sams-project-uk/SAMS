@@ -1029,3 +1029,20 @@ A flag set in a problem's `controlVariables` (as `TwoFluidTest` sets all of `pla
 - **`ion_rec_nlevel`** itself was not run: it needs the n-level rate data. Only its registration and sizing are now independent of when the flag is set.
 
 **Build options:** `runs/srcenergy_build.sh` now also takes `VR=on` (`vertex_rates`) and `CC=on` (`check_conservation`).
+
+## Status update, 16 Nov 2026 (17:20): α0 = 1 with every correction: most of the lag remains
+
+**Run:** `runs/scan_a1_allfix` (`rke`, `rke_3d_fix`, `rme`, `vertex_frictional_heating`, the new time-step limit; L = 500, dx = 0.04, 5 ranks). It was at t = 10 at 17:12, at dt = 1.64×10⁻³, and finishes about 17:50. The t = 10 comparison is in `runs/scan/compare_rme/a1_allfix_s1*`; t = 20 will be added automatically (`a1_allfix_s2*`).
+
+| α0 = 1, t = 10 (PIP shock 3.98) | Shock | SAMS/PIP | Lag in cells | ρ\_n plateau | T\_n | T\_p |
+| --- | --- | --- | --- | --- | --- | --- |
+| no corrections (`runs/scan/sams_a1`) | 3.22 | 0.81 | 19 | +15.7% | −24.4% | −16.7% |
+| `rme` + `rke` + `rke_3d_fix` (`runs/scan_a1_rme_rke`) | 3.26 | 0.82 | 18 | +14.9% | −23.0% | −14.5% |
+| **every correction** | **3.30** | **0.83** | **17** | +14.4% | −21.6% | −12.7% |
+
+**Reading:**
+- **The corrections are each right, but small here.** Together they close 2 of the 19 cells and about 3 points of the T\_n deficit.
+- **The rest is elsewhere.** The neutrals carry 99.7% of the mass and still show the energy-deficit signature: about 14% too dense and 22% too cool behind the shock.
+- **Strongest remaining suspect: the neutral fluid's own shock** in `LARE3DNF`, its shock heating and its remap (which `rke` only partly covers). This is the same mechanism found for the plasma in pure MHD: there the remap lost energy at the shock without heating, and the Lagrangian step was exact.
+
+**Next:** a pure-hydrodynamics test of `LARE3DNF` against exact solutions (next section).
