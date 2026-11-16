@@ -403,7 +403,7 @@ if (plasma_source.ion_rec_nlevel) {
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 //Get Temperatures
                 SAMS::T_dataType  temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5;
-                SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
+                SAMS::T_dataType  temperature_neutral = dataNeutral.gas_gamma*dataNeutral.energy(ix,iy,iz)*(dataNeutral.gas_gamma-1.0);
                 plasma_source.ac(ix,iy,iz)=plasma_source.alpha0*std::sqrt(0.5*(temperature_neutral+temperature_ion)*inv_T_norm);
             	}, Range(-1,data.nx+1), Range(-1,data.ny+1), Range(-1,data.nz+1));
             	
@@ -412,26 +412,26 @@ if (plasma_source.ion_rec_nlevel) {
                 portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                     //Get Temperatures
                     //SAMS::T_dataType  temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5;
-                    //SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
+                    //SAMS::T_dataType  temperature_neutral = dataNeutral.gas_gamma*dataNeutral.energy(ix,iy,iz)*(dataNeutral.gas_gamma-1.0);
                     plasma_source.rho_p_ac_vertex(ix,iy,iz)=0.125*alpha_eff*(
-                    data.rho(ix,iy,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5))+
-                    data.rho(ix+1,iy,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz)*(data.gas_gamma-1.0)*0.5))+
-                    data.rho(ix,iy+1,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy+1,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
-                    data.rho(ix+1,iy+1,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
-                    data.rho(ix,iy,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz+1)*(data.gas_gamma-1.0)*0.5))+
-                    data.rho(ix+1,iy,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz+1)*(data.gas_gamma-1.0)*0.5))+
-                    data.rho(ix,iy+1,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy+1,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))+
-                    data.rho(ix+1,iy+1,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))
+                    data.rho(ix,iy,iz)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix,iy,iz)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5))+
+                    data.rho(ix+1,iy,iz)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix+1,iy,iz)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz)*(data.gas_gamma-1.0)*0.5))+
+                    data.rho(ix,iy+1,iz)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix,iy+1,iz)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
+                    data.rho(ix+1,iy+1,iz)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
+                    data.rho(ix,iy,iz+1)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix,iy,iz+1)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz+1)*(data.gas_gamma-1.0)*0.5))+
+                    data.rho(ix+1,iy,iz+1)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix+1,iy,iz+1)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz+1)*(data.gas_gamma-1.0)*0.5))+
+                    data.rho(ix,iy+1,iz+1)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix,iy+1,iz+1)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))+
+                    data.rho(ix+1,iy+1,iz+1)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz+1)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))
                     );
                     plasma_source.rho_n_ac_vertex(ix,iy,iz)=0.125*alpha_eff*(
-                    dataNeutral.rho(ix,iy,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5))+
-                    dataNeutral.rho(ix+1,iy,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz)*(data.gas_gamma-1.0)*0.5))+
-                    dataNeutral.rho(ix,iy+1,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy+1,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
-                    dataNeutral.rho(ix+1,iy+1,iz)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
-                    dataNeutral.rho(ix,iy,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz+1)*(data.gas_gamma-1.0)*0.5))+
-                    dataNeutral.rho(ix+1,iy,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz+1)*(data.gas_gamma-1.0)*0.5))+
-                    dataNeutral.rho(ix,iy+1,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix,iy+1,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))+
-                    dataNeutral.rho(ix+1,iy+1,iz+1)*std::sqrt(0.5*(data.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz+1)*(data.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))
+                    dataNeutral.rho(ix,iy,iz)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix,iy,iz)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)*0.5))+
+                    dataNeutral.rho(ix+1,iy,iz)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix+1,iy,iz)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz)*(data.gas_gamma-1.0)*0.5))+
+                    dataNeutral.rho(ix,iy+1,iz)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix,iy+1,iz)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
+                    dataNeutral.rho(ix+1,iy+1,iz)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz)*(data.gas_gamma-1.0)*0.5))+
+                    dataNeutral.rho(ix,iy,iz+1)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix,iy,iz+1)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy,iz+1)*(data.gas_gamma-1.0)*0.5))+
+                    dataNeutral.rho(ix+1,iy,iz+1)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix+1,iy,iz+1)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy,iz+1)*(data.gas_gamma-1.0)*0.5))+
+                    dataNeutral.rho(ix,iy+1,iz+1)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix,iy+1,iz+1)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))+
+                    dataNeutral.rho(ix+1,iy+1,iz+1)*std::sqrt(0.5*(dataNeutral.gas_gamma*dataNeutral.energy(ix+1,iy+1,iz+1)*(dataNeutral.gas_gamma-1.0)+ data.gas_gamma*data.energy_ion(ix+1,iy+1,iz+1)*(data.gas_gamma-1.0)*0.5))
                     );
                 	}, Range(-1,data.nx), Range(-1,data.ny), Range(-1,data.nz));
         	}
@@ -774,7 +774,7 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
         //Get Temperatures
         SAMS::T_dataType  temperature_ion = data.gas_gamma*data.energy_ion(ix,iy,iz)*(data.gas_gamma-1.0)/2.0;
         //SAMS::T_dataType  temperature_electron = data.gas_gamma*data.energy_electron(ix,iy,iz)*(data.gas_gamma-1.0);
-        SAMS::T_dataType  temperature_neutral = data.gas_gamma*dataNeutral.energy(ix,iy,iz)*(data.gas_gamma-1.0);
+        SAMS::T_dataType  temperature_neutral = dataNeutral.gas_gamma*dataNeutral.energy(ix,iy,iz)*(dataNeutral.gas_gamma-1.0);
         //printf("getting vx at centre \n");
         //Get velocity at cell centre
         SAMS::T_dataType  vx_centre=(data.vx(ix,iy,iz)+
@@ -832,10 +832,15 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
                               dataNeutral.vz(ix-1,iy-1,iz-1))*
                               0.125;
         
-        // Energy source terms. Thermal exchange: (3/2) k (T_n - T_p) per particle for gamma = 5/3, in general
-       // k (T_n - T_p) / (gamma - 1). With the code temperature T = gamma k T / m (T_p = gamma P / (2 rho), as in
-       // PIP's te = gm pr mu_p / de), this is (T_n - T_p) / (gamma (gamma - 1)) per unit mass, i.e. PIP's
-       // 3 / (2 gamma) (nte - te) (PIP_rot.f90) written for general gamma (equal to it for gamma = 5/3).
+        // Energy source terms. Thermal exchange per unit mass: k (T_n - T_p) / m times the heat capacity per
+       // particle 1 / (gamma_ex - 1) (= 3/2 for gamma = 5/3). Each fluid's code temperature is T_s = gamma_s k T / m
+       // (T_p = gamma_p P / (2 rho), T_n = gamma_n P / rho, as PIP's te = gm pr mu_p / de), so k T / m = T_s / gamma_s
+       // with the fluid's own gamma. The heat capacity must be the same for both fluids (the energy one gains is
+       // what the other loses); it is taken from the plasma gamma. For gamma_p = gamma_n = gamma this is
+       // (T_n - T_p) / (gamma (gamma - 1)), PIP's 3 / (2 gamma) (nte - te) (PIP_rot.f90) at gamma = 5/3.
+       const SAMS::T_dataType gamma_ex = data.gas_gamma;
+       const SAMS::T_dataType thermal_exchange = (temperature_neutral/dataNeutral.gas_gamma - temperature_ion/data.gas_gamma)
+                                               / (gamma_ex - 1.0);
        //printf("getting energy source terms \n");
        //printf("ac %f \n", plasma_source.ac(ix,iy,iz));
        //printf("rho_n %f \n", dataNeutral.rho(ix,iy,iz));
@@ -861,11 +866,11 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
        const SAMS::T_dataType fric = plasma_source.vertex_frictional_heating ? 0.0 : 0.5;
     plasma_source.source_energy(ix,iy,iz)=plasma_source.ac(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)*(\
                         fric*vd2 \
-                        + (temperature_neutral-temperature_ion)/(data.gas_gamma*(data.gas_gamma-1)));
+                        + thermal_exchange);
         //printf("getting neutral energy source terms \n");
         plasma_source.source_energy_n(ix,iy,iz)=plasma_source.ac(ix,iy,iz)*data.rho(ix,iy,iz)*(\
                         fric*vd2 \
-                        - (temperature_neutral-temperature_ion)/(data.gas_gamma*(data.gas_gamma-1)));  
+                        - thermal_exchange);  
                                    
         //printf("%i,%i,%i \n",ix,iy,iz);
     }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
@@ -2224,7 +2229,7 @@ void PIP<T_EOS>::setNormalisation(typename LARE::LARE3DST<T_EOS>::simulationData
         return 0.5*g*(g-1.0)*data.energy_ion(ix,iy,iz);
     };
     auto Tn = LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        return g*(g-1.0)*dataNeutral.energy(ix,iy,iz);
+        return dataNeutral.gas_gamma*(dataNeutral.gas_gamma-1.0)*dataNeutral.energy(ix,iy,iz);   // neutral's own gamma
     };
     const SAMS::T_dataType big = data.largest_number;
     const SAMS::T_dataType Tp_min = portableWrapper::applyReduction(Tp, minOp,  big, rx, ry, rz);
