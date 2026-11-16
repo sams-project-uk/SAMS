@@ -477,3 +477,115 @@ It prints the slow-shock positions and the inner-plateau ρ\_p, T\_p and B\_y fo
 2. `cat runs/scan/pip_scan.log runs/scan/pip_a0_retry.log runs/scan/sams_scan.log runs/scan/sams_a0_last.log`. Each run should end with `exit=0` (PIP) or a `s wall` line (SAMS). A SAMS exit status of 1 is the known `MPI_Abort`; check for "Simulation complete".
 3. `runs/scan/scan_compare.sh`, then decide whether the problem is in LARE or in the sources (above).
 4. If useful, write the exact MHD Riemann solver for the α0 = 0 and α0 → ∞ limits.
+
+## Status update, 16 Nov 2026: results of the unattended runs
+
+### The disk filled on 11 Nov
+
+`/` reached 100% on 11 Nov at 13:35. The runs alone don't account for it (`runs/` was 17 GB of 228 GB); the disk was probably close to full already. Two runs were hit:
+- **`runs/sams_L2000_dx002_rke_mpi10`** crashed at t ≈ 70 (step 86,160) with HDF5 `No space left on device` while writing snapshot `00007`. Snapshots 0–6 (t = 0–60) are good. It won't be restarted (see `rke` below).
+- **`runs/scan/sams_a0`** reached t = 20 on 12 Nov, after 52 h and 596k steps with dt ≈ 3.4×10⁻⁵. Its t = 20 snapshot (`00002`) is truncated and unreadable. Only t = 10 can be used.
+
+Everything else finished cleanly: the `rke` test, SAMS α0 = 0.1, 1, 10 and 100, and every PIP scan run.
+
+### Data moved to the data drive
+
+To free space, `runs/` and `hillier_shock_beta_0.5/` were moved to `/media/snow/datadrive2/SAMS_TwoFluidWIP/` (NTFS). Both are now symlinks in the repo.
+- **Paths:** full paths in the scripts still resolve. `runs/rke_test_compare.sh` had to be changed, because it found the repo through `runs/..`, which now points at the data drive; it now uses the full path to `scripts/collonly_compare.py`.
+- **Repo-root `SAMS_testdata`:** its symlink pointed at `/media/snow/store21`, which no longer exists. It now points at `/media/snow/datadrive2/SAMS_TwoFluidWIP/SAMS_testdata`.
+- **New runs should go under `runs/`,** so they land on the data drive.
+
+### `rke` test: ruled out
+
+dx = 0.04, distance between the slow shocks (SAMS − PIP, in SAMS cells), and plateau temperatures relative to PIP. Output in `runs/compare_rke/`.
+
+| t | Shock, `rke` off | Shock, `rke` on | T\_p off / on | ρ\_n off / on |
+| --- | --- | --- | --- | --- |
+| 10 | −19 | −18 | −16.7% / −15.2% | +15.7% / +14.9% |
+| 20 | −25 | −24 | −22.1% / −20.7% | +26.1% / +24.7% |
+
+`rke` closes only about 1.5 percentage points of the temperature deficit and one cell of the lag. **It isn't the cause.** The dx = 0.02 `rke` run is dropped.
+
+### Coupling scan: the lag is there with no coupling and grows with coupling
+
+Ratio of the SAMS slow-shock position to PIP's, and the temperature of the inner plateau, from `runs/scan/scan_compare.sh` (output in `runs/scan/compare/`):
+
+| α0 | Shock ratio, t = 10 | Shock ratio, t = 20 | T\_p plateau vs PIP, t = 10 / 20 |
+| --- | --- | --- | --- |
+| 0 (PIP: col = 10⁻⁸) | **0.90** | – (snapshot truncated) | −10% / – |
+| 0.1 | 0.86 | 0.85 | −9% / −12% |
+| 1 (production) | 0.81 | 0.85 | −17% / −22% |
+| 10 | 0.78 | 0.73 | −38% / −48% |
+| 100 | 1.00 (?) | 0.63 | −74% / −63% |
+
+**α0 = 0 in detail:** the script's ρ\_n shock finder is meaningless here, so these numbers were measured on the plasma, at the steepest drop of ρ\_p.
+
+| t = 10 | PIP | SAMS | SAMS vs PIP |
+| --- | --- | --- | --- |
+| Slow-shock position | 8.06 | 7.26 | 0.90 |
+| Plateau ρ\_p | 6.258×10⁻³ | 6.881×10⁻³ | +10.0% |
+| Plateau T\_p | 59.49 | 53.71 | −9.7% |
+| Plateau pressure (∝ ρT) | | | −0.7% |
+| Plateau v\_y | −18.91 | −18.88 | same |
+| Upstream v\_x | −1.20 | −1.27 | SAMS inflow 6% faster (with ripples) |
+| T\_p at the sheet (first cell) | 106 | 66 | |
+
+**What this shows:**
+- **SAMS's pure-MHD solution is already wrong.** With no coupling, the problem is a single-fluid MHD Riemann problem, and SAMS's slow shock still trails PIP's by 10%. The plateau pressure matches to under 1%, since it is set by pressure balance with the upstream field. SAMS's plateau, though, is denser and cooler: **its slow shock produces too little entropy.** A higher compression ratio for the same mass flux means a slower shock.
+- **Coupling adds a second error.** The deficit grows steadily with α0. At α0 = 100 the SAMS plasma barely heats (plateau T ≈ 1.1 against PIP's 3–4.5). Look at frictional heating and thermal exchange once the MHD part is understood.
+- **SAMS also differs elsewhere.** It has v\_x and B\_y ripples behind the shock that PIP doesn't, and PIP's sheet peak is much hotter (106 against 66 in the first cell).
+- **Anomaly at α0 = 100:** SAMS's shock sits at x = 1.02 at both t = 10 and t = 20, as if stalled, while PIP's moves from 1.02 to 1.62. Check this separately.
+
+**Caveat:** PIP is the reference here by assumption. The exact Riemann solution (next) decides which code is right.
+
+### Exact Riemann solution: PIP is right, SAMS loses 4.7% of the energy at the slow shock
+
+**Solver:** `scripts/mhd_riemann_exact.py` computes the exact self-similar solution of the symmetric sheet in ideal 1D MHD and compares it with SAMS and PIP. Output is in `runs/exact_riemann/`.
+
+**Structure, for x > 0:**
+- From the sheet outwards: inner state (B\_y = 0, v\_x = 0), then a switch-off slow shock, then state 1, then a fast rarefaction, then the initial state.
+- By symmetry no rotational discontinuity is needed, because B\_y passes through zero.
+- The one unknown, ρ1, is fixed by v\_x = 0 behind the shock.
+
+**Limits:**
+- `--limit uncoupled`: the plasma alone, ρ = ξ\_i, P = P\_p.
+- `--limit coupled`: one fluid with ρ = 1 and P = P\_t.
+
+```
+cd runs/exact_riemann
+python3 /home/snow/Documents/SAMS/TwoFluidWIP/scripts/mhd_riemann_exact.py --limit uncoupled \
+    --pip ../scan/pip_a1e-8/out --sams ../scan/sams_a0/SAMS_testdata --snap 1 --out exact_a0_s1 --xmax 12
+```
+
+Use absolute paths to scripts from inside `runs/`, because `runs/..` resolves to the data drive.
+
+**α0 = 0 at t = 10:**
+
+| | Exact | PIP | SAMS |
+| --- | --- | --- | --- |
+| Slow shock x | 7.977 | 8.06 (1.010) | 7.26 (**0.910**) |
+| Inner ρ\_p | 6.266×10⁻³ | −0.13% | **+9.8%** |
+| Inner T\_p | 59.41 | +0.13% | **−9.6%** |
+| Inner P\_p | 0.4467 | 0.00% | −0.74% |
+| State 1: ρ, v\_x, B\_y | 2.498×10⁻³, −1.203, −0.9386 | matches | ρ and B\_y match; v\_x ≈ −1.27 with ±0.1 grid-scale oscillations |
+| Compression ρ2/ρ1 | 2.508 | 2.507 | 2.768 |
+| Fast rarefaction x = 177–195 | | matches (smoothed) | matches |
+
+**Rankine–Hugoniot check of each code's own states across its slow shock:** shock speed from mass conservation; relative flux mismatch, out minus in.
+
+| | Mass | x-momentum | y-momentum | Induction | **Energy** |
+| --- | --- | --- | --- | --- | --- |
+| PIP | 0 | −2×10⁻⁶ | 2×10⁻⁴ | −2×10⁻⁴ | −1.6×10⁻⁴ |
+| SAMS | 0 | −1×10⁻⁴ | −1.1×10⁻³ | 1.1×10⁻³ | **+4.7×10⁻²** |
+
+**Findings:**
+- **SAMS's slow shock is a correct switch-off shock in everything except energy.** It moves at the Alfvén speed on B\_x relative to its upstream (u1 = −2.004 against Bx/√ρ1 = 2.006) and conserves mass, momentum and flux. But 4.7% of the energy flux into the shock does not come out.
+- **That missing energy accounts for the whole discrepancy.** The missing energy is missing heat: the post-shock pressure is pinned by momentum balance, so the gas ends up denser and cooler, the compression ratio is higher, and the shock is slower. This is the 10% lag at α0 = 0. Coupling makes it worse (19% at α0 = 1).
+- **Where the energy goes:** most of the energy through this shock is the conversion of B\_y² into tangential kinetic energy (v\_y: 0 → −18.9) and heat. `rke` (returning the kinetic energy lost in the remap) barely changed the result, so the loss is probably not in the normal-velocity remap. Suspects: the remap of v\_y and B\_y, and how LARE's shock viscosity turns the tangential velocity jump into heat.
+- **The coupled limit can't be tested at α0 = 100 by t = 20.** The exact fully coupled shock is at x = 0.47 (t = 10) and 0.93 (t = 20), with ρ2 = 2.09 and T = 0.40. Neither code is near this yet: at t = 20, PIP's neutral plateau is 90% less dense and 10× hotter. The α0 = 100 run is still far from the self-similar coupled state. Testing it needs α0 ≳ 10⁴ or t ≫ 20.
+
+### Next steps
+
+1. **Find the 4.7% energy loss in LARE.** Use a cheap 1D SAMS MHD-only run (`sh21.coupling = false`, small L, short t) and log the energy budget per step: Lagrangian step, viscous heating, remap, with v\_y and B\_y kinetic and magnetic energy separately. The exact solution and `runs/scan/sams_a0` are the reference. Small L also gets round the tiny dt of the uncoupled run (52 h for L = 500).
+2. Then the coupling terms, including the stall at α0 = 100.
+3. Still open: flag the MPI halo fix (`7740c79`) to other SAMS users.
