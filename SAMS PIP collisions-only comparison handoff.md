@@ -1131,3 +1131,35 @@ All coupled runs so far had the doubled p dV in the neutrals. The α0 = 1 run wi
 1. Rerun α0 = 1 (L = 500, t = 20) with the `LARE3DNF` fix and every correction, and compare with PIP.
 2. Evaluate the Courant-number test. Rerun the hydro tests with `RKE=on`: `rke` should close the 7% hydro loss, as it closed the kinetic half in MHD.
 3. Then the other α0 and the production run, all with the fix. Every earlier SAMS two-fluid result is affected.
+
+## Status update, 16 Nov 2026 (18:00): strong-shock loss depends on the Courant number; α0 = 1 rerun with the neutral fix started
+
+### Courant-number test (pure hydro, colliding flows, Mach ≈ 20, dx 0.01, `rke` off; `runs/hydro_collide_fix*`)
+
+| `dt_multiplier` | Steps | Shock / exact distance | Plateau ρ | Plateau T | Energy flux missing at shock |
+| --- | --- | --- | --- | --- | --- |
+| 0.8 (default) | 1010 | 0.878 | +10.8% | −12.5% | 7.4% |
+| 0.4 | 1750 | 0.937 | +5.2% | −6.5% | 3.8% |
+| 0.2 | 3450 | 0.933 | +5.5% | −6.8% | 4.0% |
+
+**Reading:**
+- **A floor of about 4%** that doesn't depend on the Courant number: the remap's kinetic-energy loss, which `rke` is meant to return.
+- **An extra 3–4% at the default `dt_multiplier` of 0.8.** The production and scan runs use 0.8 and step at the CFL limit, so they sit on the bad side.
+- **This explains the plasma result that changed with the neutral fix:** the double-p dV neutrals had forced a smaller shared dt (0.927 then, 0.878 at the normal dt). It was not cross-talk between the packages: with the fix, both give identical results on identical problems.
+- **Not seen in the pure-MHD sheet:** there the small and CFL time steps gave the same 0.91.
+
+**Running:** the same tests with `RKE=on` (`rke` + `rke_3d_fix` in both packages): `runs/hydro_collide_rke_dtm{0.8,0.4}` and `runs/hydro_sod_rke`.
+
+### α0 = 1 rerun with the `LARE3DNF` fix (`runs/scan_a1_allfix_nf`, started ~17:45)
+
+- **Build:** commit `d0b2519` (with the `LARE3DNF` p dV fix) plus `rke`, `rke_3d_fix`, `rme` and `vertex_frictional_heating`, and the new time-step limit. L = 500, dx = 0.04, t = 20, 5 ranks, about 80 min.
+- **Binary:** `runs/scaling/sams_scan_a1_allfix_nf`.
+- **Compare when done:**
+
+```
+cd runs/scan/compare_rme
+python3 /home/snow/Documents/SAMS/TwoFluidWIP/scripts/collonly_compare.py --pip ../pip_a1.0/out \
+    --sams ../../scan_a1_allfix_nf/SAMS_testdata --snap 2 --xmax 120 --out a1_allfix_nf_s2
+```
+
+`runs/scan_a1_allfix` (every correction, but with the double p dV) is superseded. Its t = 10 numbers in the 17:20 section are kept only for the record.
