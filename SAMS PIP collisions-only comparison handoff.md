@@ -584,8 +584,82 @@ Use absolute paths to scripts from inside `runs/`, because `runs/..` resolves to
 - **Where the energy goes:** most of the energy through this shock is the conversion of B\_y² into tangential kinetic energy (v\_y: 0 → −18.9) and heat. `rke` (returning the kinetic energy lost in the remap) barely changed the result, so the loss is probably not in the normal-velocity remap. Suspects: the remap of v\_y and B\_y, and how LARE's shock viscosity turns the tangential velocity jump into heat.
 - **The coupled limit can't be tested at α0 = 100 by t = 20.** The exact fully coupled shock is at x = 0.47 (t = 10) and 0.93 (t = 20), with ρ2 = 2.09 and T = 0.40. Neither code is near this yet: at t = 20, PIP's neutral plateau is 90% less dense and 10× hotter. The α0 = 100 run is still far from the self-similar coupled state. Testing it needs α0 ≳ 10⁴ or t ≫ 20.
 
-### Next steps
+### Next steps (superseded: see the next section)
 
 1. **Find the 4.7% energy loss in LARE.** Use a cheap 1D SAMS MHD-only run (`sh21.coupling = false`, small L, short t) and log the energy budget per step: Lagrangian step, viscous heating, remap, with v\_y and B\_y kinetic and magnetic energy separately. The exact solution and `runs/scan/sams_a0` are the reference. Small L also gets round the tiny dt of the uncoupled run (52 h for L = 500).
 2. Then the coupling terms, including the stall at α0 = 100.
 3. Still open: flag the MPI halo fix (`7740c79`) to other SAMS users.
+
+## Status update, 16 Nov 2026 (11:40): the lag is in LARE's MHD scheme itself
+
+### Why the uncoupled runs had a tiny dt (bug, not fixed)
+
+- **Symptom:** PIP-mode runs with `sh21.coupling = false` stepped at dt ≈ 3×10⁻⁵ (dx = 0.02 or 0.04). LARE's own CFL step is 8.2×10⁻⁴; this was confirmed with a temporary print in `LARE3DST::set_dt`, since reverted.
+- **Cause:**
+  - `get_collisional_source_terms` runs on every step, whatever the coupling setting (`TwoFluid.cpp:296`).
+  - `apply_two_fluid_source` correctly does nothing when `collisions` is off (`TwoFluid.cpp:329`).
+  - But `calculateTimestep` (`twofluid.h:434`) still calls `set_dt_collisional`, which limits dt to 0.1 × 0.8 / max|source|. In the α0 = 0 snapshot max|`source_energy`| = 2.4×10³, which gives 3.3×10⁻⁵.
+- **Consequences:** uncoupled runs take about 25× more steps than needed (`runs/scan/sams_a0` took 52 h). The physics is unaffected, apart from the extra remaps.
+- **Not fixed: test pure MHD in MHD mode instead** (below). A fix would be one condition: skip `set_dt_collisional` when `!plasma_source.collisions`.
+
+### Pure-MHD run: same error at the correct time step
+
+**Run:** `sams LARE3D Hillier`, with `Hillier.cpp` temporarily set to the plasma-only problem: ρ = ξ\_i = 0.00266, P = P\_p, B\_x = 0.1, B\_y = ±1, γ = 5/3, `visc1 = 0.1`, dt multiplier 0.8, full domain [−25, 25], dx = 0.02, t = 1. It steps at dt = 8.2×10⁻⁴ and takes 146 s on one core.
+
+**Tools** (in `runs/`, which is on the data drive and not in git):
+- `runs/mhd_sheet_build.sh <out> <x_half> <nx> <t_end> <dt_snap>`: edits `Hillier.cpp`, builds in `build-mpi`, copies the binary, then restores the source.
+- `runs/launch_sams_mpi.sh <name> <binary> <np> "LARE3D Hillier"`: the 4th argument (the package list) is new; it defaults to the two-fluid set.
+- `runs/mhd_sheet_compare.py <run>/SAMS_testdata <snap>`: compares with the exact solution, checks Rankine–Hugoniot and writes a figure.
+
+**Things to know about base `LARE3D`:**
+- It writes `energy_electron` as well as `energy_ion`. With the Hillier IC the electron energy stays at 0.
+- It has no per-operator energy budget; that exists only in `LARE3DST`.
+
+| | Pure MHD, CFL dt (`runs/mhdsheet_L25_dx002_t1`, t = 1) | PIP mode α0 = 0, small dt (`runs/scan/sams_a0`, t = 10) |
+| --- | --- | --- |
+| Slow shock / exact | **0.915** (0.730 vs 0.798) | 0.910 |
+| Inner ρ / T / P vs exact | +9.8% / −10.1% / −1.3% | +9.8% / −9.6% / −0.7% |
+| State 1, v\_x (exact −1.203) | −1.29 with oscillations | −1.27 with oscillations |
+| Energy flux missing across SAMS's own shock | **4.8%** | 4.7% |
+| y-z mode (B\_y deviation, max \|v\_z\|) | 3×10⁻¹⁰, 5×10⁻¹⁰ | 0.077, 0.11 |
+
+**Ruled out:**
+- **dt:** the error is the same at the correct step.
+- **The PIP package:** pure `LARE3D` gives the same numbers.
+- **The y-z mode:** it's absent here, yet the error is unchanged. The strong y-z mode on the shock in PIP-mode α0 = 0 is a separate issue; the coupled runs have it too, but at 10⁻⁵–10⁻⁷.
+- **Resolution:** 37 cells between sheet and shock (this run) and 180 cells (`sams_a0`) give the same 0.91.
+
+**Conclusion:** SAMS/LARE gets the energy jump condition of this MHD slow shock wrong by about 5%, at every resolution. The shock's mass, momentum and flux are right, so the post-shock state is too dense and too cool, and the shock moves too slowly. A scheme that conserves energy would get the shock speed right whatever its dissipation, so the fix has to put the dissipated energy back as heat.
+
+### Per-operator budget (`LARE3DST`, PIP mode, uncoupled; small dt)
+
+**Run:** `runs/ebudget_L25_dx002_t1`: the same problem on the half domain [0, 25], dx = 0.02, to t = 1, `data.energy_budget = true`. It was started 11:07 on 16 Nov and should finish about 12:15 (serial; dt ≈ 3.3×10⁻⁵, the bug above).
+- **Binary:** `runs/scaling/sams_ebudget_L25_dx002_t1`, from `runs/ebudget_build.sh`.
+- **Read the time series:** `python3 /home/snow/Documents/SAMS/TwoFluidWIP/runs/ebudget_table.py runs/ebudget_L25_dx002_t1/run.log`.
+
+Percentages are of the magnetic energy released so far:
+
+| t | E − E0 | Lagrangian step | x-remap KE | x-remap magnetic | y-remap | x-remap KE: vertices 3–10 | 11–50 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.1 | −5.86% | +0.08% | −3.16% | −2.69% | −0.09% | −2.09% | −0.08% |
+| 0.2 | −5.71% | +0.06% | −3.07% | −2.64% | −0.07% | −2.61% | −0.04% |
+| 0.3 | −5.72% | +0.05% | −3.05% | −2.66% | −0.06% | −1.78% | −0.77% |
+| 0.4 | −5.63% | +0.05% | −3.00% | −2.63% | −0.06% | −1.37% | −1.24% |
+
+**Reading:**
+- **The Lagrangian step is exact.** All of the loss is in the **x-pass of the remap**: about 3.0% kinetic energy and 2.6% magnetic energy, constant in time as expected for a self-similar solution. This is the same order as the 4.8% missing at the shock.
+- **The kinetic loss follows the shock.** It moves from vertices 3–10 to 11–50 as the shock moves out (shock at cell ≈ 4 at t = 0.1 and ≈ 16 at t = 0.4). So it is the remap smoothing the v\_y jump of the switch-off shock, not something at the sheet.
+- **The magnetic loss is the remap smoothing the B\_y jump.** Its split by cell is meaningless, because the pass also moves field between bins; only the total counts.
+- **In short,** the remap dissipates kinetic and magnetic energy at the shock without turning it into heat. `rke` returns only the kinetic part, and only about 1.5 points of the temperature deficit came back at α0 = 1, so `rke` may not be returning the v\_y part properly. That is worth checking in pure MHD.
+
+### Next steps
+
+1. Read the final rows of the budget run (t = 0.5–1) with `ebudget_table.py`.
+2. **Cheap pure-MHD tests (2 min each),** by extending `runs/mhd_sheet_build.sh`:
+   - `rke` on, with and without `rke_3d_fix` in base `LARE3D`, which doesn't have the fix. Does the shock reach 1.0 of exact?
+   - Resistivity on.
+   - `visc1` 0.8 against 0.1.
+   - A magnetic-energy correction analogous to `rke`, behind a flag. Agree it with the LARE developers.
+3. Report to the LARE developers: the energy defect at the MHD slow shock (5%, independent of resolution), with this Riemann problem and `scripts/mhd_riemann_exact.py` as the test.
+4. Optional: fix the uncoupled dt bug in `twofluid.h` for PIP-mode uncoupled runs.
+5. Then return to the coupling terms and the stall at α0 = 100.

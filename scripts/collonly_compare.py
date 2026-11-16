@@ -57,6 +57,7 @@ def load_sams(path):
     assert np.allclose(np.diff(x), dx), "SAMS rank files do not join into a uniform grid"
     o = {"time": float(fs[0].attrs["time"]), "x": x, "xv": np.concatenate([[0.0], x+dx/2])}
     for s, sfx in (("p", ""), ("n", "_n")):
+        if "rho"+sfx not in fs[0]: continue                                # pure-MHD run: no neutral fluid
         rho = m("rho"+sfx); pr = (G-1)*rho*m("energy_ion" if s == "p" else "energy_n")
         o.update({"rho_"+s: rho, "pr_"+s: pr, "T_"+s: (0.5 if s == "p" else 1.0)*G*pr/rho,
                   "vx_"+s: np.concatenate([[0.0], m("vx"+sfx)]),
