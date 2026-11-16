@@ -1101,7 +1101,7 @@ LARE3DNF:  e -= dv·P/ρ;     e += (dt·visc_heat − dv·P)/ρ;       (P twice)
 
 **How it happened:** `LARE3DNF`'s corrector was ported from the two-temperature update with both `p_e` and `p_i` replaced by the total pressure. The neutral energy equation therefore subtracted p dV twice, giving an effective γ − 1 twice the real one: γ\_eff = 1.8 for γ = 1.4, and **7/3 for γ = 5/3**.
 
-**Fix:** the leftover electron line is removed (commit after this note's predecessor, `LARE3DNF: neutral fluid did the p dV work twice`).
+**Fix:** the leftover electron line is removed (commit `ff3af64`).
 
 **How it was found:** by diffing `LARE3DNF`'s predictor and corrector against `LARE3DST`'s, after the hydro test. The Sod rarefaction head sat where c\_eff = √(1.8 P/ρ) puts it (0.232 predicted, 0.22 observed).
 
