@@ -299,7 +299,7 @@ namespace LARE
         printf("    x-pass dEkin     : vertex 0 %+.4e  1-2 %+.4e  3-10 %+.4e  11-50 %+.4e  51-nx %+.4e\n",
                band(eb_vertEkinX, 0, 0), band(eb_vertEkinX, 1, 2), band(eb_vertEkinX, 3, 10), band(eb_vertEkinX, 11, 50), band(eb_vertEkinX, 51, n));
         printf("    kinetic energy now at vertex 0 (half mass, x = 0): %.6e of %.6e\n", eb_profEkin.empty() ? 0.0 : eb_profEkin[0], t.ekin);
-        printf("  rke correction (and end-of-remap field BCs): %+.6e\n", eb.rke);
+        printf("  rke + rme corrections (and end-of-remap field BCs): %+.6e\n", eb.rke);
         printf("  check: sum of all parts - (E - E0) = %+.3e\n", sumParts - (E - eb_E0));
         std::fflush(stdout);
     }

@@ -75,6 +75,41 @@ namespace LARE
         pw::fence();
 
         vx_by_flux(data, remap_data); // Evans and Hawley constrained transport remap of magnetic fluxes
+        if (data.rme)
+        {
+            // rme: magnetic energy dissipated by this transport of by (see shared_data.h). Before the update,
+            // by holds the face flux Phi = B * (Eulerian face area); the Lagrangian field is Phi / (area * w1 / dx)
+            // with w1 the Lagrangian x width (as in vx_by_flux). For each face element:
+            //   Q = E_new - E_old + g_i - g_(i-1),  g = energy carried by the field flux F through the x-face
+            // sum(Q) is exactly the pass's change of magnetic energy; Q < 0 is a loss.
+            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                T_indexType ixm = ix - 1, ixp = ix + 1, iyp = iy + 1;
+                T_dataType wm = 0.5 * (remap_data.db1(ixm, iy, iz) + remap_data.db1(ixm, iyp, iz));
+                T_dataType wi = 0.5 * (remap_data.db1(ix, iy, iz) + remap_data.db1(ix, iyp, iz));
+                T_dataType wp = 0.5 * (remap_data.db1(ixp, iy, iz) + remap_data.db1(ixp, iyp, iz));
+                T_dataType bm = data.by(ixm, iy, iz) / (data.dyab(ixm, iy, iz) * wm / data.dxb(ixm));
+                T_dataType bi = data.by(ix, iy, iz) / (data.dyab(ix, iy, iz) * wi / data.dxb(ix));
+                T_dataType bp = data.by(ixp, iy, iz) / (data.dyab(ixp, iy, iz) * wp / data.dxb(ixp));
+                T_dataType L = 0.5 * (data.dyb(iy) + data.dyb(iyp));
+                T_dataType Fi = remap_data.flux(ix, iy, iz), Fm = remap_data.flux(ixm, iy, iz);
+                T_dataType area = data.dyab(ix, iy, iz);
+                T_dataType b_new = (data.by(ix, iy, iz) - Fi + Fm) / area;
+                T_dataType E_old = 0.5 * bi * bi * area * (wi / data.dxb(ix)) * L;
+                T_dataType E_new = 0.5 * b_new * b_new * area * L;
+                // Energy carried across an x-face: that of the swept slab, field b = F / (o_v T), volume |o_v| L T,
+                // i.e. g = F^2 L / (2 o_v T) (T = transverse extent). Q is then the cell's mixing loss plus the
+                // limiter's reconstruction term, both second order in the jumps (no first-order reversible part).
+                T_dataType ovi = (data.vx1(ix, iy, iz) + data.vx1(ix, iy, iz - 1)) * 0.5 * data.dt;
+                T_dataType ovm = (data.vx1(ixm, iy, iz) + data.vx1(ixm, iy, iz - 1)) * 0.5 * data.dt;
+                T_dataType T = data.dzb(iz);
+                T_dataType gi = std::abs(ovi) > 1e-300 ? 0.5 * Fi * Fi * L / (ovi * T) : 0.0;
+                T_dataType gm = std::abs(ovm) > 1e-300 ? 0.5 * Fm * Fm * L / (ovm * T) : 0.0;
+                T_dataType Q = E_new - E_old + gi - gm;
+                pw::atomic::accelerated::Add(data.delta_me(ix, iy, iz), 0.5 * Q);
+                pw::atomic::accelerated::Add(data.delta_me(ix, iyp, iz), 0.5 * Q);
+            }, Range(1, data.nx), Range(0, data.ny), Range(1, data.nz));
+            pw::fence();
+        }
 
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
@@ -92,6 +127,41 @@ namespace LARE
         pw::fence();
 
         vx_bz_flux(data, remap_data); // Flux of bz due to vx
+        if (data.rme)
+        {
+            // rme: magnetic energy dissipated by this transport of bz (see shared_data.h). Before the update,
+            // bz holds the face flux Phi = B * (Eulerian face area); the Lagrangian field is Phi / (area * w1 / dx)
+            // with w1 the Lagrangian x width (as in vx_bz_flux). For each face element:
+            //   Q = E_new - E_old + g_i - g_(i-1),  g = energy carried by the field flux F through the x-face
+            // sum(Q) is exactly the pass's change of magnetic energy; Q < 0 is a loss.
+            pw::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                T_indexType ixm = ix - 1, ixp = ix + 1, izp = iz + 1;
+                T_dataType wm = 0.5 * (remap_data.db1(ixm, iy, iz) + remap_data.db1(ixm, iy, izp));
+                T_dataType wi = 0.5 * (remap_data.db1(ix, iy, iz) + remap_data.db1(ix, iy, izp));
+                T_dataType wp = 0.5 * (remap_data.db1(ixp, iy, iz) + remap_data.db1(ixp, iy, izp));
+                T_dataType bm = data.bz(ixm, iy, iz) / (data.dzab(ixm, iy, iz) * wm / data.dxb(ixm));
+                T_dataType bi = data.bz(ix, iy, iz) / (data.dzab(ix, iy, iz) * wi / data.dxb(ix));
+                T_dataType bp = data.bz(ixp, iy, iz) / (data.dzab(ixp, iy, iz) * wp / data.dxb(ixp));
+                T_dataType L = 0.5 * (data.dzb(iz) + data.dzb(izp));
+                T_dataType Fi = remap_data.flux(ix, iy, iz), Fm = remap_data.flux(ixm, iy, iz);
+                T_dataType area = data.dzab(ix, iy, iz);
+                T_dataType b_new = (data.bz(ix, iy, iz) - Fi + Fm) / area;
+                T_dataType E_old = 0.5 * bi * bi * area * (wi / data.dxb(ix)) * L;
+                T_dataType E_new = 0.5 * b_new * b_new * area * L;
+                // Energy carried across an x-face: that of the swept slab, field b = F / (o_v T), volume |o_v| L T,
+                // i.e. g = F^2 L / (2 o_v T) (T = transverse extent). Q is then the cell's mixing loss plus the
+                // limiter's reconstruction term, both second order in the jumps (no first-order reversible part).
+                T_dataType ovi = (data.vx1(ix, iy, iz) + data.vx1(ix, iy - 1, iz)) * 0.5 * data.dt;
+                T_dataType ovm = (data.vx1(ixm, iy, iz) + data.vx1(ixm, iy - 1, iz)) * 0.5 * data.dt;
+                T_dataType T = data.dyb(iy);
+                T_dataType gi = std::abs(ovi) > 1e-300 ? 0.5 * Fi * Fi * L / (ovi * T) : 0.0;
+                T_dataType gm = std::abs(ovm) > 1e-300 ? 0.5 * Fm * Fm * L / (ovm * T) : 0.0;
+                T_dataType Q = E_new - E_old + gi - gm;
+                pw::atomic::accelerated::Add(data.delta_me(ix, iy, iz), 0.5 * Q);
+                pw::atomic::accelerated::Add(data.delta_me(ix, iy, izp), 0.5 * Q);
+            }, Range(1, data.nx), Range(1, data.ny), Range(0, data.nz));
+            pw::fence();
+        }
         pw::applyKernel(
             LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 T_indexType ixm = ix - 1;

@@ -2409,6 +2409,8 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
     printf("  rke (remap KE fix)     : plasma %s, neutral %s\n", onoff(data.rke), onoff(dataNeutral.rke));
     printf("  rke_3d_fix             : plasma %s, neutral %s%s\n", onoff(data.rke_3d_fix), onoff(dataNeutral.rke_3d_fix),
            (data.rke_3d_fix || dataNeutral.rke_3d_fix) ? " (EXPERIMENTAL: rke share 1/4 per cell and ghost refresh)" : "");
+    printf("  rme (remap mag. energy): plasma %s%s\n", onoff(data.rme),
+           data.rme ? " (PROTOTYPE: x-pass magnetic dissipation returned as heat)" : "");
     printf("  energy_budget          : %s%s\n", onoff(data.energy_budget),
            data.energy_budget ? " (plasma per-operator budget at every snapshot time; diagnostic)" : "");
     printf("  resistive MHD          : %s (eta_background = %g, eta0 = %g, j_max = %g)\n",

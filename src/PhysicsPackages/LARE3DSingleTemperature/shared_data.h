@@ -254,6 +254,11 @@ namespace LARE
                 energy_correction(data);
                 if (data.rke_3d_fix) this->energy_bcs(); // interior-only change: refresh the ghosts (see rke_3d_fix)
             }
+            if (data.rme){
+                // PROTOTYPE: return the magnetic energy dissipated by the remap (see LARE/shared_data.h, rme)
+                magnetic_energy_correction(data);
+                this->energy_bcs();
+            }
             if (data.energy_budget) budgetStage(data, budgetPoint::afterRke);
             eta_calc(data);
         }
@@ -383,6 +388,10 @@ namespace LARE
          * Function to add back the kinetic energy correction
          */
         void energy_correction(simulationData &data);
+        /**
+         * Function to add back the magnetic energy dissipated by the remap (rme)
+         */
+        void magnetic_energy_correction(simulationData &data);
 
         /**
          * Energy budget diagnostic (data.energy_budget). See energyBudget.cpp for the definitions.
