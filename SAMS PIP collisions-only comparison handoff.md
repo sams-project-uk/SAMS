@@ -899,8 +899,81 @@ So the formula is unchanged. The comment "the 3/2 here needs fixing" is replaced
 
 **Not to be confused with γ/(γ−1),** which is 5/2 at γ = 5/3 (the enthalpy factor). Used here it would make the thermal exchange about 2.8× too strong.
 
-### Next steps
+### Next steps (superseded: see the next section)
 
 1. Confirm the dt limiter (which source term and where), and consider a relative limit.
 2. Rerun the α0 = 1 scan case with `vertex_frictional_heating` + `rme` + `rke` + `rke_3d_fix`, to see how much of the lag goes.
 3. If a large lag remains, test the neutral fluid's own shock in pure hydrodynamics, as was done for MHD.
+
+## Status update, 16 Nov 2026 (16:50): time-step limiter fixed, per-fluid γ, α0 = 1 run with every correction
+
+### Commits (all pushed)
+
+| Commit | What |
+| --- | --- |
+| `e64b038` | `vertex_frictional_heating` (energy-conserving friction, off by default) and the `check_source_energy` diagnostic |
+| `72f9074` | Collisional time-step limit from relative rates |
+| `f185972` | Per-fluid γ in the temperatures and the thermal exchange |
+
+### Time-step limiter (`set_dt_collisional`)
+
+**What was wrong:**
+- **Units:** dt was limited by 0.08 / max over every source array of |rate|. Those are absolute rates of quantities in different units: plasma specific energy around 100 against velocities around 1.
+- **A ghost cell:** the loop included ghost cell 0 (x < 0).
+- **Effect:** with `vertex_frictional_heating` the binding value was `source_energy` = 228 in that ghost cell, so dt = 3.5×10⁻⁴, against LARE's CFL step of 1.6×10⁻³. Even without the new heating the limit was binding (1.15×10⁻³ at t = 0.5), from the plasma heating rate near the sheet.
+
+**New limit:** dt ≤ 0.1 × `dt_multiplier` / r, where r is the fastest *relative* rate over interior cells:
+- α(ρ\_n + ρ\_p): momentum and thermal relaxation;
+- |dm/dt|/ρ for each fluid: ionisation and recombination;
+- |de/dt|/e for each fluid: heating.
+
+With collisions off nothing is applied, so there is no limit. That also removes the 25× slowdown of the uncoupled runs (dt ≈ 3×10⁻⁵).
+
+**Check** (α0 = 1, L = 25, dx = 0.04, t = 5, `runs/srcenergy_a1_vfh_dt`):
+
+| | Old heating and limiter (`runs/srcenergy_a1`) | Energy-conserving heating, new limiter |
+| --- | --- | --- |
+| dt | 3.9×10⁻⁴ at t = 0.1, 1.7×10⁻³ by t = 2 | 1.64×10⁻³ (CFL) from t ≈ 0.7 |
+| Steps to t = 5 | about 3700 | about 3000 |
+| Source-step energy error | −3.8% of the frictional KE | 10⁻¹⁷ (round-off) |
+| Slow shock (ρ\_n) at t = 5 | 1.82 | 1.86 (+1 cell) |
+| Neutral plateau T | 15.53 | 15.57 (+0.3%) |
+
+**Reading:** the frictional-heating error was real but sits at the sheet. It accounts for only a small part of the α0 = 1 lag.
+
+### Per-fluid γ (`TwoFluid.cpp`)
+
+**What changed:**
+- **Neutral temperatures** now use `dataNeutral.gas_gamma`. There were 19 places that used the plasma's γ: the collision source terms, the vertex-rate α and the start-up normalisation check.
+- **Thermal exchange:** it is now written as k(T\_n − T\_p)/m, with each fluid's code temperature divided by its own γ (k T/m = T\_s/γ\_s), times the exchange heat capacity per particle 1/(γ\_ex − 1). That is 3/2 for γ = 5/3.
+- **The shared heat capacity:** it must be the same for both fluids, so the energy one gains is exactly what the other loses. It is taken from the plasma γ. This matters only if the two γ differ; change it in one place (`gamma_ex`) if another choice is wanted.
+
+**Check:** with both γ = 5/3 the results match the previous build to 5×10⁻¹⁰ after 300 steps (round-off from the reordered arithmetic). The source step still conserves energy to 10⁻¹⁸.
+
+### Running: α0 = 1 with every correction (`runs/scan_a1_allfix`)
+
+**Set-up:**
+- **Physics:** the coupling scan's α0 = 1 case: L = 500, dx = 0.04, t = 20, 5 ranks, started about 16:30. It was at t = 2.1 at 16:44, at dt = 1.64×10⁻³, the CFL step.
+- **Corrections:** `rke` and `rke_3d_fix` (plasma and neutrals), `rme` (plasma), `vertex_frictional_heating`, and the new time-step limiter.
+- **Binary:** `runs/scaling/sams_scan_a1_allfix`, from `runs/scan/build_variant.sh <out> scan 1 on on on` (the 6th argument, new, switches `vertex_frictional_heating` on). It was built before `f185972`, which is identical while both γ = 5/3.
+
+**Comparison:** a background job writes `runs/scan/compare_rme/a1_allfix_s{1,2}*` when it finishes, next to `a1_base_*` and `a1_rme_rke_*`. To redo by hand:
+
+```
+cd runs/scan/compare_rme
+python3 /home/snow/Documents/SAMS/TwoFluidWIP/scripts/collonly_compare.py --pip ../pip_a1.0/out \
+    --sams ../../scan_a1_allfix/SAMS_testdata --snap 2 --xmax 120 --out a1_allfix_s2
+```
+
+**Expectation:** from the small-domain check, about one more cell than `rme_rke` (shock 3.26 at t = 10; PIP 3.98).
+
+### Next steps
+
+1. Evaluate `runs/scan_a1_allfix`.
+2. **If most of the lag remains, test the neutral fluid's slow shock in pure hydrodynamics,** as was done for MHD:
+   - write an exact hydrodynamic Riemann solver for the corresponding problem;
+   - run LARE3DNF alone, or base LARE3D with B = 0;
+   - measure the energy flux across its shock.
+
+   The neutral plateau at α0 = 1 shows the same too-dense, too-cool signature (ρ\_n +15%, T\_n −23%).
+3. Then: the other α0 with every correction, the LARE developers (`rme`, `rke_3d_fix`, the resistive crash), and production (dx = 0.02, L = 2000, t = 100).
