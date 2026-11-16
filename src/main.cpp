@@ -48,7 +48,7 @@ int main(int argc, char *argv[]){
     //Create and initialize the runner
     SAMS::runner<LARE::LARE3D<>, LARE::LARE3DST<>, LARE::LARE3DNF<>, TWOFLUID::PIP<>, LARE::LARE3DInitialConditions<>, examples::SodShockTube<>, examples::BrioAndWu<>,
 		    examples::MHDRotor<>, examples::OrszagTang<>, examples::OrszagTang3D<>, examples::EmeryWindTunnel<>, 
-        examples::KarmanVortex<>, examples::Corrugation<>, examples::BlastWave3D<>, examples::Hillier<>, examples::TwoFluidTest > runner;
+        examples::KarmanVortex<>, examples::Corrugation<>, examples::BlastWave3D<>, examples::Hillier<>, examples::TwoFluidTest, examples::SodShockTubeNeutral<> > runner;
     runner.initialize(argc, argv);
     //Finish welcome message
     SAMS::finishWelcomeMessage();

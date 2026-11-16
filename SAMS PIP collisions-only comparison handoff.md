@@ -1046,3 +1046,46 @@ A flag set in a problem's `controlVariables` (as `TwoFluidTest` sets all of `pla
 - **Strongest remaining suspect: the neutral fluid's own shock** in `LARE3DNF`, its shock heating and its remap (which `rke` only partly covers). This is the same mechanism found for the plasma in pure MHD: there the remap lost energy at the shock without heating, and the Lagrangian step was exact.
 
 **Next:** a pure-hydrodynamics test of `LARE3DNF` against exact solutions (next section).
+
+## Status update, 16 Nov 2026 (17:40): pure-hydro test set up: `LARE3DNF` (neutral solver) is wrong even on Sod
+
+### Set-up
+
+- **Run:** `sams LARE3DST LARE3DNF SodShockTubeNeutral`. Both LARE packages solve the same hydro problem side by side, with no coupling (no PIP) and B = 0 in the plasma. `SodShockTubeNeutral` existed but was not in the runner list; it has been added in `src/main.cpp`.
+- **Build:** `runs/hydro_build.sh <out>` edits `src/InitialConditions/SodNeutral/SodShockTube.cpp` temporarily. Options:
+  - `PROB=sod` (default; [0, 1], x0 = 0.5, γ 1.4);
+  - `PROB=collide`: symmetric colliding flows on [−L, L], uniform ρ and P, v\_x = ±U meeting at x = 0, giving two shocks with the gas between them at rest;
+  - `GAMMA`, `NX`, `L`, `U`, `RHO`, `P`, `T_END`, `DTS`, `VISC1`, `RKE=on`.
+- **Boundaries:** the x boundaries are mirrors (ghost = interior), which keeps the inflow going. Boundary disturbances travel inward at about U + c\_s and stay outside the shocks for these runs.
+- **Exact solver:** `scripts/hydro_riemann_exact.py <run>/SAMS_testdata <snap> --left ρ u P --right ρ u P --x0 --gamma [--out png --window a b]`. It is a Toro exact Riemann solver. For each fluid it gives the right-moving shock against exact, the plateau errors between contact and shock, and the Rankine–Hugoniot mass, momentum and energy balance across the code's own shock.
+
+### First results (rke off, `visc1` = 0.1)
+
+| Test | Fluid | Shock vs exact | Plateau ρ | Plateau T | Energy flux mismatch at shock |
+| --- | --- | --- | --- | --- | --- |
+| Sod, γ 1.4, 1024 cells, t = 0.2 (`runs/hydro_sod`) | plasma (`LARE3DST`) | −0.9 cells | +0.4% | −0.5% | +0.4% |
+| | **neutral (`LARE3DNF`)** | **+21 cells** | **−16%** | **+14%** | **−13%** |
+| Colliding flows, γ 5/3, ρ 1, P 0.05, U ±6 (Mach ≈ 20), dx 0.01, t = 1 (`runs/hydro_collide`) | plasma | 0.927 of the exact distance | +5.7% | −7.1% | +4.1% |
+| | **neutral** | **1.28** | **−13%** | **+27%**, noisy | **−14%** |
+
+Figures: `runs/hydro_sod/sod_vs_exact.png`, `runs/hydro_collide/collide_vs_exact.png`.
+
+### Reading
+
+**The neutral solver `LARE3DNF` is wrong even on Sod,** in every region, not just at the shock:
+- its rarefaction head is at x ≈ 0.22 instead of 0.26, so its sound speed is too high from the start;
+- its post-rarefaction state is off;
+- its shock is too far out and too hot.
+
+Its γ is set consistently (`data.eos.setGamma(data.gas_gamma)`, `LARE3DNeutralFluid/setup.cpp:190`; both fluids at 1.4 in Sod), so this is not a γ mismatch. Something in `LARE3DNF`'s update differs from `LARE3DST`: the pressure, predictor, corrector, shock viscosity or remap. **This fluid carries 99.7% of the mass in the two-fluid runs, so it is now the prime suspect for the α0 = 1 lag.** Note, though, that in the coupled run the neutrals come out too *cool*, while here they are too hot. The coupled shock is collisional, not a hydro shock, so the error may show up differently there.
+
+**The plasma solver reproduces the pure-MHD energy loss in pure hydro:** at Mach ≈ 20, 4% of the energy flux is missing, the shock is at 0.927 and the plateau is too dense and cool. This is the remap kinetic-energy loss (rke off). Rerun with `RKE=on` to confirm that `rke` closes it, as it did half the MHD gap.
+
+### Next steps
+
+1. **Find what `LARE3DNF` does differently from `LARE3DST`.** Diff the two packages' `lagran.cpp` (pressure, predictor, corrector, shock viscosity, energy equation) and remap files. Cheap tests:
+   - Sod with only `LARE3DNF` active, if possible;
+   - a smooth acoustic wave (sound speed);
+   - uniform advection (remap).
+2. Rerun the hydro tests with `RKE=on` (and for the plasma, check that it closes the 4%).
+3. Once `LARE3DNF` matches the exact Sod solution, rerun the α0 = 1 scan case.
