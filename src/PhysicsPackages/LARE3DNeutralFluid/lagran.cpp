@@ -540,7 +540,9 @@ namespace LARE
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
             // Energy at end of Lagrangian step
-            data.energy(ix, iy, iz) -= dv * data.pressure(ix, iy, iz) / data.rho(ix, iy, iz);
+            // One p dV term. (This was ported from the two-temperature corrector, e_e -= dv p_e / rho and
+            // e_i += (dt visc_heat - dv p_i) / rho, with both p_e and p_i replaced by the total pressure, so the
+            // neutrals did the p dV work twice: an effective gamma - 1 twice the real one, which failed Sod.)
             data.energy(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.pressure(ix, iy, iz)) / data.rho(ix, iy, iz);
             // Update density based on volume change
             data.rho(ix, iy, iz) /= (1.0 + dv);
