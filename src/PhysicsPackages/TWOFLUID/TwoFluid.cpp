@@ -141,7 +141,12 @@ if (plasma_source.ion_rec_nlevel) {
 //printf("after rates \n");
 //debug_rates(plasma_source,"after rates");        
         //////////////////////////////////////////////////////////////
-        if (plasma_source.vertex_rates){
+        // Vertex-rate arrays (vertex_rates). Registered unconditionally: variables are registered before
+        // defaultValues/controlVariables (runner.h: registerAxes, registerVariables, defaultValues,
+        // controlVariables, getVariables), so a vertex_rates set in a problem's controlVariables is not yet
+        // known here, and a conditional registration made getVariables fail with "variable
+        // PIPSource/rho_p_ac_vertex not found in registry". They are fetched and used only with vertex_rates.
+        {
             varRegistry.registerVariable<T_dataType>("PIPSource/rho_p_ac_vertex",  pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
             
             varRegistry.registerVariable<T_dataType>("PIPSource/rho_n_ac_vertex",  pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
