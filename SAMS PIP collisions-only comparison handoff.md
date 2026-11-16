@@ -698,3 +698,60 @@ The run finished at 12:06 on 16 Nov ("Simulation complete", 3531 s). At t = 1 th
 2. Optional: fix base LARE's resistive path (face/cell array mismatch, and the dt on step 0) to test resistive smoothing of the B\_y jump.
 3. Report to the LARE developers: the energy defect at the MHD slow shock (−5.8% of released, 4.8% of the flux through the shock; resolution-independent), the `rke` 3D bugs, and the resistive crash.
 4. Then the two-fluid part of the lag: at α0 = 1 most of it does not come from the plasma remap. Look at the neutral fluid's remap (`LARE3DNF`) and the collisional heating.
+
+## Status update, 16 Nov 2026 (15:00): prototype magnetic-energy correction (`rme`) closes the gap in pure MHD
+
+### What it does
+
+**`data.rme`** is a PROTOTYPE in base LARE (`src/PhysicsPackages/LARE`), off by default. It is the magnetic analogue of `rke`: it returns the magnetic energy that the remap's x-pass dissipates as heat.
+
+**How the loss is measured.** In `remap_x`, before B\_y and B\_z are updated, each face element gets
+
+Q = E\_after − E\_before + g\_i − g\_{i−1}
+
+where:
+- **E\_before** uses the Lagrangian width (B = Φ / (area·w1/dx));
+- **E\_after** uses the Eulerian width;
+- **g** is the energy of the slab swept across each x-face, g = F²L / (2 o\_v T): field F / (o\_v T), volume |o\_v|·L·T, where L is the element's own extent and T the transverse one.
+
+**Properties of Q:**
+- ΣQ is exactly the pass's change of magnetic energy.
+- Locally, Q is the cell's mixing loss, −½ V₁V₂ (b₁ − b₂)² / (V₁ + V₂), plus the limiter's reconstruction term. Both are second order in the jumps.
+
+**Where it goes.** Q is stored in `delta_me`, half to each of the two cells either side of the face. After the remap, `magnetic_energy_correction` adds −`delta_me` / (ρ·cv) to the internal energy, half to electrons and half to ions, as `energy_correction` does. Then `energy_bcs()` refreshes the ghosts.
+
+**Code** (commit after this note's): `LARE/shared_data.h` (flag, array, hook in `endOfTimestep`), `setup.cpp` (allocation), `remap.cpp` (zeroing), `xremap.cpp` (measurement for B\_y and B\_z), `diagnostics.cpp` (return).
+
+**Limitations:**
+- **x-pass only.** The y- and z-passes are not done; their loss is 0.06% here. It also assumes B\_x is not changed by the x-pass, which holds in 1D.
+- **Base `LARE3D` only.** `LARE3DST` and `LARE3DNF`, which the two-fluid runs use, don't have it yet.
+- **CPU only:** it uses atomics but is untested on GPU.
+- **Not yet agreed with the LARE developers.**
+
+**A first attempt that failed.** The first version took g = F·(B\_l + B\_r)/2·L. That has a first-order reversible error wherever B has a gradient. At the fast rarefaction front it produced Q of ±2×10⁻⁷ per column, while the real net loss was about 1% of that. With plasma β\_p ≈ 5×10⁻⁴ that is 100× a cell's thermal energy: the internal energy went negative upstream and the shock ran away (1.38× exact). With the swept-slab g, the positive parts of Q are 10⁻⁴ of the negative parts, and Q sits only at the slow shock.
+
+### Results (pure MHD, L = 25, dx = 0.02, t = 1; `runs/mhd_tests_summary.py`)
+
+| Run | Shock / exact | Inner ρ | Inner T | Energy flux missing at shock | E − E0 (% of released) |
+| --- | --- | --- | --- | --- | --- |
+| baseline | 0.915 | +9.8% | −10.1% | 4.8% | −5.78% |
+| `rme` built in, flag off (`mhd_rme_off`) | 0.915 (bit-identical to baseline) | | | | |
+| `rke` + `rke_3d_fix` (`mhd_rke_fix`) | 0.965 | +4.2% | −4.7% | 2.1% | −2.74% |
+| `rme` (`mhd_rme`) | 0.965 | +4.7% | −5.4% | 2.4% | −3.08% |
+| **`rme` + `rke` + `rke_3d_fix`** (`mhd_rme_rkefix`) | **1.015** | **−0.1%** | **−0.3%** | **0.3%** | **−0.17%** |
+| the same at dx = 0.01 (`mhd_rme_rkefix_dx001`) | *running at the time of writing; read it with `mhd_tests_summary.py`* | | | | |
+
+**What the combination fixes.** With both corrections the plateau ρ, T, P and v\_y match the exact solution, and the shock is within one cell. PIP gave 1.010. Figure: `runs/mhd_rme_rkefix/mhd_rme_rkefix_vs_exact.png`.
+
+**What remains.** The v\_x oscillations (±0.1) behind and ahead of the shock and some B\_y ringing are still there. They were there before too; they're a separate issue and don't affect the jump conditions.
+
+**The two corrections are about equal,** about 3% each of the released energy, matching the in-code budget's split of the x-pass loss (kinetic 3.0%, magnetic 2.7%).
+
+**Build options:** `runs/mhd_sheet_build.sh` now takes `RME=on`. It also backs up and restores only the files it edits, rather than using `git checkout`, so uncommitted work in them survives a build.
+
+### Next steps
+
+1. Check the dx = 0.01 result: `python3 runs/mhd_tests_summary.py runs/mhd_dx001 runs/mhd_rme_rkefix_dx001`.
+2. Port `rme` (and `rke_3d_fix`) to `LARE3DST` and `LARE3DNF`, and add the y- and z-passes. Then rerun the coupling scan, α0 = 0.1–100 at L = 500 (each run a few hours), to see how much of the two-fluid lag is left.
+3. Take `rme`, `rke_3d_fix`, this Riemann problem and the resistive crash to the LARE developers.
+4. Optional: the v\_x ringing at the slow shock.
