@@ -739,7 +739,8 @@ where:
 | `rke` + `rke_3d_fix` (`mhd_rke_fix`) | 0.965 | +4.2% | −4.7% | 2.1% | −2.74% |
 | `rme` (`mhd_rme`) | 0.965 | +4.7% | −5.4% | 2.4% | −3.08% |
 | **`rme` + `rke` + `rke_3d_fix`** (`mhd_rme_rkefix`) | **1.015** | **−0.1%** | **−0.3%** | **0.3%** | **−0.17%** |
-| the same at dx = 0.01 (`mhd_rme_rkefix_dx001`) | *running at the time of writing; read it with `mhd_tests_summary.py`* | | | | |
+| the same at dx = 0.01 (`mhd_rme_rkefix_dx001`) | **1.009** | +0.01% | −0.44% | 0.2% | −0.18% |
+| for reference: baseline at dx = 0.01 (`mhd_dx001`) | 0.921 | +10.1% | −10.2% | 4.9% | −5.78% |
 
 **What the combination fixes.** With both corrections the plateau ρ, T, P and v\_y match the exact solution, and the shock is within one cell. PIP gave 1.010. Figure: `runs/mhd_rme_rkefix/mhd_rme_rkefix_vs_exact.png`.
 
@@ -749,9 +750,59 @@ where:
 
 **Build options:** `runs/mhd_sheet_build.sh` now takes `RME=on`. It also backs up and restores only the files it edits, rather than using `git checkout`, so uncommitted work in them survives a build.
 
-### Next steps
+### Next steps (superseded: see the next section)
 
-1. Check the dx = 0.01 result: `python3 runs/mhd_tests_summary.py runs/mhd_dx001 runs/mhd_rme_rkefix_dx001`.
+1. ~~Check the dx = 0.01 result~~: done, see the table (1.009 of exact).
 2. Port `rme` (and `rke_3d_fix`) to `LARE3DST` and `LARE3DNF`, and add the y- and z-passes. Then rerun the coupling scan, α0 = 0.1–100 at L = 500 (each run a few hours), to see how much of the two-fluid lag is left.
 3. Take `rme`, `rke_3d_fix`, this Riemann problem and the resistive crash to the LARE developers.
 4. Optional: the v\_x ringing at the slow shock.
+
+## Status update, 16 Nov 2026 (15:10): `rme` ported to LARE3DST; α0 = 1 two-fluid run with all corrections started
+
+### Port (`f10b80b`, pushed)
+
+- **What's in it:** `rme` is now in `LARE3DST`, the plasma package of the two-fluid runs. The measurement in `xremap.cpp` is identical to base LARE's, and `magnetic_energy_correction` returns the heat to the single internal energy (`energy_ion`). It has an allocation, zeroing and a hook in `endOfTimestep` after the `rke` correction, followed by `energy_bcs()`.
+- **Not ported to `LARE3DNF`:** the neutral fluid has no magnetic field, so there is nothing to correct.
+- **Start-up print:** now shows `rme (remap mag. energy): plasma on/off`.
+- **Energy budget:** its last line is now "rke + rme corrections", since it includes both.
+
+### Check in the two-fluid code (uncoupled, half domain, L = 25, dx = 0.02, in-code budget)
+
+**Runs:** `runs/ebudget_st_rmeoff` and `runs/ebudget_st_rme_rke`, to t = 0.3, serial, built with `runs/ebudget_build.sh` (now takes `RKE=on`, which is `rke` + `rke_3d_fix`, and `RME=on`).
+
+| t = 0.1 | E − E0 | Lagrangian | x-remap KE | x-remap magnetic | y-remap | Correction returned |
+| --- | --- | --- | --- | --- | --- | --- |
+| `rme` off | −5.86% | +0.08% | −3.16% | −2.69% | −0.09% | 0 |
+| `rme` + `rke` + `rke_3d_fix` | **+0.01%** | +0.08% | −3.04% | −2.74% | −0.09% | +5.80% (8.52×10⁻³) |
+
+- **Flag off changes nothing:** the snapshot at t = 0.1 is **bit-identical** to the morning's run (`runs/ebudget_L25_dx002_t1`).
+- **Flag on, energy is conserved:** the remap still dissipates as before, and the corrections return all of it. The corrector identities hold to round-off (10⁻¹⁶), and the budget sums to 10⁻¹⁴.
+- **Read the t = 0.2 and 0.3 rows,** once the runs finish, with `python3 runs/ebudget_table.py runs/<run>/run.log`.
+
+### Running: α0 = 1 with all corrections
+
+**The question:** with the plasma remap now conserving energy, how much of the two-fluid lag is left? That lag was 19% (shock 0.81–0.85 of PIP's) at α0 = 1.
+
+**Run:** `runs/scan_a1_rme_rke`, started 16 Nov ~15:00 and expected to take about 80 min.
+- **Set-up:** the coupling scan's α0 = 1 case: L = 500, dx = 0.04, t = 20, 5 ranks.
+- **Corrections:** `rke` and `rke_3d_fix` (plasma and neutrals), and `rme` (plasma).
+- **Binary:** `runs/scaling/sams_scan_a1_rme_rke`, from `runs/scan/build_variant.sh <out> scan 1 on on`. The 5th argument, new, switches `rme` on.
+
+**Comparison:** a background job writes `runs/scan/compare_rme/` when the run finishes, against PIP (`runs/scan/pip_a1.0`) at t = 10 and 20. It compares three runs: the original (`base`, `runs/scan/sams_a1`), `rke` only (`rke`, `runs/sams_L2000_dx004_rke_t20`, L = 2000 but the same dx) and the new one (`rme_rke`). To redo it by hand:
+
+```
+cd runs/scan/compare_rme
+python3 /home/snow/Documents/SAMS/TwoFluidWIP/scripts/collonly_compare.py --pip ../pip_a1.0/out \
+    --sams ../../scan_a1_rme_rke/SAMS_testdata --snap 2 --xmax 120 --out a1_rme_rke_s2
+```
+
+**How to read it:**
+- **Shock ratio near 1:** the two-fluid lag was the plasma remap's energy loss, made worse by coupling, and the fix carries over.
+- **A lag well above the pure-MHD ~1%:** the rest is in the coupling. Suspects: the neutral fluid's remap kinetic-energy loss (returned by `rke` in `LARE3DNF`, so check the budget), collisional frictional heating and thermal exchange, or the α0 = 100 stall.
+
+### Next steps
+
+1. Evaluate the α0 = 1 run (above).
+2. Depending on the result: rerun the other α0 values (0.1, 10, 100) with all corrections, or look at the coupling terms.
+3. Add the y- and z-passes to `rme`, and take `rme`, `rke_3d_fix` and the resistive crash in base LARE to the LARE developers.
+4. Production: once settled, rerun dx = 0.02, L = 2000, t = 100 with all corrections (about 2 days on 10 ranks).
