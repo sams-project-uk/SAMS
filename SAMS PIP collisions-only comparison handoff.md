@@ -836,4 +836,71 @@ In `get_collisional_source_terms` (`TwoFluid.cpp` ~line 819):
 - **Why that loses energy:** averaging reduces |v\_n − v\_p|². So where the drift varies from cell to cell, less heat is added than the kinetic energy the momentum exchange removes. The drift spikes in a few cells at the slow shock, so this would make the shock too cool.
 - **Two more things to check:** the explicit update's own energy error, and the thermal-exchange factor (the code comment says "the 3/2 here needs fixing").
 
-**Check (running):** a short α0 = 1 run with the code's conservation diagnostics (`check_conservation`, `check_source` in `twofluid.h`).
+**Check:** see the next section.
+
+## Status update, 16 Nov 2026 (16:30): the collision step loses energy; energy-conserving frictional heating
+
+### The existing checks can't see it
+
+- **`checkConservation`** saves the state before source half-step 1 and compares after half-step 2. The whole LARE step lies in between, so it doesn't isolate the sources. It also forms kinetic energy as cell ρ × vertex v at the same index.
+- **`checkSourceConservation`** re-checks the source formulas cell by cell with the same averaged velocities. It cannot see an averaging error.
+
+### New diagnostic: `check_source_energy` (`twofluid.h`, off by default)
+
+**What it measures:** the total energy of both fluids just before and after every explicit source half-step:
+- internal energy ρeV over cells;
+- kinetic energy ½m\_v|v|² over vertices, with m\_v = ⅛Σρ·cv of the 8 cells around each vertex and half weight on the x boundaries.
+
+Collisions change neither ρ nor B, so any change in this total is energy the source step creates or destroys.
+
+**Output:** every `check_source_energy_every` steps, the cumulative heat added, the kinetic change, their sum (the error), the 6 x indices with the largest error, and the error in 8 x ranges. It runs serial only (no MPI reduction). Build with `runs/srcenergy_build.sh <out> <x_half> <nx> <t_end> <alpha0> [every]`.
+
+### Result: α0 = 1, explicit sources, L = 25, dx = 0.04, serial (`runs/srcenergy_a1`)
+
+| t | Kinetic energy removed by friction | Heat added | Lost | Lost / KE removed |
+| --- | --- | --- | --- | --- |
+| 0.10 | 3.92×10⁻⁴ | 3.57×10⁻⁴ | 3.5×10⁻⁵ | 8.9% |
+| 2.11 | 7.65×10⁻³ | 7.37×10⁻³ | 2.8×10⁻⁴ | 3.7% |
+| 4.67 | 1.49×10⁻² | 1.43×10⁻² | 5.7×10⁻⁴ | 3.8% |
+
+**Where:**
+- **The x = 0 vertex:** friction there removes 6.9×10⁻⁴ of kinetic energy. That is the symmetry plane, where the outflow jet along the sheet makes the drift largest.
+- **Cells 1–5:** they get slightly more heat than the kinetic energy of their own vertices (+2–8×10⁻⁵ each), which offsets part of the loss.
+- **Beyond x ≈ 3,** including the slow shock: below 10⁻⁷.
+
+**Cause:** the momentum exchange acts on vertex velocities. The frictional heating ½αρ\_nρ\_p|v\_n − v\_p|² was computed at cell centres from vertex-averaged velocities, and averaging reduces |v\_n − v\_p|² where the drift varies between vertices.
+
+**Size:** about 2.4% of the magnetic energy released by t = 4.7. This is estimated from the growth of internal plus kinetic energy, since the diagnostic does not measure magnetic energy. For comparison, in pure MHD a 5.8% loss gave a 9% shock lag. So this is likely a few percent of the 19% lag at α0 = 1, not all of it.
+
+### Fix: `vertex_frictional_heating` (`twofluid.h`, `TwoFluid.cpp`; off by default)
+
+**What it does:**
+- **No friction in the cell heating:** with the flag on, `get_collisional_source_terms` drops the ½v\_d² friction term from the cell heating and keeps the thermal exchange.
+- **Heat from the vertices:** in `apply_two_fluid_source` (explicit), before the velocity update, each vertex's exact kinetic-energy change in the momentum exchange is computed from its old and new velocities, for both fluids, with m\_v = ⅛Σρ·cv.
+- **Distribution:** an eighth goes as heat to each of the 8 surrounding cells, half to each fluid (as the old ½v\_d² term split it).
+- **Boundaries:** the ghost cells' share on a domain boundary matches the half weight of the boundary vertices.
+
+**Not covered:** the implicit (PETSc) path is unchanged.
+
+**Check** (`runs/srcenergy_a1_vfh`, same set-up): the error is −9×10⁻¹⁹ at t = 0.05, round-off (it was −8.9%).
+
+**Side effect: smaller time step.** With the fix, dt settles near 6×10⁻⁵ early on, where without it dt reached 4×10⁻⁴ by t = 0.1.
+- **Likely cause** (to confirm): the collisional time-step limit, `set_dt_collisional`, is 0.08 / max|source|. It uses the *absolute* rate of change of the specific energy, not the rate relative to the energy. The plasma at the sheet now gets its full frictional heat (the averaging under-heated it), so it runs hotter, the thermal-exchange rate is larger and the limit drops.
+- **Possible remedy:** a relative limit, for example |de/dt| / e.
+
+### Thermal exchange factor (the "3/2" comment): the formula is already right
+
+SAMS's thermal exchange is α ρ\_n (T\_n − T\_p) / (γ(γ−1)) per unit mass, with T\_p = γP/(2ρ) and T\_n = γP/ρ, the same convention as PIP (`te = pr/de*gm*mu_p`). In terms of γ:
+- the exchange is k(T\_n − T\_p)/(γ−1) per particle, which is (3/2)kΔT for γ = 5/3;
+- with the code temperature T = γkT/m, that becomes ΔT/(γ(γ−1)) per unit mass;
+- that equals PIP's 3/(2γ)·ΔT (`PIP_rot.f90`), exactly at γ = 5/3.
+
+So the formula is unchanged. The comment "the 3/2 here needs fixing" is replaced by this derivation.
+
+**Not to be confused with γ/(γ−1),** which is 5/2 at γ = 5/3 (the enthalpy factor). Used here it would make the thermal exchange about 2.8× too strong.
+
+### Next steps
+
+1. Confirm the dt limiter (which source term and where), and consider a relative limit.
+2. Rerun the α0 = 1 scan case with `vertex_frictional_heating` + `rme` + `rke` + `rke_3d_fix`, to see how much of the lag goes.
+3. If a large lag remains, test the neutral fluid's own shock in pure hydrodynamics, as was done for MHD.
