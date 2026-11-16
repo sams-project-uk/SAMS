@@ -1089,3 +1089,45 @@ Its γ is set consistently (`data.eos.setGamma(data.gas_gamma)`, `LARE3DNeutralF
    - uniform advection (remap).
 2. Rerun the hydro tests with `RKE=on` (and for the plasma, check that it closes the 4%).
 3. Once `LARE3DNF` matches the exact Sod solution, rerun the α0 = 1 scan case.
+
+## Status update, 16 Nov 2026 (17:55): `LARE3DNF` bug found and fixed: the neutrals did the p dV work twice
+
+### The bug (`LARE3DNeutralFluid/lagran.cpp`, corrector)
+
+```
+LARE3DST:  e -= dv·p_e/ρ;   e += (dt·visc_heat − dv·p_i)/ρ;     (p_e is never set, so it is 0: one p dV)
+LARE3DNF:  e -= dv·P/ρ;     e += (dt·visc_heat − dv·P)/ρ;       (P twice)
+```
+
+**How it happened:** `LARE3DNF`'s corrector was ported from the two-temperature update with both `p_e` and `p_i` replaced by the total pressure. The neutral energy equation therefore subtracted p dV twice, giving an effective γ − 1 twice the real one: γ\_eff = 1.8 for γ = 1.4, and **7/3 for γ = 5/3**.
+
+**Fix:** the leftover electron line is removed (commit after this note's predecessor, `LARE3DNF: neutral fluid did the p dV work twice`).
+
+**How it was found:** by diffing `LARE3DNF`'s predictor and corrector against `LARE3DST`'s, after the hydro test. The Sod rarefaction head sat where c\_eff = √(1.8 P/ρ) puts it (0.232 predicted, 0.22 observed).
+
+**This affects every run with neutrals,** including all the two-fluid runs so far: the production runs, the coupling scan and the α0 = 1 runs. In those, the neutral fluid was effectively a γ = 7/3 gas in compression and expansion, while its temperature, sound speed and shock viscosity used γ = 5/3.
+
+### Pure hydro after the fix (`runs/hydro_sod_fix`, `runs/hydro_collide_fix`)
+
+| Test | Fluid | Shock vs exact | Plateau ρ | Plateau T | Energy flux mismatch at shock |
+| --- | --- | --- | --- | --- | --- |
+| Sod, γ 1.4 | plasma | −0.9 cells | +0.4% | −0.5% | +0.4% |
+| | **neutral, fixed** | **−0.7 cells** | **+0.3%** | **−0.4%** | **+0.3%** |
+| Colliding flows, Mach ≈ 20, dx 0.01 | plasma | 0.878 of exact distance | +10.8% | −12.5% | +7.4% |
+| | neutral, fixed | 0.878 | +10.7% | −12.4% | +7.3% |
+
+**Sod:** both packages now match the exact solution.
+
+**Strong shock:** both packages now give identical results, as two independent solvers on the same problem should. Both lose about 7% of the energy flux at a Mach-20 hydro shock with `rke` off. This is the remap kinetic-energy loss, the same mechanism as in MHD.
+
+**Courant-number dependence:** before the fix the plasma had given 0.927 here. The plasma code did not change, but the hot neutrals had forced a smaller dt: the packages share one time step (the minimum, `LARE3DNF::calculateTimestep`), 1110 steps against 1010. The strong-shock error therefore seems to depend on the Courant number. A test with `dt_multiplier` 0.4 and 0.2 is running (`runs/hydro_collide_fix_dtm{0.4,0.2}`; `runs/hydro_build.sh` now takes `DTM=`).
+
+### What this means for the α0 = 1 lag
+
+All coupled runs so far had the doubled p dV in the neutrals. The α0 = 1 run with every correction (`runs/scan_a1_allfix`, finishing about 18:00) still has it. **The scan case must be rerun with the fixed `LARE3DNF`**, together with every other correction, before anything more can be said about the remaining lag.
+
+### Next steps
+
+1. Rerun α0 = 1 (L = 500, t = 20) with the `LARE3DNF` fix and every correction, and compare with PIP.
+2. Evaluate the Courant-number test. Rerun the hydro tests with `RKE=on`: `rke` should close the 7% hydro loss, as it closed the kinetic half in MHD.
+3. Then the other α0 and the production run, all with the fix. Every earlier SAMS two-fluid result is affected.
