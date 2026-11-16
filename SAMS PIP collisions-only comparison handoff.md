@@ -800,9 +800,40 @@ python3 /home/snow/Documents/SAMS/TwoFluidWIP/scripts/collonly_compare.py --pip 
 - **Shock ratio near 1:** the two-fluid lag was the plasma remap's energy loss, made worse by coupling, and the fix carries over.
 - **A lag well above the pure-MHD ~1%:** the rest is in the coupling. Suspects: the neutral fluid's remap kinetic-energy loss (returned by `rke` in `LARE3DNF`, so check the budget), collisional frictional heating and thermal exchange, or the α0 = 100 stall.
 
-### Next steps
+### Next steps (superseded: see the next section)
 
 1. Evaluate the α0 = 1 run (above).
 2. Depending on the result: rerun the other α0 values (0.1, 10, 100) with all corrections, or look at the coupling terms.
 3. Add the y- and z-passes to `rme`, and take `rme`, `rke_3d_fix` and the resistive crash in base LARE to the LARE developers.
 4. Production: once settled, rerun dx = 0.02, L = 2000, t = 100 with all corrections (about 2 days on 10 ranks).
+
+## Status update, 16 Nov 2026 (16:15): the two-fluid lag is not the plasma remap
+
+### α0 = 1 with all corrections: almost no change
+
+`runs/scan_a1_rme_rke` finished 16:06 ("Simulation complete", 3905 s). Comparison with PIP is in `runs/scan/compare_rme/` (`a1_{base,rke,rme_rke}_s{1,2}`):
+
+| α0 = 1 | Shock, t = 10 (PIP 3.98) | Shock, t = 20 (PIP 6.58) | ρ\_n plateau, t = 10 | T\_n | T\_p | B\_y |
+| --- | --- | --- | --- | --- | --- | --- |
+| no corrections (`runs/scan/sams_a1`) | 3.22 (0.81) | 5.58 (0.85) | +15.7% | −24.4% | −16.7% | +7.0% |
+| `rke` + `rke_3d_fix` (`runs/sams_L2000_dx004_rke_t20`) | 3.26 | 5.62 | +14.9% | −23.7% | −15.2% | +3.2% |
+| `rme` + `rke` + `rke_3d_fix` (`runs/scan_a1_rme_rke`) | 3.26 (0.82) | 5.62 (0.85) | +14.9% | −23.0% | −14.5% | +1.8% |
+
+**Reading:**
+- **The plasma remap is not the cause.** The corrections that fix the pure-MHD shock (0.915 → 1.009) move the α0 = 1 shock by one cell. At α0 = 1 the neutrals carry 99.7% of the mass and the plasma is dragged with them. The plasma remap's loss is therefore a small share of the total energy.
+- **The deficit is in the neutrals:** T\_n is −23% and ρ\_n +15%, the same too-dense, too-cool signature of energy missing at the shock.
+- **The neutrals' remap is not it either.** Their remap kinetic-energy loss is returned by `rke` in `LARE3DNF`, which was on in both corrected runs. The neutral fluid has no field, so there is nothing for `rme` to do.
+
+### The uncoupled budget runs finished
+
+With `rme` + `rke` + `rke_3d_fix`, E − E0 is +0.01%, +0.01% and +0.02% of the released energy at t = 0.1, 0.2 and 0.3 (`runs/ebudget_st_rme_rke`). Without them it is −5.86%, −5.71% and −5.72% (`runs/ebudget_st_rmeoff`).
+
+### Main suspect: frictional heating in the collision step
+
+In `get_collisional_source_terms` (`TwoFluid.cpp` ~line 819):
+- **The heating:** frictional heating is ½ α ρ\_n (v\_n − v\_p)² per unit plasma mass, and the same per unit neutral mass with ρ\_p. It is computed at cell centres from velocities averaged over the 8 vertices around the cell.
+- **The momentum exchange:** it acts on the vertex velocities.
+- **Why that loses energy:** averaging reduces |v\_n − v\_p|². So where the drift varies from cell to cell, less heat is added than the kinetic energy the momentum exchange removes. The drift spikes in a few cells at the slow shock, so this would make the shock too cool.
+- **Two more things to check:** the explicit update's own energy error, and the thermal-exchange factor (the code comment says "the 3/2 here needs fixing").
+
+**Check (running):** a short α0 = 1 run with the code's conservation diagnostics (`check_conservation`, `check_source` in `twofluid.h`).
