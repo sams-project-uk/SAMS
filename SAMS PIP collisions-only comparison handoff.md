@@ -633,7 +633,7 @@ Use absolute paths to scripts from inside `runs/`, because `runs/..` resolves to
 
 ### Per-operator budget (`LARE3DST`, PIP mode, uncoupled; small dt)
 
-**Run:** `runs/ebudget_L25_dx002_t1`: the same problem on the half domain [0, 25], dx = 0.02, to t = 1, `data.energy_budget = true`. It was started 11:07 on 16 Nov and should finish about 12:15 (serial; dt ≈ 3.3×10⁻⁵, the bug above).
+**Run:** `runs/ebudget_L25_dx002_t1`: the same problem on the half domain [0, 25], dx = 0.02, to t = 1, `data.energy_budget = true`. It ran 11:07–12:06 on 16 Nov (serial; dt ≈ 3.3×10⁻⁵, the bug above).
 - **Binary:** `runs/scaling/sams_ebudget_L25_dx002_t1`, from `runs/ebudget_build.sh`.
 - **Read the time series:** `python3 /home/snow/Documents/SAMS/TwoFluidWIP/runs/ebudget_table.py runs/ebudget_L25_dx002_t1/run.log`.
 
@@ -645,6 +645,11 @@ Percentages are of the magnetic energy released so far:
 | 0.2 | −5.71% | +0.06% | −3.07% | −2.64% | −0.07% | −2.61% | −0.04% |
 | 0.3 | −5.72% | +0.05% | −3.05% | −2.66% | −0.06% | −1.78% | −0.77% |
 | 0.4 | −5.63% | +0.05% | −3.00% | −2.63% | −0.06% | −1.37% | −1.24% |
+| 0.6 | −5.67% | +0.05% | −2.98% | −2.67% | −0.06% | −0.89% | −1.76% |
+| 0.8 | −5.65% | +0.05% | −2.97% | −2.67% | −0.06% | −0.73% | −1.97% |
+| 1.0 | −5.65% | +0.05% | −2.96% | −2.68% | −0.05% | −0.64% | −2.10% |
+
+The run finished at 12:06 on 16 Nov ("Simulation complete", 3531 s). At t = 1 the shock is at cell ≈ 37, and most of the kinetic loss is now in vertices 11–50.
 
 **Reading:**
 - **The Lagrangian step is exact.** All of the loss is in the **x-pass of the remap**: about 3.0% kinetic energy and 2.6% magnetic energy, constant in time as expected for a self-similar solution. This is the same order as the 4.8% missing at the shock.
@@ -654,12 +659,11 @@ Percentages are of the magnetic energy released so far:
 
 ### Next steps
 
-1. Read the final rows of the budget run (t = 0.5–1) with `ebudget_table.py`.
-2. **Cheap pure-MHD tests (2 min each),** by extending `runs/mhd_sheet_build.sh`:
+1. **Cheap pure-MHD tests (2 min each),** by extending `runs/mhd_sheet_build.sh`:
    - `rke` on, with and without `rke_3d_fix` in base `LARE3D`, which doesn't have the fix. Does the shock reach 1.0 of exact?
    - Resistivity on.
    - `visc1` 0.8 against 0.1.
    - A magnetic-energy correction analogous to `rke`, behind a flag. Agree it with the LARE developers.
-3. Report to the LARE developers: the energy defect at the MHD slow shock (5%, independent of resolution), with this Riemann problem and `scripts/mhd_riemann_exact.py` as the test.
-4. Optional: fix the uncoupled dt bug in `twofluid.h` for PIP-mode uncoupled runs.
-5. Then return to the coupling terms and the stall at α0 = 100.
+2. Report to the LARE developers: the energy defect at the MHD slow shock (5%, independent of resolution), with this Riemann problem and `scripts/mhd_riemann_exact.py` as the test.
+3. Optional: fix the uncoupled dt bug in `twofluid.h` for PIP-mode uncoupled runs.
+4. Then return to the coupling terms and the stall at α0 = 100.
