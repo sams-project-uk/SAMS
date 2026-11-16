@@ -39,6 +39,10 @@ namespace LARE
         {
             pw::assign(data.delta_ke, 0.0);
         }
+        if (data.rme)
+        {
+            pw::assign(data.delta_me, 0.0);
+        }
         remap_data.xpass = 1.0;
         remap_data.ypass = 1.0;
         remap_data.zpass = 1.0;

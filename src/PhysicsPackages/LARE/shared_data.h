@@ -161,6 +161,13 @@ namespace LARE
         //     Without this, the next step's pressure uses the uncorrected ghost energy, which drove a
         //     growing odd-even mode across y and z in a 1D (ny = nz = 2) run.
         bool rke_3d_fix = false;
+        // PROTOTYPE (off by default, pending agreement with the LARE developers): remap magnetic-energy
+        // correction, the magnetic analogue of rke. The x-pass of the remap dissipates magnetic energy
+        // (numerical reconnection of the transported B_y, B_z) without heating; with rme the energy lost by
+        // each face element is measured (energy before and after, less the energy carried by the field flux
+        // through its x-faces) and returned as heat to the two cells either side of the face after the
+        // remap. x-pass only (y- and z-passes not yet), so for flows varying mainly in x.
+        bool rme = false;
         // Diagnostic: per-operator energy budget of the plasma (LARE3DST only; see
         // LARE3DSingleTemperature/energyBudget.cpp). Off by default. Printed at every snapshot time,
         // and every energy_budget_every steps if > 0.
@@ -238,6 +245,7 @@ namespace LARE
         lineArray grav_r;
         lineArray grav_z;
         volumeArray delta_ke; // Remap kinetic energy correction
+        volumeArray delta_me; // Remap magnetic energy correction (rme)
         volumeArray x, y, z;
         volumeArray xp, yp, zp;
 
@@ -454,6 +462,10 @@ namespace LARE
             if (data.rke){
                 energy_correction(data);
             }
+            if (data.rme){
+                magnetic_energy_correction(data);
+                this->energy_bcs();
+            }
             eta_calc(data);
         }
 
@@ -582,6 +594,10 @@ namespace LARE
          * Function to add back the kinetic energy correction
          */
         void energy_correction(simulationData &data);
+        /**
+         * Function to add back the magnetic energy dissipated by the remap (rme)
+         */
+        void magnetic_energy_correction(simulationData &data);
     };
 }
 

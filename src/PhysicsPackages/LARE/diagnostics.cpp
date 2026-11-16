@@ -140,4 +140,20 @@ namespace LARE
             },
             Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
     }
+
+    template<typename T_EOS>
+    void LARE3D<T_EOS>::magnetic_energy_correction(simulationData &data)
+    {
+        using Range = pw::Range;
+        // rme: return the magnetic energy dissipated by the remap (delta_me < 0) as heat, split equally
+        // between electrons and ions as energy_correction does. Signed: local gains (Q > 0, from the limiter)
+        // are taken back, so the total energy is conserved exactly.
+        pw::applyKernel(
+            LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                T_dataType dme = -data.delta_me(ix, iy, iz) / (data.rho(ix, iy, iz) * data.cv(ix, iy, iz));
+                data.energy_electron(ix, iy, iz) += 0.5 * dme;
+                data.energy_ion(ix, iy, iz) += 0.5 * dme;
+            },
+            Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
+    }
 }

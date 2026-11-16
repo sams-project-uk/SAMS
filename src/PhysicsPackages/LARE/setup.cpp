@@ -253,6 +253,10 @@ namespace LARE
         {
             manager.allocate(data.delta_ke, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
         }
+        if (data.rme)
+        {
+            manager.allocate(data.delta_me, Range(-1, nx + 2), Range(-1, ny + 2), Range(-1, nz + 2));
+        }
 
         data.mpiType = SAMS::gettypeRegistry().getMPIType<T_dataType>();
 
