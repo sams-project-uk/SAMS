@@ -1063,33 +1063,33 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
 //Assuming normalisation to the sound speed
     template<typename T_EOS> 
 void PIP<T_EOS>::set_dt_collisional(LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source) {
-
+    // Explicit-source time step limit: dt <= 0.1 dt_multiplier / (fastest relative rate of change), per
+    // interior cell. The rates are relative to the quantity being changed:
+    //   alpha (rho_n + rho_p)     momentum (and thermal) relaxation of the two fluids
+    //   |dm/dt| / rho             ionisation / recombination, each fluid
+    //   |de/dt| / e               heating (thermal exchange, friction, ionisation potential), each fluid
+    // The earlier limit used the absolute rates (1/|source| for every source array, including ghost
+    // cell 0), which mixes units (specific energies ~100 against velocities ~1) and limited dt to well
+    // below the CFL step (3.5e-4 against 1.6e-3 at alpha0 = 1 with vertex_frictional_heating). With the
+    // exchange terms off (collisions = false) nothing is applied, so there is no limit.
     using Range = portableWrapper::Range;
-
-    int i0 = data.geometry == LARE::geometryType::Cartesian ? 0:1;
-    //Now need to do a map and reduction
-    plasma_source.two_fluid_timestep = 0.1*data.dt_multiplier * 
+    if (!plasma_source.collisions) {
+        plasma_source.two_fluid_timestep = data.largest_number;
+        return;
+    }
+    plasma_source.two_fluid_timestep = 0.1*data.dt_multiplier /
     portableWrapper::applyReduction(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-        //Get Temperatures
-        
-        SAMS::T_dataType  t1 = std::min({1.0/std::abs(plasma_source.source_mass(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_mass_n(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_v_x(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_v_x_n(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_v_y(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_v_y_n(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_v_z(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_v_z_n(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_energy(ix,iy,iz)),
-                                       1.0/std::abs(plasma_source.source_energy_n(ix,iy,iz))
-                                       });
-        
-                return t1;
-    }, LAMBDA(SAMS::T_dataType  &a, const SAMS::T_dataType  &b) {
-        a=portableWrapper::min(a, b);
-    }, data.largest_number,
-    Range(i0, data.nx), Range(0, data.ny), Range(0, data.nz));
-
+        const SAMS::T_dataType rho_p = data.rho(ix,iy,iz), rho_n = dataNeutral.rho(ix,iy,iz);
+        SAMS::T_dataType r = plasma_source.ac(ix,iy,iz)*(rho_n + rho_p);
+        r = std::max(r, std::abs(plasma_source.source_mass(ix,iy,iz))/rho_p);
+        r = std::max(r, std::abs(plasma_source.source_mass_n(ix,iy,iz))/rho_n);
+        r = std::max(r, std::abs(plasma_source.source_energy(ix,iy,iz))/data.energy_ion(ix,iy,iz));
+        r = std::max(r, std::abs(plasma_source.source_energy_n(ix,iy,iz))/dataNeutral.energy(ix,iy,iz));
+        return r;
+    }, LAMBDA(SAMS::T_dataType &a, const SAMS::T_dataType &b) {
+        a = portableWrapper::max(a, b);
+    }, SAMS::T_dataType(1.0e-30),
+    Range(1, data.nx), Range(1, data.ny), Range(1, data.nz));
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template<typename T_EOS> 
