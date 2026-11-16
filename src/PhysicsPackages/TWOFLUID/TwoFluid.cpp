@@ -337,6 +337,43 @@ if (plasma_source.ion_rec_nlevel) {
                 data.energy_ion(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy(ix,iy,iz);
                 dataNeutral.energy(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy_n(ix,iy,iz);
             }, Range(1,data.nx), Range(1,data.ny), Range(1,data.nz));
+            if (plasma_source.vertex_frictional_heating) {
+                // Energy-conserving frictional heating (see twofluid.h): the kinetic energy each vertex loses in
+                // the momentum exchange below, from its old and new velocities, goes 1/8 to each of the 8 cells
+                // around it, half to each fluid. Vertex mass m_v = 1/8 sum of rho cv of those cells. On a domain
+                // boundary the ghost cells' share matches the half weight of the boundary vertices.
+                portableWrapper::portableArrayManager fhManager;
+                LARE::volumeArray fheat;
+                fhManager.allocate(fheat, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+                portableWrapper::assign(fheat, 0.0);
+                const SAMS::T_dataType sdt = plasma_source.substep_dt;
+                portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                    SAMS::T_dataType mp = 0.0, mn = 0.0;
+                    for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c) {
+                        mp += data.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);
+                        mn += dataNeutral.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);   // same grid
+                    }
+                    mp *= 0.125; mn *= 0.125;
+                    const SAMS::T_dataType vx = data.vx(ix,iy,iz), vy = data.vy(ix,iy,iz), vz = data.vz(ix,iy,iz);
+                    const SAMS::T_dataType nx_ = dataNeutral.vx(ix,iy,iz), ny_ = dataNeutral.vy(ix,iy,iz), nz_ = dataNeutral.vz(ix,iy,iz);
+                    const SAMS::T_dataType vx1 = vx + sdt*plasma_source.source_v_x(ix,iy,iz), vy1 = vy + sdt*plasma_source.source_v_y(ix,iy,iz),
+                                           vz1 = vz + sdt*plasma_source.source_v_z(ix,iy,iz);
+                    const SAMS::T_dataType nx1 = nx_ + sdt*plasma_source.source_v_x_n(ix,iy,iz), ny1 = ny_ + sdt*plasma_source.source_v_y_n(ix,iy,iz),
+                                           nz1 = nz_ + sdt*plasma_source.source_v_z_n(ix,iy,iz);
+                    const SAMS::T_dataType dke = 0.5*mp*((vx1*vx1 + vy1*vy1 + vz1*vz1) - (vx*vx + vy*vy + vz*vz))
+                                               + 0.5*mn*((nx1*nx1 + ny1*ny1 + nz1*nz1) - (nx_*nx_ + ny_*ny_ + nz_*nz_));
+                    const SAMS::T_dataType q = -0.125*dke;
+                    for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c)
+                        portableWrapper::atomic::accelerated::Add(fheat(ix + a, iy + b, iz + c), q);
+                }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+                portableWrapper::fence();
+                portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                    const SAMS::T_dataType h = 0.5*fheat(ix,iy,iz)/data.cv(ix,iy,iz);   // heat per volume, per fluid
+                    data.energy_ion(ix,iy,iz)    += h/data.rho(ix,iy,iz);
+                    dataNeutral.energy(ix,iy,iz) += h/dataNeutral.rho(ix,iy,iz);
+                }, Range(1,data.nx), Range(1,data.ny), Range(1,data.nz));
+                portableWrapper::fence();
+            }
             // Vertex-centred velocities: vertices 0..n (LARE's own update range)
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 data.vx(ix,iy,iz)       +=plasma_source.substep_dt*plasma_source.source_v_x(ix,iy,iz);
@@ -795,7 +832,10 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
                               dataNeutral.vz(ix-1,iy-1,iz-1))*
                               0.125;
         
-        //Energy source terms - the 3/2 here needs fixing
+        // Energy source terms. Thermal exchange: (3/2) k (T_n - T_p) per particle for gamma = 5/3, in general
+       // k (T_n - T_p) / (gamma - 1). With the code temperature T = gamma k T / m (T_p = gamma P / (2 rho), as in
+       // PIP's te = gm pr mu_p / de), this is (T_n - T_p) / (gamma (gamma - 1)) per unit mass, i.e. PIP's
+       // 3 / (2 gamma) (nte - te) (PIP_rot.f90) written for general gamma (equal to it for gamma = 5/3).
        //printf("getting energy source terms \n");
        //printf("ac %f \n", plasma_source.ac(ix,iy,iz));
        //printf("rho_n %f \n", dataNeutral.rho(ix,iy,iz));
@@ -816,12 +856,15 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
 
        SAMS::T_dataType vd2 = dvx*dvx + dvy*dvy + dvz*dvz;
        
+       // Frictional heating: here from cell-centred (vertex-averaged) velocities, unless
+       // vertex_frictional_heating, which returns the exact vertex kinetic-energy loss in apply_two_fluid_source.
+       const SAMS::T_dataType fric = plasma_source.vertex_frictional_heating ? 0.0 : 0.5;
     plasma_source.source_energy(ix,iy,iz)=plasma_source.ac(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)*(\
-                        0.5*vd2 \
+                        fric*vd2 \
                         + (temperature_neutral-temperature_ion)/(data.gas_gamma*(data.gas_gamma-1)));
         //printf("getting neutral energy source terms \n");
         plasma_source.source_energy_n(ix,iy,iz)=plasma_source.ac(ix,iy,iz)*data.rho(ix,iy,iz)*(\
-                        0.5*vd2 \
+                        fric*vd2 \
                         - (temperature_neutral-temperature_ion)/(data.gas_gamma*(data.gas_gamma-1)));  
                                    
         //printf("%i,%i,%i \n",ix,iy,iz);
@@ -2448,6 +2491,10 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
     printf("Diagnostics\n");
     printf("  check_conservation     : %s\n", onoff(ps.check_conservation));
     printf("  check_source           : %s\n", onoff(ps.check_source));
+    printf("  vertex_frictional_heat.: %s%s\n", onoff(ps.vertex_frictional_heating),
+           ps.vertex_frictional_heating ? " (friction heat = exact vertex KE loss, energy-conserving)" : "");
+    printf("  check_source_energy    : %s%s\n", onoff(ps.check_source_energy),
+           ps.check_source_energy ? " (energy of both fluids across each explicit source half-step; serial only)" : "");
     printf("  watch_state            : %s (trend line every %d steps)\n", onoff(ps.watch_state), ps.watch_interval);
     printf("  debug_twofluid_steps   : %s\n", onoff(ps.debug_twofluid_steps));
     printf("  noise_check            : %s (every stage printed for %g <= t <= %g)\n", onoff(ps.noise_check),

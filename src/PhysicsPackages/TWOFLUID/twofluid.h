@@ -6,6 +6,9 @@
 #define TWOFLUID_H
 
 #include <cstdint>
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <cassert>
 #include <string>
 #include <vector>
@@ -127,6 +130,22 @@ namespace TWOFLUID
         
         bool check_conservation=false;
         bool check_source=false;
+        // Energy-conserving frictional heating (explicit sources; off by default). The momentum exchange acts
+        // on the vertex velocities, but the frictional heating (1/2) alpha rho_n rho_p |v_n - v_p|^2 was computed
+        // at cell centres from vertex-averaged velocities. Averaging reduces |v_n - v_p|^2, so less heat was
+        // added than the kinetic energy removed (3.8% of it at alpha0 = 1, mostly at the symmetry plane where
+        // the drift peaks). With this flag the cell heating keeps only the thermal exchange, and the kinetic
+        // energy each vertex loses in the momentum exchange (exact, from the old and new velocities and the
+        // vertex masses m_v = 1/8 sum rho cv) is returned as heat to the 8 cells around it, half to each fluid.
+        bool vertex_frictional_heating=false;
+        // Diagnostic (off by default): total energy of both fluids (cell internal rho e V + vertex kinetic
+        // m_v |v|^2 / 2, m_v = 1/8 of the mass of the 8 cells around the vertex, half weight on the x
+        // boundaries) measured just before and after every explicit source half-step. Collisions change
+        // neither density nor B, so any change is energy the source step creates or destroys. Printed
+        // every check_source_energy_every steps with its split (heat added, kinetic energy removed) and
+        // where in x it happens. Serial runs only (no MPI reduction). Host loops: OpenMP builds only.
+        bool check_source_energy=false;
+        int check_source_energy_every=500;
         
 	bool implicit=false; // flag for using the implicit solvers from PETSc
         // Start-up time step: the first step is startup_dt_fraction times the step the CFL and source
@@ -215,6 +234,59 @@ namespace TWOFLUID
 	    // sources change, so ghost cells always match the interior they mirror.
 	    SAMS::harness *harness_ptr = nullptr;
 	    SAMS::T_dataType dt_previous = 0.0;  // last time step, for dt_max_growth
+            // check_source_energy state: per x index, cumulative change of internal energy (cells) and kinetic
+            // energy (vertices) over all source half-steps; snapshot of the per-index energies before a half-step
+            std::vector<double> se_dint, se_dkin, se_int0, se_kin0;
+            long long se_halfsteps = 0;
+            void sourceEnergyMeasure(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dn,
+                                     std::vector<double> &eint, std::vector<double> &ekin) {
+                const T_indexType nx = data.nx, ny = data.ny, nz = data.nz;
+                eint.assign(static_cast<size_t>(nx + 2), 0.0); ekin.assign(static_cast<size_t>(nx + 2), 0.0);
+                for (T_indexType iz = 1; iz <= nz; ++iz) for (T_indexType iy = 1; iy <= ny; ++iy) for (T_indexType ix = 1; ix <= nx; ++ix)
+                    eint[ix] += data.rho(ix, iy, iz) * data.energy_ion(ix, iy, iz) * data.cv(ix, iy, iz)
+                              + dn.rho(ix, iy, iz) * dn.energy(ix, iy, iz) * data.cv(ix, iy, iz);   // same grid: plasma cv
+                for (T_indexType iz = 1; iz <= nz; ++iz) for (T_indexType iy = 1; iy <= ny; ++iy) for (T_indexType ix = 0; ix <= nx; ++ix) {
+                    double mp = 0.0, mn = 0.0;
+                    for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c) {
+                        mp += data.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);
+                        mn += dn.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);
+                    }
+                    const double w = (ix == 0 || ix == nx) ? 0.5 : 1.0;
+                    const double v2p = data.vx(ix, iy, iz) * data.vx(ix, iy, iz) + data.vy(ix, iy, iz) * data.vy(ix, iy, iz) + data.vz(ix, iy, iz) * data.vz(ix, iy, iz);
+                    const double v2n = dn.vx(ix, iy, iz) * dn.vx(ix, iy, iz) + dn.vy(ix, iy, iz) * dn.vy(ix, iy, iz) + dn.vz(ix, iy, iz) * dn.vz(ix, iy, iz);
+                    ekin[ix] += w * 0.0625 * (mp * v2p + mn * v2n);   // (1/8 of the 8-cell mass) * |v|^2 / 2
+                }
+            }
+            void sourceEnergyBefore(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dn) {
+                sourceEnergyMeasure(data, dn, se_int0, se_kin0);
+            }
+            void sourceEnergyAfter(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dn,
+                                   data_two_fluid_source &ps, const SAMS::timeState &ts) {
+                std::vector<double> ei, ek; sourceEnergyMeasure(data, dn, ei, ek);
+                if (se_dint.empty()) { se_dint.assign(ei.size(), 0.0); se_dkin.assign(ei.size(), 0.0); }
+                for (size_t i = 0; i < ei.size(); ++i) { se_dint[i] += ei[i] - se_int0[i]; se_dkin[i] += ek[i] - se_kin0[i]; }
+                ++se_halfsteps;
+                if (se_halfsteps % (2 * static_cast<long long>(ps.check_source_energy_every)) != 0) return;
+                double di = 0.0, dk = 0.0, etot = 0.0;
+                for (size_t i = 0; i < ei.size(); ++i) { di += se_dint[i]; dk += se_dkin[i]; etot += ei[i] + ek[i]; }
+                printf("SOURCE ENERGY t = %.6e after %lld half-steps: heat added %+.6e, kinetic change %+.6e, "
+                       "error (sum) %+.6e = %+.3f%% of the kinetic energy removed (total energy now %.6e)\n",
+                       static_cast<double>(ts.time), se_halfsteps, di, dk, di + dk, dk != 0.0 ? -100.0 * (di + dk) / dk : 0.0, etot);
+                // where: the 6 x indices with the largest |error| (cell i + vertex i)
+                std::vector<size_t> idx; for (size_t i = 0; i + 1 < ei.size(); ++i) idx.push_back(i);
+                std::partial_sort(idx.begin(), idx.begin() + 6, idx.end(), [&](size_t a, size_t b) {
+                    return std::abs(se_dint[a] + se_dkin[a]) > std::abs(se_dint[b] + se_dkin[b]); });
+                std::sort(idx.begin(), idx.begin() + 6);
+                for (int n = 0; n < 6; ++n) { size_t i = idx[n];
+                    printf("  SOURCE ENERGY x index %zu (x = %+.4f): error %+.4e (heat %+.4e, kinetic %+.4e)\n", i,
+                           static_cast<double>(data.xc(static_cast<T_indexType>(i))), se_dint[i] + se_dkin[i], se_dint[i], se_dkin[i]); }
+                // and binned in x: cumulative error from x = 0 outwards, by the x range of a run of indices
+                const size_t nb = 8, per = (ei.size() + nb - 1) / nb;
+                printf("  SOURCE ENERGY by x range:");
+                for (size_t b = 0; b < nb; ++b) { double e = 0.0; for (size_t i = b * per; i < std::min(ei.size(), (b + 1) * per); ++i) e += se_dint[i] + se_dkin[i];
+                    printf(" [%zu-%zu] %+.3e", b * per, std::min(ei.size(), (b + 1) * per) - 1, e); }
+                printf("\n");
+            }
 
 	    // The source terms are applied to INTERIOR points only (cells 1..n, vertices 0..n in each
 	    // direction, the same on both sides of the domain) and the ghost cells are then refreshed from
@@ -371,7 +443,9 @@ namespace TWOFLUID
                 } else {
                     //Explicit time integration
                     plasma_source.substep_dt=0.5*data.dt;//0.5 from strang split.
+                    if (plasma_source.check_source_energy) sourceEnergyBefore(data, dataNeutral);
                     apply_two_fluid_source(data,dataNeutral,plasma_source);
+                    if (plasma_source.check_source_energy) sourceEnergyAfter(data, dataNeutral, plasma_source, timeData);
                 }
                 if (plasma_source.debug_twofluid_steps) {printf("applySourceTermsStart end \n");}
             };
@@ -415,7 +489,9 @@ namespace TWOFLUID
                     plasma_source.substep_dt=0.5*data.dt;//0.5 from strang split.
                     get_ac(data,dataNeutral,plasma_source);
                     get_two_fluid_source(data,dataNeutral,plasma_source);
+                    if (plasma_source.check_source_energy) sourceEnergyBefore(data, dataNeutral);
                     apply_two_fluid_source(data,dataNeutral,plasma_source);
+                    if (plasma_source.check_source_energy) sourceEnergyAfter(data, dataNeutral, plasma_source, timeData);
                 }
                 if (plasma_source.check_conservation) {checkConservation(data,dataNeutral,oldData);};
                 if (plasma_source.watch_state) { watchState(data,dataNeutral,plasma_source,"after the second source half-step",timeData.time,true); }
