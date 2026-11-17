@@ -1220,3 +1220,66 @@ The B\_y entries of `collonly_compare.py` are not meaningful at t = 20: B\_y is 
 | `runs/abl_none` | off | off | off | off |
 
 **Output:** comparisons are written to `runs/scan/compare_abl/a1_<variant>_s1*` when all five finish.
+
+### One-at-a-time results (t = 10, against PIP first order, dx = 0.04): no single correction causes the "overshoot"
+
+Comparison files: `runs/scan/compare_abl/a1_<variant>_s1*`. The ρ and T columns are the region between the sheet and the shock.
+
+| Run | Correction off | Shock (cells vs PIP) | ρ\_n | T\_n | T\_p |
+| --- | --- | --- | --- | --- | --- |
+| `scan_a1_allfix_nf` | – (all on) | 3.98 (0) | −14.4% | +14.1% | +6.7% |
+| `abl_no_rke_n` | neutral `rke` | 3.98 (0) | −15.6% | +14.7% | +7.0% |
+| `abl_no_rke_p` | plasma `rke` | 3.94 (−1) | −14.0% | +13.4% | +5.6% |
+| `abl_no_rme` | `rme` | 3.94 (−1) | −13.8% | +13.9% | +6.0% |
+| `abl_no_vfh` | `vertex_frictional_heating` | 3.90 (−2) | −14.3% | +12.8% | +4.1% |
+| `abl_none` | all four (neutral fix only) | 3.86 (−3) | −14.9% | +11.0% | +1.8% |
+
+**Reading:**
+- **Each correction adds a little heat, as intended:** 0.5–1.5 points of T and up to a cell of shock position. The energy-conserving friction does the most, then plasma `rke`; neutral `rke` does almost nothing here.
+- **The "overshoot" is present even with no corrections.**
+- **Same structure in every variant:**
+  - SAMS's neutral front is narrow and its plasma sub-shock sits ahead of PIP's;
+  - SAMS's neutral v\_x has a ripple (±0.1) behind the shock.
+
+### The "overshoot" is the reference: first-order PIP at dx = 0.04 is under-resolved
+
+**Data:** existing PIP production runs (`runs/pip_L2000_dx002`, `runs/pip_L2000_dx002_o2`) give PIP at dx = 0.02 in first and second order at t = 10. **Tool:** `runs/structure_table.py <snap> label=dir ...` tabulates, for any PIP or SAMS run:
+- the neutral front (steepest rise of ρ\_n) and its 10–90% width;
+- the plasma sub-shock (steepest drop of ρ\_p);
+- mean ρ\_n and T\_n over x = 1–3.
+
+**Structure at t = 10, α0 = 1:**
+
+| Run | Plasma sub-shock x | Neutral front x | Front width | ρ\_n [1,3] | T\_n [1,3] |
+| --- | --- | --- | --- | --- | --- |
+| PIP o1, dx 0.04 (scan reference) | 3.58 | 3.98 | 2.12 | 0.0255 | 22.95 |
+| PIP o1, dx 0.02 | 3.73 | 3.91 | 1.98 | 0.0237 | 24.32 |
+| PIP **o2**, dx 0.02 | **3.89** | 3.93 | 1.80 | 0.0224 | **25.61** |
+| SAMS, neutral fix only, dx 0.04 (`abl_none`) | 3.82 | 3.86 | 1.68 | 0.0214 | 25.66 |
+| SAMS, neutral fix + every correction, dx 0.04 (`scan_a1_allfix_nf`) | 3.94 | 3.98 | 1.68 | 0.0211 | 26.74 |
+| SAMS, old code, dx 0.04 (`scan/sams_a1`) | 3.18 | 3.22 | – | 0.0321 | 16.68 |
+
+**Reading:**
+- **PIP moves towards SAMS with resolution and order:** the sub-shock goes 3.58 → 3.73 → 3.89, T\_n 22.9 → 24.3 → 25.6, ρ\_n 0.0255 → 0.0224, and the front narrows from 2.12 to 1.80.
+- **First-order PIP at dx = 0.04 is the diffusive one.** SAMS at dx = 0.04 is already close to second-order PIP at dx = 0.02.
+- **Against that reference,** SAMS with every correction is within about 1% on the sub-shock position, and about 4% hot and 6% light behind the shock. With the neutral fix alone it matches T\_n to under 1%.
+- **Earlier comparisons are affected:** the 14% "overshoot" and the t = 20 numbers were measured against the under-resolved reference.
+
+### Running (17 Nov, from about 11:00)
+
+All runs are α0 = 1, L = 250, t = 10, with the neutral fix and every correction unless stated.
+- **SAMS shock viscosity** (dx 0.04, 3 ranks each, for the neutral v\_x ripple): `runs/abl_visc1_0.3` (`visc1` 0.1 → 0.3, both fluids) and `runs/abl_visc2_2` (`visc2` 1 → 2). `runs/scan/build_ablation.sh` now takes `VISC1=` and `VISC2=`. `visc1 = 0.8` is known to drive an odd–even mode at `dt_multiplier` 0.8, so it was avoided.
+- **SAMS resolution:** `runs/res_sams_dx002` (dx 0.02, 6 ranks, about 2 h). `runs/res_sams_dx001` (dx 0.01, 8 ranks) starts automatically when the two viscosity runs finish, and takes roughly 6–8 h.
+- **PIP resolution and order:** one at a time on 1 rank, `runs/pip_res_{dx001_o1, dx0005_o1, dx001_o2}` (first order dx 0.01 and 0.005, second order dx 0.01).
+- **Queue:** `runs/res_queue.sh`, log `runs/res_queue.log` (ends with `RES_QUEUE_DONE`).
+
+**Evaluate with:**
+
+```
+cd runs
+python3 structure_table.py 1 "PIP o1 dx0.01=pip_res_dx001_o1/out" "PIP o1 dx0.005=pip_res_dx0005_o1/out" \
+    "PIP o2 dx0.01=pip_res_dx001_o2/out" "SAMS dx0.02=res_sams_dx002/SAMS_testdata" "SAMS dx0.01=res_sams_dx001/SAMS_testdata" \
+    "SAMS visc1 0.3=abl_visc1_0.3/SAMS_testdata" "SAMS visc2 2=abl_visc2_2/SAMS_testdata"
+```
+
+For the v\_x ripple, look at the figures from `scripts/collonly_compare.py` (`*_shock.png`).
