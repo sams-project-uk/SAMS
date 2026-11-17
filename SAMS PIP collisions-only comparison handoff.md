@@ -1204,3 +1204,19 @@ The B\_y entries of `collonly_compare.py` are not meaningful at t = 20: B\_y is 
   - or the two codes resolve the neutral transition differently.
 
 **Next:** turn the corrections off one at a time (below).
+
+### One-at-a-time tests (running)
+
+**Purpose:** each run switches off one correction, keeping the `LARE3DNF` fix, and is compared with PIP at t = 10. The reference with every correction is the t = 10 snapshot of `runs/scan_a1_allfix_nf`.
+- **Set-up:** α0 = 1, half domain L = 250 (enough to t = 10: the 10⁻³ disturbance reaches x ≈ 195), dx = 0.04, 3 ranks each, about 40–50 min.
+- **Builds:** `runs/scan/build_ablation.sh <out>`, which switches each correction separately through the environment (`RKE_P`, `RKE_N`, `RME`, `VFH`, plus `ALPHA0`, `X_HALF`, `NX`, `T_END`, `DTS`).
+
+| Run | Plasma `rke` | Neutral `rke` | `rme` | `vertex_frictional_heating` |
+| --- | --- | --- | --- | --- |
+| `runs/abl_no_rke_n` | on | **off** | on | on |
+| `runs/abl_no_rke_p` | **off** | on | on | on |
+| `runs/abl_no_rme` | on | on | **off** | on |
+| `runs/abl_no_vfh` | on | on | on | **off** |
+| `runs/abl_none` | off | off | off | off |
+
+**Output:** comparisons are written to `runs/scan/compare_abl/a1_<variant>_s1*` when all five finish.
