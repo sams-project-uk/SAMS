@@ -1178,3 +1178,29 @@ python3 /home/snow/Documents/SAMS/TwoFluidWIP/scripts/collonly_compare.py --pip 
 - **Kinetic-energy loss only:** in pure hydro the whole strong-shock error is the remap's kinetic-energy loss, and `rke` with the 3D fix returns it. That includes the extra loss at large Courant numbers.
 - **No smaller time step needed:** with `rke` on, the default `dt_multiplier` (0.8) is as good as 0.4.
 - **For the two-fluid runs:** `rke` + `rke_3d_fix` must be on in **both** fluids, and `rme` in the plasma, which has field. That is what the running α0 = 1 rerun uses.
+
+## Status update, 17 Nov 2026: α0 = 1 with the `LARE3DNF` fix and every correction: the lag is gone, with a slight overshoot
+
+**Run:** `runs/scan_a1_allfix_nf` (built from `d0b2519`; `rke` + `rke_3d_fix` in both fluids, `rme`, `vertex_frictional_heating`, the new time-step limit; L = 500, dx = 0.04, 5 ranks). It finished in 5049 s, "Simulation complete". Comparison files: `runs/scan/compare_rme/a1_allfix_nf_s{1,2}*`.
+
+The ρ and T columns are the region between the sheet and the shock, against PIP.
+
+| α0 = 1 | Shock, t = 10 (PIP 3.98) | Shock, t = 20 (PIP 6.58) | ρ\_n, t = 10 / 20 | T\_n, t = 10 / 20 | T\_p, t = 10 / 20 |
+| --- | --- | --- | --- | --- | --- |
+| no corrections (`runs/scan/sams_a1`) | 3.22 (0.81) | 5.58 (0.85) | +15.7% / +26.1% | −24.4% / −26.8% | −16.7% / −22.1% |
+| every correction, double p dV still in (`runs/scan_a1_allfix`) | 3.30 (0.83) | 5.74 (0.87) | +14.4% / +21.3% | −21.6% / −22.2% | −12.7% / −18.0% |
+| **every correction + `LARE3DNF` fix** | **3.98 (1.00)** | **6.86 (1.04, +7 cells)** | −14.4% / **−5.7%** | +14.1% / **+6.6%** | +6.7% / **+4.6%** |
+
+The B\_y entries of `collonly_compare.py` are not meaningful at t = 20: B\_y is near zero in that window, so small absolute differences become large relative ones.
+
+**Reading:**
+- **The double p dV in `LARE3DNF` was the main cause of the α0 = 1 lag.** With it fixed, and every remap and source correction on, SAMS no longer lags. It is now slightly ahead and hotter: 4% further at t = 20, plateau within 5–7%, and the gap in the plateau narrows from t = 10 to t = 20.
+- **The structure still differs** (t = 10 figure, `a1_allfix_nf_s1_shock.png`):
+  - SAMS's neutral density jumps almost discontinuously at the shock (about 0.1 to 2 within a couple of cells), while PIP's neutral transition is broad (x ≈ 3.3 to 4.1);
+  - SAMS's plasma sub-shock is about 0.3 (8 cells) ahead of PIP's;
+  - behind the shock SAMS is too hot (neutrals +14% at t = 10) and B\_y is weaker.
+- **Two possible readings:**
+  - one of the heating corrections over-returns energy in the coupled setting (`rke` in the neutrals, `rme`, `vertex_frictional_heating`). Each was checked alone, but not with the fixed neutral solver;
+  - or the two codes resolve the neutral transition differently.
+
+**Next:** turn the corrections off one at a time (below).
