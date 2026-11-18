@@ -1337,3 +1337,108 @@ The ripple is v\_x,n minus its running mean over a width of 1 in x, measured ove
 - Regenerate the before/after figures against PIP o2 dx 0.01, adding SAMS dx 0.01.
 - Ripple: run `visc2` 3–4 at dx 0.04 and `visc2` 2 at dx 0.02. To find its source, check whether it is already in the plasma v\_x or starts in the neutrals, and whether turning `rke` off changes it.
 - Upstream patches: the MPI halo fix is on branch `fix/mpi-staggered-halo` (pushed); others on hold.
+
+## Status update, 18 Nov 2026 (12:00): the neutral v\_x ripple: neutrals only, laid down early, not from the vertex averaging of the friction
+
+**Figures done:** `runs/figures/shock_improvement.py` now takes `--snaps`, `--tag` and `--fine` (adds SAMS dx 0.01). Against PIP o2 dx 0.01 at t = 10 (`shock_profiles_t10_pipdx001.png`, `shock_errors_pipdx001.png`):
+
+| Run | Shock position | ρ\_n behind shock | T\_n behind shock |
+| --- | --- | --- | --- |
+| SAMS before fixes, dx 0.04 | −18% | +46% | −36% |
+| SAMS after fixes, dx 0.04 | +1.1% | −3.8% | +2.6% |
+| SAMS after fixes, dx 0.01 | +0.3% | −2.2% | +2.2% |
+
+**New scripts in `runs/`:** `ripple_table.py` (RMS, max and dominant wavelength of the neutral v\_x ripple) and `ripple_src.py` (neutral and plasma ripple side by side, with their correlation). Both use the measure above: v\_x minus its running mean over a width of 1, over 0.5 < x < 3.
+
+### 1. More viscosity at dx 0.02 doesn't help (`runs/res_sams_dx002_visc2_2`, 8 ranks, 56 min)
+
+| Ripple RMS, t = 10 | `visc2` 1 | `visc2` 2 |
+| --- | --- | --- |
+| SAMS dx 0.04 | 0.033 | 0.012 |
+| SAMS dx 0.02 | 0.035 | **0.037** |
+| SAMS dx 0.01 | 0.010 | – |
+
+- **`visc2` 2 at dx 0.02 leaves the structure unchanged** (front 3.950, sub-shock 3.930, ρ\_n 0.02131, T\_n 26.72) and the ripple slightly larger.
+- **The `visc2` 2 benefit at dx 0.04 was not general.** There it switched the ripple to a shorter (about 9-cell), weaker oscillation.
+- **Wavelength by zero crossings,** in cells over x = 0.5–1.5 / 1.5–2.5 / 2.5–3.5:
+  - dx 0.04: 17 / 17 / 17;
+  - dx 0.04 with `visc2` 2: 8 / 10 / 10;
+  - dx 0.02 (both `visc2` values): 20 / 20 / 14;
+  - dx 0.01: 18 / 17 / 14.
+  
+  The FFT peak in `ripple_table.py` is coarse over this short window.
+- **Viscosity tuning is not a fix.**
+
+### 2. The ripple is in the neutrals only
+
+| Run (t = 10) | Neutral v\_x RMS | Plasma v\_x RMS | Correlation |
+| --- | --- | --- | --- |
+| SAMS dx 0.04 | 0.033 | 0.0011 | −0.48 |
+| SAMS dx 0.02 | 0.035 | 0.0009 | 0.06 |
+| SAMS dx 0.01 | 0.010 | 0.0011 | −0.11 |
+| PIP o2 dx 0.01 | 0.0020 | 0.0006 | – |
+
+- **Behind the shock (dx 0.04),** relative ripple is ρ\_n 2.5% and T\_n 1.1%, against ρ\_p 0.3% and T\_p 0.3%.
+- **The neutrals are not the lighter fluid there:** ρ\_n 0.021 against ρ\_p 0.008.
+- **The plasma is not imprinting it through the friction:** the two ripples are uncorrelated.
+- **At dx 0.01 it grows towards the shock:** RMS 0.007 / 0.010 / 0.016 over the three ranges above.
+
+### 3. Every correction reduces it; none causes it (one-at-a-time runs, dx 0.04, t = 10)
+
+| SAMS run | Neutral v\_x ripple |
+| --- | --- |
+| every correction | 0.033 |
+| no `rke` in the plasma | 0.075 |
+| no `rke` in the neutrals | 0.077 |
+| no `rme` (plasma only) | 0.050 |
+| no vertex frictional heating | 0.080 |
+| none (neutral fix only) | 0.081 |
+
+**The neutral solver alone is clean.** In the pure-hydro colliding flows (`runs/hydro_collide_*`), both packages solve the same problem side by side. The v\_x RMS between the shocks is:
+- 0.0080 (plasma) / 0.0072 (neutral) without `rke`;
+- 0.0004 / 0.0004 with `rke`.
+
+### 4. Cell-centred friction doesn't remove it (test code reverted)
+
+A test option computed the friction force α ρ\_p ρ\_n (v\_n − v\_p) at cell centres from the 8-vertex average drift, and gave each vertex the average force of its 8 cells. The default takes the drift at the vertex, with α and ρ averaged onto it. Runs (dx 0.04, 3 ranks, snapshots every t = 1): `runs/ccf_a1` and baseline `runs/base_a1_dts1`. The baseline reproduces `scan_a1_allfix_nf` exactly.
+
+At t = 10:
+- **Ripple:** 0.028 against 0.033 (larger than the default at t = 7 and 9).
+- **Structure unchanged:** front 3.980, sub-shock 3.940, ρ\_n 0.02121 against 0.02114, T\_n 26.75 against 26.74.
+
+**The vertex averaging of the friction is not the cause.** The code was not kept (not committed).
+
+### 5. When it forms (baseline with snapshots every t = 1)
+
+The ripple is measured over 0.3 < x < x\_shock − 0.6 with a running mean of width 0.5, so the numbers differ from the tables above:
+
+| t | Shock x | Neutral v\_x RMS | Plasma v\_x RMS |
+| --- | --- | --- | --- |
+| 2 | 0.98 | 0.012 | 0.001 |
+| 3 | 1.38 | 0.077 | 0.002 |
+| 5 | 2.22 | 0.076 | 0.002 |
+| 7 | 2.94 | 0.035 | 0.002 |
+| 8 | 3.30 | 0.018 | 0.001 |
+| 10 | 3.98 | 0.021 | 0.001 |
+
+- **The plasma is clean at all times.**
+- **The neutral ripple forms early** (by t = 3, while the shock is near the sheet), peaks at t = 3–5, then decays.
+- **It's a frozen imprint carried by the flow.** The pattern correlates 0.95 between t = 5 and 6 and between t = 7 and 8. It shifts outward by 0.04–0.08 per unit time, about the local neutral flow speed (0.05–0.09).
+
+### Conclusion so far
+
+The oscillation lives in the neutrals and is laid down early, in the strongly coupled phase near the current sheet, then carried behind the shock.
+
+**Ruled out:**
+- the plasma;
+- the vertex averaging of the friction;
+- the neutral solver on its own.
+
+**What changes it:** the energy corrections reduce it. Viscosity and resolution change it erratically, which looks more like mode selection than damping.
+
+The earlier hypothesis (remap noise behind a slowly moving shock) doesn't fit an imprint laid down by t = 3.
+
+### Next steps
+
+- **Watch it form:** a run with snapshots every 0.1 up to t = 3 (about 15 min at dx 0.04), and a space–time plot of the neutral v\_x ripple. It would show whether the ripple starts at the current sheet (the symmetry plane at x = 0) or at the forming shock.
+- **Upstream patches:** the MPI halo fix is on branch `fix/mpi-staggered-halo` (pushed); others on hold.
