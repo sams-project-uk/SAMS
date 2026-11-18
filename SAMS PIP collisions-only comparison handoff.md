@@ -1283,3 +1283,57 @@ python3 structure_table.py 1 "PIP o1 dx0.01=pip_res_dx001_o1/out" "PIP o1 dx0.00
 ```
 
 For the v\_x ripple, look at the figures from `scripts/collonly_compare.py` (`*_shock.png`).
+
+## Status update, 18 Nov 2026: resolution check done: SAMS has converged and PIP converges towards it; the v\_x ripple is numerical
+
+All runs listed under "Running (17 Nov)" above have finished. SAMS dx 0.02 and dx 0.01 took 1.8 h (6 ranks) and 4.5 h (8 ranks). Both logs end with "exit status 1" after "Simulation complete" at t = 10; this is the usual end-of-run complaint from MPI (no finalize), not a failure. PIP: first order dx 0.01 took 27 min, first order dx 0.005 85 min, second order dx 0.01 46 min (1 rank).
+
+### Convergence at t = 10 (`runs/structure_table.py 1 ...`)
+
+| Run | Neutral front x | Front width | Plasma sub-shock x | ρ\_n [1,3] | T\_n [1,3] |
+| --- | --- | --- | --- | --- | --- |
+| PIP o1, dx 0.04 | 3.98 | 2.12 | 3.58 | 0.0255 | 22.95 |
+| PIP o1, dx 0.02 | 3.91 | 1.98 | 3.73 | 0.0237 | 24.32 |
+| PIP o1, dx 0.01 (`pip_res_dx001_o1`) | 3.825 | 1.80 | 3.815 | 0.02281 | 25.18 |
+| PIP o1, dx 0.005 (`pip_res_dx0005_o1`) | 3.872 | 1.77 | 3.867 | 0.02228 | 25.74 |
+| PIP o2, dx 0.02 | 3.930 | 1.80 | 3.890 | 0.02235 | 25.61 |
+| **PIP o2, dx 0.01** (`pip_res_dx001_o2`) | **3.935** | 1.74 | **3.915** | **0.02198** | **26.07** |
+| SAMS, dx 0.04 (`scan_a1_allfix_nf`) | 3.980 | 1.68 | 3.940 | 0.02114 | 26.74 |
+| SAMS, dx 0.02 (`res_sams_dx002`) | 3.950 | 1.74 | 3.930 | 0.02135 | 26.68 |
+| **SAMS, dx 0.01** (`res_sams_dx001`) | **3.945** | 1.73 | **3.945** | **0.02150** | **26.63** |
+
+(The SAMS runs have the `LARE3DNF` fix and every correction: `rke` + `rke_3d_fix` in both fluids, `rme`, energy-conserving vertex frictional heating, per-fluid γ thermal exchange, the vertex-rate dt limiter.)
+
+**Reading:**
+- **SAMS has converged.** From dx 0.04 to 0.01, T\_n changes by 0.4%, ρ\_n by 1.7% and the neutral front by 0.035 (under one dx 0.04 cell).
+- **PIP converges towards SAMS** with every refinement and with second order: the sub-shock goes 3.58 → 3.92 and T\_n 22.9 → 26.1.
+- **SAMS dx 0.01 against PIP o2 dx 0.01:** neutral front +0.3%, sub-shock +0.8%, T\_n +2.2%, ρ\_n −2.2%. PIP o2 was still moving towards SAMS between dx 0.02 and 0.01 (T\_n +1.8%, ρ\_n −1.7%), so most of what remains is probably PIP's own resolution error.
+- **The best reference is now PIP o2 dx 0.01.** The figures in `runs/figures/` (`shock_improvement.py`) still use PIP o2 dx 0.02 and SAMS dx 0.04; regenerate them with `--pip runs/pip_res_dx001_o2/out` if needed.
+
+### Neutral v\_x ripple behind the shock (`runs/ripple_table.py 1 ...`)
+
+The ripple is v\_x,n minus its running mean over a width of 1 in x, measured over 0.5 < x < 3 at t = 10. The wavelength is the FFT peak. A smooth profile gives an RMS of about 0.002 and a "wavelength" equal to the window (2.5), so that is the noise floor.
+
+| Run | RMS | Max \|deviation\| | Wavelength |
+| --- | --- | --- | --- |
+| PIP, any resolution or order | 0.0020–0.0024 | 0.005–0.007 | none (window) |
+| SAMS dx 0.04 | 0.033 | 0.052 | 0.62 (16 cells) |
+| SAMS dx 0.04, `visc1` 0.3 (`abl_visc1_0.3`) | 0.033 | – | – |
+| SAMS dx 0.04, `visc2` 2 (`abl_visc2_2`) | 0.012 | 0.025 | 0.35 (9 cells) |
+| SAMS dx 0.02 | 0.035 | 0.056 | 0.35 (18 cells) |
+| SAMS dx 0.01 | 0.010 | 0.025 | 0.17 (17 cells) |
+
+**Reading:**
+- **PIP has no oscillation**; only SAMS does.
+- **The SAMS ripple is numerical:** its wavelength is fixed at about 16–18 cells at every resolution, not at a fixed length in x.
+- **Its amplitude doesn't fall steadily with dx:** flat from dx 0.04 to 0.02, then 3.5× smaller at dx 0.01.
+- **The quadratic shock viscosity damps it, the linear one doesn't.** `visc2` 2 cuts it 3× (and halves its wavelength to 9 cells) without changing the shock structure: shock 3.98, sub-shock 3.94, T\_n 26.82 against 26.74. `visc1` 0.3 has no effect on either.
+- **Neither removes it:** SAMS dx 0.01 and SAMS dx 0.04 with `visc2` 2 are both about 5× PIP's noise floor.
+- **It doesn't affect the averaged shock structure** (the convergence table above), but it is clearly visible in the v\_x profiles.
+- **Hypothesis (untested):** post-shock noise from the Lagrangian-remap step behind a slow shock that moves only a fraction of a cell per step.
+
+### Next steps
+
+- Regenerate the before/after figures against PIP o2 dx 0.01, adding SAMS dx 0.01.
+- Ripple: run `visc2` 3–4 at dx 0.04 and `visc2` 2 at dx 0.02. To find its source, check whether it is already in the plasma v\_x or starts in the neutrals, and whether turning `rke` off changes it.
+- Upstream patches: the MPI halo fix is on branch `fix/mpi-staggered-halo` (pushed); others on hold.
