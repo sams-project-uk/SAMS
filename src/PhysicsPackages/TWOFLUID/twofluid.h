@@ -575,13 +575,13 @@ namespace TWOFLUID
             void writeOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &data);
         
             template<typename T_writer>
-            void registerOutputMeshes(writer<T_writer> &writer, data_two_fluid_source &data);
+            void registerOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &lare);
             
             template<typename T>
             void registerOutputVariables(writer<T> &writer, data_two_fluid_source &plasma_source);
 
             template<typename T>
-            void writeOutputVariables(writer<T> &writer, data_two_fluid_source &plasma_source);
+            void writeOutputVariables(writer<T> &writer, data_two_fluid_source &plasma_source, LARE::LARE3DST<T_EOS>::simulationData &lare);
 
             //void allocate_neutral(SAMS::harness &harness, LARE::LARE3DST<T_EOS>::simulationData &data);
         void ion_rec_rates_empirical(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source);

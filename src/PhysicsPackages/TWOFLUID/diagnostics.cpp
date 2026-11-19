@@ -34,16 +34,15 @@ namespace TWOFLUID
     /**
      * Get the part of the data that should be written to disk
      */
-    void getHostVersion(data_two_fluid_source &data, pw::portableArrayManager &manager, LARE::volumeArray &device, LARE::hostVolumeArray &host)
+    // Interior points 1..n in each direction, as LARE writes its own cell and vertex arrays (on the
+    // MeshCC grid). The sizes come from the LARE data: getSize() of an array is its full allocated
+    // length including ghost cells, and using that here read past the end of every array.
+    void getHostVersion(LARE::T_indexType nx, LARE::T_indexType ny, LARE::T_indexType nz, pw::portableArrayManager &manager, LARE::volumeArray &device, LARE::hostVolumeArray &host)
     {
         using Range = pw::Range;
         // Copy the data if needed
         auto fullHost = manager.makeHostAvailable(device);
 
-        LARE::T_indexType nx=data.source_mass.getSize(0);
-        LARE::T_indexType ny=data.source_mass.getSize(1);
-        LARE::T_indexType nz=data.source_mass.getSize(2);
-        //printf("%li \n",nx);
         // Now allocate memory for just the part we want to write
         manager.allocate(host, Range(1, nx), Range(1, ny), Range(1, nz));
         //Have to copy data since the HDF writer expects contiguous data
@@ -59,12 +58,9 @@ namespace TWOFLUID
     
      template<typename T_EOS>
     template<typename T_writer>
-    void PIP<T_EOS>::registerOutputMeshes(writer<T_writer> &writer, data_two_fluid_source &data)
+    void PIP<T_EOS>::registerOutputMeshes(writer<T_writer> &writer, LARE::LARE3DST<T_EOS>::simulationData &lare)
     {
-        LARE::T_indexType nx=data.source_mass.getSize(0);
-        LARE::T_indexType ny=data.source_mass.getSize(1);
-        LARE::T_indexType nz=data.source_mass.getSize(2);
-        writer.template registerRectilinearMesh<LARE::T_dataType>("MeshCC_source", nx, ny, nz);
+        writer.template registerRectilinearMesh<LARE::T_dataType>("MeshCC_source", lare.nx, lare.ny, lare.nz);
 
     }
 
@@ -90,51 +86,51 @@ namespace TWOFLUID
 
     template<typename T_EOS>
     template <typename T_writer>
-    void PIP<T_EOS>::writeOutputVariables(writer<T_writer> &writer, data_two_fluid_source &data)
+    void PIP<T_EOS>::writeOutputVariables(writer<T_writer> &writer, data_two_fluid_source &data, LARE::LARE3DST<T_EOS>::simulationData &lare)
     {
         pw::portableArrayManager manager;
         LARE::hostVolumeArray host;
 
-        getHostVersion(data, manager, data.ac, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.ac, host);
         writer.writeData("ac", host.data());
     
-        getHostVersion(data, manager, data.source_mass, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_mass, host);
         writer.writeData("source_mass", host.data());
         
-        getHostVersion(data, manager, data.source_mass_n, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_mass_n, host);
         writer.writeData("source_mass_n", host.data());
         
-        getHostVersion(data, manager, data.source_energy, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_energy, host);
         writer.writeData("source_energy", host.data());
         
-        getHostVersion(data, manager, data.source_energy_n, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_energy_n, host);
         writer.writeData("source_energy_n", host.data());
         
-        getHostVersion(data, manager, data.source_v_x, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_v_x, host);
         writer.writeData("source_v_x", host.data());
         
-        getHostVersion(data, manager, data.source_v_x_n, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_v_x_n, host);
         writer.writeData("source_v_x_n", host.data());
         
-        getHostVersion(data, manager, data.source_v_y, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_v_y, host);
         writer.writeData("source_v_y", host.data());
         
-        getHostVersion(data, manager, data.source_v_y_n, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_v_y_n, host);
         writer.writeData("source_v_y_n", host.data());
         
-        getHostVersion(data, manager, data.source_v_z, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_v_z, host);
         writer.writeData("source_v_z", host.data());
         
-        getHostVersion(data, manager, data.source_v_z_n, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.source_v_z_n, host);
         writer.writeData("source_v_z_n", host.data());
         
-        getHostVersion(data, manager, data.gm_ion, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.gm_ion, host);
         writer.writeData("gm_ion", host.data());
         
-        getHostVersion(data, manager, data.gm_rec, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.gm_rec, host);
         writer.writeData("gm_rec", host.data());
         
-        getHostVersion(data, manager, data.ion_loss, host);
+        getHostVersion(lare.nx, lare.ny, lare.nz, manager, data.ion_loss, host);
         writer.writeData("ion_loss", host.data());
         
         //This doesnt seem to work yet so ignoring for now
@@ -148,8 +144,8 @@ namespace TWOFLUID
 #if defined(USE_HDF5)
 //Instantiate the templates for HDF5 writer
     template void PIP<idealGas>::registerOutputVariables<HDF5File>(writer<HDF5File> &writer, data_two_fluid_source &data);
-    template void PIP<idealGas>::writeOutputVariables<HDF5File>(writer<HDF5File> &writer, data_two_fluid_source &data);
-    template void PIP<idealGas>::registerOutputMeshes(writer<HDF5File> &writer, data_two_fluid_source &data);
+    template void PIP<idealGas>::writeOutputVariables<HDF5File>(writer<HDF5File> &writer, data_two_fluid_source &data, LARE::LARE3DST<idealGas>::simulationData &lare);
+    template void PIP<idealGas>::registerOutputMeshes(writer<HDF5File> &writer, LARE::LARE3DST<idealGas>::simulationData &lare);
     template void PIP<idealGas>::writeOutputMeshes(writer<HDF5File> &writer, LARE::LARE3DST<idealGas>::simulationData &data);
 #else
 //Instantiate the templates for simple writer

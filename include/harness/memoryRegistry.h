@@ -17,6 +17,7 @@
 
 #include <unordered_map>
 #include "harnessDef.h"
+#include "pp/parallelWrapper.h"
 
 #include "pp/manager.h"
 #include "pp/array.h"
@@ -53,10 +54,12 @@ namespace SAMS{
             void* data;
             if (tag == portableWrapper::arrayTags::host) {
                 auto array = arrayManager.allocate<double, portableWrapper::arrayTags::host>(size/sizeof(double));
+                portableWrapper::assign(array, 0.0); //zero, so elements never written (e.g. outer ghost layers) are not leftover memory
                 data = array.data();
             }
             else if (tag == portableWrapper::arrayTags::accelerated) {
                 auto array = arrayManager.allocate<double, portableWrapper::arrayTags::accelerated>(size/sizeof(double));
+                portableWrapper::assign(array, 0.0); //zero, so elements never written (e.g. outer ghost layers) are not leftover memory
                 data = array.data();
             }
             else {

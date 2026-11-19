@@ -192,10 +192,15 @@ namespace SAMS
                                 //Copy round the delta from the upper bound
                                 deltaArray(i) = deltaArray(upperBound);
                         }, portableWrapper::Range(lowerBound, lowerBound));
-                    } else {
+                    } else if (upperBound > lowerBound) {
                         applyFn(LAMBDA(SIGNED_INDEX_TYPE i) {
                                 //Assume uniform spacing for first delta
                                 deltaArray(i) = deltaArray(i+1);
+                        }, portableWrapper::Range(lowerBound, lowerBound));
+                    } else {
+                        //A single point has no spacing (the copy above would read past the end)
+                        applyFn(LAMBDA(SIGNED_INDEX_TYPE i) {
+                                deltaArray(i) = T_delta{};
                         }, portableWrapper::Range(lowerBound, lowerBound));
                     }
                     fenceFn();
