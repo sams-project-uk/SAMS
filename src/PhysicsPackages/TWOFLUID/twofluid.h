@@ -15,6 +15,7 @@
 #include "constants.h"
 #include "pp/parallelWrapper.h"
 #include "mpiManager.h"
+#include "checkpoint.h"
 #include "variableDef.h"
 #include "harness.h"
 #include "runner.h"
@@ -508,6 +509,15 @@ namespace TWOFLUID
                 if (plasma_source.symmetry_check) { symmetryCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after source half-step 2",false); }
                 if (plasma_source.noise_check) { noiseCheck(data,dataNeutral,plasma_source,timeData.step,timeData.time,"after source half-step 2"); }
             };
+
+            // Restart files: the only state PIP keeps between steps outside registered variables is the
+            // previous time step (dt_max_growth limiter). The implicit solver's internal step is not saved.
+            void saveCheckpoint(SAMS::checkpointState &cs){
+                cs.setReal("PIP/dt_previous", static_cast<double>(dt_previous));
+            }
+            void loadCheckpoint(const SAMS::checkpointState &cs){
+                dt_previous = static_cast<SAMS::T_dataType>(cs.getReal("PIP/dt_previous"));
+            }
 
             void calculateTimestep(SAMS::timeState &timeData,LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){
                 //get_ac(data,dataNeutral,plasma_source);

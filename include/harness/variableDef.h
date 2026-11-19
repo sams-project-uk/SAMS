@@ -59,6 +59,7 @@ namespace SAMS {
          * Pointer to the data. This is a void pointer because the type is not known at compile time.
          */
         void* dataPtr=nullptr;
+        size_t allocatedBytes=0; // bytes allocated at dataPtr (see getAllocatedBytes)
 
         /**
          * Recursive parameter pack to set dimensions
@@ -250,6 +251,7 @@ namespace SAMS {
             }
             memoryRegistry &memHandler = memReg;
             dataPtr = memHandler.allocate(totalSize, memSpace);
+            allocatedBytes = totalSize;
             if(!dataPtr){
                 throw std::runtime_error("Error: variableDef allocation failed\n");
             }
@@ -264,6 +266,7 @@ namespace SAMS {
             memoryRegistry &memHandler = memReg;
             memHandler.deallocate(dataPtr);
             dataPtr = nullptr;
+            allocatedBytes = 0;
             //Clear the MPI types
             clearMPITypeArrays();
         }
@@ -309,6 +312,14 @@ namespace SAMS {
          */
         void* data() const {
             return dataPtr;
+        }
+
+        /**
+         * Size in bytes of the local allocation (domain plus ghost cells), 0 if not allocated.
+         * Used to write and check restart (checkpoint) files.
+         */
+        size_t getAllocatedBytes() const {
+            return allocatedBytes;
         }
 
         /**

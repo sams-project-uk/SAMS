@@ -160,6 +160,10 @@ namespace examples
          * It returns true if data should be output.
          */
         void queryOutput(bool &shouldOutput, LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, SAMS::timeState &tData);
+        // Time of the next snapshot (negative: not set yet, first snapshot at dt_snapshots). Saved in restart files.
+        double nextOutputTime = -1.0;
+        void saveCheckpoint(SAMS::checkpointState &cs){ cs.setReal("TwoFluidTest/nextOutputTime", nextOutputTime); }
+        void loadCheckpoint(const SAMS::checkpointState &cs){ nextOutputTime = cs.getReal("TwoFluidTest/nextOutputTime"); }
 
     };
 }

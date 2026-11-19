@@ -21,6 +21,9 @@
 #include "variableDef.h"
 #include "mpiManager.h"
 
+#include <algorithm>
+#include <vector>
+
 namespace SAMS{
 
     class variableRegistry{
@@ -39,6 +42,17 @@ namespace SAMS{
         SAMS::memoryRegistry &memReg;
 
         public:
+
+        /**
+         * Names of all registered variables, sorted (deterministic order, e.g. for restart files)
+         */
+        std::vector<std::string> getVariableNames() const {
+            std::vector<std::string> names;
+            names.reserve(variables.size());
+            for (const auto &kv : variables) names.push_back(kv.first);
+            std::sort(names.begin(), names.end());
+            return names;
+        }
 
         variableRegistry(SAMS::MPIManager<MPI_DECOMPOSITION_RANK> &mpiMgr, SAMS::axisRegistry &axisReg, SAMS::memoryRegistry &memReg) : mpiMgr(mpiMgr), axisReg(axisReg), memReg(memReg) {}
 

@@ -598,7 +598,7 @@ namespace examples
          * It returns true if data should be output.
          */
         void TwoFluidTest::queryOutput(bool &shouldOutput, LARE::LARE3DST<T_EOS>::simulationData &data,LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, SAMS::timeState &tData){
-            static double nextOutputTime = data.dt_snapshots;
+            if (nextOutputTime < 0.0) nextOutputTime = data.dt_snapshots;
             if (tData.time >= (nextOutputTime) || (tData.time == 0.0)){
                 shouldOutput |= true;
                 nextOutputTime += data.dt_snapshots;

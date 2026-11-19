@@ -8,6 +8,7 @@
 #include "io/writerSimple.h"
 #include "timer.h"
 #include "welcome.h"
+#include "checkpoint.h"
 #include <tuple>
 #include <sstream>
 #include <cstdlib>
@@ -114,6 +115,10 @@ namespace SAMS
         std::chrono::steady_clock::time_point wallStart = std::chrono::steady_clock::now();
         std::chrono::steady_clock::time_point wallLast = wallStart; //Time of the previous snapshot
 
+        /** Restart (checkpoint) module, see src/Checkpoint/checkpoint.h */
+        checkpointManager checkpoints;
+        SAMS::T_sizeType outputCount = 0;  //Number of snapshots written so far (also the next file number)
+
         std::map<std::string, internalPackageInfo> simulationInfoMap;
         std::array<bool, sizeof...(Packages)> simulationActiveFlags; //Active isn't in the map for performance reasons
         std::vector<std::string> outputVariables;
@@ -199,6 +204,38 @@ namespace SAMS
             terminate = (localTerm == 1);
 #endif
             return terminate;
+        }
+
+        CALL_X(saveCheckpoint); //Packages add the state they keep outside registered variables (checkpointState&)
+        CALL_X(loadCheckpoint); //Packages restore it on restart (const checkpointState&)
+
+        /** Write a checkpoint: run state from the runner, package state from saveCheckpoint hooks */
+        void writeCheckpoint(const std::string &status){
+            harness& h = getHarness();
+            const timeState& tData = std::get<timeState>(runnerData);
+            checkpointHeader hd{tData.time, tData.dt, static_cast<long long>(tData.step), static_cast<long long>(outputCount),
+                                h.MPIManager.getSize(), h.MPIManager.getRank()};
+            checkpointState state;
+            callCore_saveCheckpoint(state);
+            checkpoints.write(h.variableRegistry, hd, state, h.MPIManager.getComm(), status);
+        }
+
+        /** Restore a checkpoint after the normal set-up (all variables allocated, packages initialised) */
+        void readCheckpoint(){
+            harness& h = getHarness();
+            checkpointHeader hd;
+            checkpointState state;
+            checkpoints.read(h.variableRegistry, h.MPIManager.getRank(), h.MPIManager.getSize(), hd, state);
+            timeState& tData = std::get<timeState>(runnerData);
+            tData.time = hd.time; tData.dt = hd.dt; tData.step = hd.step;
+            outputCount = static_cast<SAMS::T_sizeType>(hd.outputCount);
+            //Give every package the restored dt, step and time, as the previous step's getTimestep did:
+            //packages read their copy of the previous dt before the next calculateTimestep (e.g. LARE's
+            //shock-viscosity limiter in lagrangian_prepare)
+            callCore_getTimestep();
+            callCore_loadCheckpoint(state);
+            SAMS::cout << "Restarted from " << checkpoints.restartDirectory() << " at step " << tData.step << ", time " << tData.time
+                       << " (" << outputCount << " snapshots already written)" << std::endl;
         }
 
         CALL_X(queryOutput); //Query whether output is needed this timestep
@@ -564,7 +601,6 @@ namespace SAMS
         }
 
         void writeOutput(){
-            static SAMS::T_sizeType outputCount = 0;
             //Create writer
     #if defined(USE_HDF5)
             HDF5File writer(getHarness());
@@ -623,6 +659,7 @@ namespace SAMS
             ctrlFuncs.bindCalculateTimestep(&runner::callCalculateTimestep);
             ctrlFuncs.bindIsActive(&runner::callIsPackageActive);
             ctrlFuncs.bindActivate(&runner::callActivatePackage);
+            checkpoints.configureFromEnvironment();
             //Turn off all simulations
             std::fill(simulationActiveFlags.begin(), simulationActiveFlags.end(), false);
             buildInfo();
@@ -642,7 +679,11 @@ namespace SAMS
             initialConditions(); //Set initial conditions
             setBoundaryConditions(); //Attach boundary conditions
             initialiseSource();
-            writeOutput(); //Write initial output
+            if (checkpoints.restartRequested()){
+                readCheckpoint(); //Continue from a checkpoint: overwrite the initial state
+            } else {
+                writeOutput(); //Write initial output
+            }
         }
 
         void runPackages(){
@@ -668,9 +709,21 @@ namespace SAMS
                 if (queryTerminate()){// If ANY package says to terminate, do so
                     break;
                 }
+                const auto ckptAction = checkpoints.afterStep(std::get<timeState>(runnerData).time, std::get<timeState>(runnerData).step,
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - wallStart).count(), getHarness().MPIManager.getComm());
+                if (ckptAction != checkpointManager::action::none){
+                    writeCheckpoint(ckptAction == checkpointManager::action::writeAndStop ? "stopped_walltime" : "running");
+                }
+                if (ckptAction == checkpointManager::action::writeAndStop){
+                    SAMS::cout << "Wall-time limit (SAMS_CHECKPOINT_WALLTIME = " << checkpoints.wallTimeLimit() << " s) reached: checkpoint written, stopping at step "
+                               << std::get<timeState>(runnerData).step << ", time " << std::get<timeState>(runnerData).time
+                               << ". Continue with SAMS_RESTART=" << checkpoints.directory() << std::endl;
+                    return;
+                }
                 steer(); //Computational steering
             }
             writeOutput(); //Final output
+            checkpoints.markComplete(getHarness().MPIManager.getRank());
             SAMS::cout << "Simulation complete. Time stepping ended at step " << std::get<timeState>(runnerData).step << " and time " << std::get<timeState>(runnerData).time << std::endl;
         }
 
