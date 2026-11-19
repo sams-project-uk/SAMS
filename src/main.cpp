@@ -45,6 +45,7 @@ int main(int argc, char *argv[]){
     //Print welcome message
     SAMS::printWelcomeMessage();
 
+    {   //Scope of the runner: it (and the MPI types it holds) is destroyed before MPI is finalized
     //Create and initialize the runner
     SAMS::runner<LARE::LARE3D<>, LARE::LARE3DST<>, LARE::LARE3DNF<>, TWOFLUID::PIP<>, LARE::LARE3DInitialConditions<>, examples::SodShockTube<>, examples::BrioAndWu<>,
 		    examples::MHDRotor<>, examples::OrszagTang<>, examples::OrszagTang3D<>, examples::EmeryWindTunnel<>, 
@@ -66,6 +67,11 @@ int main(int argc, char *argv[]){
     runner.finalizePackages();
     //Finalize the runner
     runner.finalize();
+    }
 
     portableWrapper::finalize();
+    //Finalize MPI (without it every MPI run ended with an "exited without calling finalize" error
+    //and a non-zero exit status)
+    SAMS::MPI::finalize();
+    return 0;
 }
