@@ -616,7 +616,7 @@ namespace LARE
                 static_assert(pw::alwaysFalse<decltype(ix)>::value, "Unsupported EOS getPressure interface");
             }
 
-            data.pressure(ix, iy, iz) = data.p_e(ix, iy, iz) + data.p_i(ix, iy, iz);
+            data.pressure(ix, iy, iz) = data.p_i(ix, iy, iz);
         },
                         Range(0, data.nx + 1), Range(0, data.ny + 1), Range(0, data.nz + 1));
 
@@ -795,7 +795,7 @@ namespace LARE
             data.cv1(ix, iy, iz) = vol * (1.0 + dv);
 
             // Energy at end of Lagrangian step
-            data.energy_ion(ix, iy, iz) -= dv * data.p_e(ix, iy, iz) / data.rho(ix, iy, iz);
+            //data.energy_ion(ix, iy, iz) -= dv * data.p_e(ix, iy, iz) / data.rho(ix, iy, iz);
             data.energy_ion(ix, iy, iz) += (data.dt * data.visc_heat(ix, iy, iz) - dv * data.p_i(ix, iy, iz)) / data.rho(ix, iy, iz);
 
             // Update density based on volume change
@@ -901,62 +901,62 @@ namespace LARE
             T_indexType ixm = ix - 1;
 
             T_dataType a1 = 1 *
+                            ((data.vx(ixm, iym, izm) - data.vx(ix, iym, izm)) *
+                                 (data.vx1(ixm, iym, izm) - data.vx1(ix, iym, izm)) +
+                             (data.vy(ixm, iym, izm) - data.vy(ix, iym, izm)) *
+                                 (data.vy1(ixm, iym, izm) - data.vy1(ix, iym, izm)) +
+                             (data.vz(ixm, iym, izm) - data.vz(ix, iym, izm)) *
+                                 (data.vz1(ixm, iym, izm) - data.vz1(ix, iym, izm)));
+            T_dataType a2 = 1 *
+                            ((data.vx(ix, iym, izm) - data.vx(ix, iy, izm)) *
+                                 (data.vx1(ix, iym, izm) - data.vx1(ix, iy, izm)) +
+                             (data.vy(ix, iym, izm) - data.vy(ix, iy, izm)) *
+                                 (data.vy1(ix, iym, izm) - data.vy1(ix, iy, izm)) +
+                             (data.vz(ix, iym, izm) - data.vz(ix, iy, izm)) *
+                                 (data.vz1(ix, iym, izm) - data.vz1(ix, iy, izm)));
+            T_dataType a3 = 1 *
+                            ((data.vx(ix, iy, izm) - data.vx(ixm, iy, izm)) *
+                                 (data.vx1(ix, iy, izm) - data.vx1(ixm, iy, izm)) +
+                             (data.vy(ix, iy, izm) - data.vy(ixm, iy, izm)) *
+                                 (data.vy1(ix, iy, izm) - data.vy1(ixm, iy, izm)) +
+                             (data.vz(ix, iy, izm) - data.vz(ixm, iy, izm)) *
+                                 (data.vz1(ix, iy, izm) - data.vz1(ixm, iy, izm)));
+            T_dataType a4 = 1 *
+                            ((data.vx(ixm, iy, izm) - data.vx(ixm, iym, izm)) *
+                                 (data.vx1(ixm, iy, izm) - data.vx1(ixm, iym, izm)) +
+                             (data.vy(ixm, iy, izm) - data.vy(ixm, iym, izm)) *
+                                 (data.vy1(ixm, iy, izm) - data.vy1(ixm, iym, izm)) +
+                             (data.vz(ixm, iy, izm) - data.vz(ixm, iym, izm)) *
+                                 (data.vz1(ixm, iy, izm) - data.vz1(ixm, iym, izm)));
+
+            T_dataType a5 = 1 *
                             ((data.vx(ixm, iym, iz) - data.vx(ix, iym, iz)) *
                                  (data.vx1(ixm, iym, iz) - data.vx1(ix, iym, iz)) +
                              (data.vy(ixm, iym, iz) - data.vy(ix, iym, iz)) *
                                  (data.vy1(ixm, iym, iz) - data.vy1(ix, iym, iz)) +
                              (data.vz(ixm, iym, iz) - data.vz(ix, iym, iz)) *
                                  (data.vz1(ixm, iym, iz) - data.vz1(ix, iym, iz)));
-            T_dataType a2 = 1 *
+            T_dataType a6 = 1 *
                             ((data.vx(ix, iym, iz) - data.vx(ix, iy, iz)) *
                                  (data.vx1(ix, iym, iz) - data.vx1(ix, iy, iz)) +
                              (data.vy(ix, iym, iz) - data.vy(ix, iy, iz)) *
                                  (data.vy1(ix, iym, iz) - data.vy1(ix, iy, iz)) +
                              (data.vz(ix, iym, iz) - data.vz(ix, iy, iz)) *
                                  (data.vz1(ix, iym, iz) - data.vz1(ix, iy, iz)));
-            T_dataType a3 = 1 *
+            T_dataType a7 = 1 *
                             ((data.vx(ix, iy, iz) - data.vx(ixm, iy, iz)) *
                                  (data.vx1(ix, iy, iz) - data.vx1(ixm, iy, iz)) +
                              (data.vy(ix, iy, iz) - data.vy(ixm, iy, iz)) *
                                  (data.vy1(ix, iy, iz) - data.vy1(ixm, iy, iz)) +
                              (data.vz(ix, iy, iz) - data.vz(ixm, iy, iz)) *
                                  (data.vz1(ix, iy, iz) - data.vz1(ixm, iy, iz)));
-            T_dataType a4 = 1 *
+            T_dataType a8 = 1 *
                             ((data.vx(ixm, iy, iz) - data.vx(ixm, iym, iz)) *
                                  (data.vx1(ixm, iy, iz) - data.vx1(ixm, iym, iz)) +
                              (data.vy(ixm, iy, iz) - data.vy(ixm, iym, iz)) *
                                  (data.vy1(ixm, iy, iz) - data.vy1(ixm, iym, iz)) +
                              (data.vz(ixm, iy, iz) - data.vz(ixm, iym, iz)) *
                                  (data.vz1(ixm, iy, iz) - data.vz1(ixm, iym, iz)));
-
-            T_dataType a5 = 1 *
-                            ((data.vx(ixm, iym, izp) - data.vx(ix, iym, izp)) *
-                                 (data.vx1(ixm, iym, izp) - data.vx1(ix, iym, izp)) +
-                             (data.vy(ixm, iym, izp) - data.vy(ix, iym, izp)) *
-                                 (data.vy1(ixm, iym, izp) - data.vy1(ix, iym, izp)) +
-                             (data.vz(ixm, iym, izp) - data.vz(ix, iym, izp)) *
-                                 (data.vz1(ixm, iym, izp) - data.vz1(ix, iym, izp)));
-            T_dataType a6 = 1 *
-                            ((data.vx(ix, iym, izp) - data.vx(ix, iy, izp)) *
-                                 (data.vx1(ix, iym, izp) - data.vx1(ix, iy, izp)) +
-                             (data.vy(ix, iym, izp) - data.vy(ix, iy, izp)) *
-                                 (data.vy1(ix, iym, izp) - data.vy1(ix, iy, izp)) +
-                             (data.vz(ix, iym, izp) - data.vz(ix, iy, izp)) *
-                                 (data.vz1(ix, iym, izp) - data.vz1(ix, iy, izp)));
-            T_dataType a7 = 1 *
-                            ((data.vx(ix, iy, izp) - data.vx(ixm, iy, izp)) *
-                                 (data.vx1(ix, iy, izp) - data.vx1(ixm, iy, izp)) +
-                             (data.vy(ix, iy, izp) - data.vy(ixm, iy, izp)) *
-                                 (data.vy1(ix, iy, izp) - data.vy1(ixm, iy, izp)) +
-                             (data.vz(ix, iy, izp) - data.vz(ixm, iy, izp)) *
-                                 (data.vz1(ix, iy, izp) - data.vz1(ixm, iy, izp)));
-            T_dataType a8 = 1 *
-                            ((data.vx(ixm, iy, izp) - data.vx(ixm, iym, izp)) *
-                                 (data.vx1(ixm, iy, izp) - data.vx1(ixm, iym, izp)) +
-                             (data.vy(ixm, iy, izp) - data.vy(ixm, iym, izp)) *
-                                 (data.vy1(ixm, iy, izp) - data.vy1(ixm, iym, izp)) +
-                             (data.vz(ixm, iy, izp) - data.vz(ixm, iym, izp)) *
-                                 (data.vz1(ixm, iy, izp) - data.vz1(ixm, iym, izp)));
 
             T_dataType a9 = 1 *
                             ((data.vx(ix, iy, izm) - data.vx(ix, iy, iz)) *
@@ -994,8 +994,8 @@ namespace LARE
             data.visc_heat(ix, iy, iz) =
                 (-0.25 * dy * dz * data.alpha1(ix, iy, iz) * a1 - 0.25 * dx * dz * data.alpha2(ix, iy, iz) * a2 - 0.25 * dy * dz * data.alpha1(ix, iyp, iz) * a3 -
                  0.25 * dx * dz * data.alpha2(ixm, iy, iz) * a4 - 0.25 * dy * dz * data.alpha1(ix, iy, izp) * a5 - 0.25 * dx * dz * data.alpha2(ix, iy, izp) * a6 -
-                 0.25 * dy * dz * data.alpha1(ix, iyp, izp) * a7 - 0.25 * dx * dz * data.alpha2(ixm, iy, izp) * a8 - 0.25 * dy * dy * data.alpha3(ix, iy, iz) * a9 -
-                 0.25 * dx * dy * data.alpha3(ixm, iy, iz) * a10 - 0.25 * dy * dy * data.alpha3(ixm, iym, iz) * a11 - 0.25 * dx * dy * data.alpha3(ix, iym, iz) * a12);
+                 0.25 * dy * dz * data.alpha1(ix, iyp, izp) * a7 - 0.25 * dx * dz * data.alpha2(ixm, iy, izp) * a8 - 0.25 * dx * dy * data.alpha3(ix, iy, iz) * a9 -
+                 0.25 * dx * dy * data.alpha3(ixm, iy, iz) * a10 - 0.25 * dx * dy * data.alpha3(ixm, iym, iz) * a11 - 0.25 * dx * dy * data.alpha3(ix, iym, iz) * a12);
 
             data.visc_heat(ix, iy, iz) = pw::max(data.visc_heat(ix, iy, iz) / data.cv(ix, iy, iz), 0.0);
         },

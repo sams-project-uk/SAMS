@@ -7,7 +7,6 @@ namespace LARE
     template<typename T_EOS>
     void LARE3DNF<T_EOS>::remap_y(simulationData &data, remapData &remap_data, const domainData & core_data)
     {
-    return;
         using Range = pw::Range;
         pw::portableArrayManager yRemapManager;
         remap_data.flux.nullify();
