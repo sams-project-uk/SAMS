@@ -1340,6 +1340,8 @@ The ripple is v\_x,n minus its running mean over a width of 1 in x, measured ove
 
 ## Status update, 18 Nov 2026 (12:00): the neutral v\_x ripple: neutrals only, laid down early, not from the vertex averaging of the friction
 
+> **Corrected in the 15:00 update below.** The ripple is a standing sound wave with period 0.1, so every snapshot interval used here (0.1 and 1) aliases it. Parts 1–4 stand, with the caveat that single-snapshot RMS values are phase-dependent. Part 5 and "laid down early / frozen imprint" are wrong.
+
 **Figures done:** `runs/figures/shock_improvement.py` now takes `--snaps`, `--tag` and `--fine` (adds SAMS dx 0.01). Against PIP o2 dx 0.01 at t = 10 (`shock_profiles_t10_pipdx001.png`, `shock_errors_pipdx001.png`):
 
 | Run | Shock position | ρ\_n behind shock | T\_n behind shock |
@@ -1408,7 +1410,7 @@ At t = 10:
 
 **The vertex averaging of the friction is not the cause.** The code was not kept (not committed).
 
-### 5. When it forms (baseline with snapshots every t = 1)
+### 5. When it forms (baseline with snapshots every t = 1) — aliased, see the 15:00 update
 
 The ripple is measured over 0.3 < x < x\_shock − 0.6 with a running mean of width 0.5, so the numbers differ from the tables above:
 
@@ -1442,3 +1444,121 @@ The earlier hypothesis (remap noise behind a slowly moving shock) doesn't fit an
 
 - **Watch it form:** a run with snapshots every 0.1 up to t = 3 (about 15 min at dx 0.04), and a space–time plot of the neutral v\_x ripple. It would show whether the ripple starts at the current sheet (the symmetry plane at x = 0) or at the forming shock.
 - **Upstream patches:** the MPI halo fix is on branch `fix/mpi-staggered-halo` (pushed); others on hold.
+
+## Status update, 18 Nov 2026 (15:00): the ripple is a standing sound wave in the neutrals (period 0.1); the "frozen imprint" was aliasing
+
+### Snapshots every 0.01 (`runs/fine_a1_dts001`, t 0–2.3, dx 0.04, 3 ranks, every correction)
+
+Scripts: `runs/figures/ripple_period.py` (ripple at fixed x against t, FFT and zero-crossing periods; figure `runs/figures/ripple_period_fine.png`) and `runs/ripple_envelope.py` (spatial RMS per period). Ripple measure: v\_x minus a running mean of width 0.5, over 0.25 < x < x\_sub-shock − 0.3.
+
+- **A clean oscillation with period 0.100** at x = 0.35, 0.5 and 0.65 (FFT 0.102, zero crossings 0.100).
+- **Standing, not travelling:** the three points cross zero together, x = 0.5 in antiphase with 0.35 and 0.65. At t = 2.17 the nodes are at x ≈ 0.16, 0.36, 0.56, 0.72, 0.92 (sub-shock at 0.98), so λ ≈ 0.38, about 10 cells.
+- **It is a sound wave:** the neutral sound speed there is 3.3–4.1 (mean 3.9), and λ / c\_s ≈ 0.098. The mean neutral flow (v\_x,n ≈ 0.2) is negligible.
+- **It grows steadily:**
+
+| t | Sub-shock x | Neutral RMS, max over the period | Max \|ripple\| | Plasma RMS |
+| --- | --- | --- | --- | --- |
+| 1.4–1.5 | 0.66 | 0.031 | 0.043 | 0.006 |
+| 1.6–1.7 | 0.75 | 0.054 | 0.071 | 0.004 |
+| 1.8–1.9 | 0.84 | 0.068 | 0.095 | 0.003 |
+| 2.0–2.1 | 0.93 | 0.075 | 0.106 | 0.003 |
+| 2.2–2.3 | 1.03 | 0.090 | 0.121 | 0.004 |
+
+  Within each period the spatial RMS swings between this maximum and 0.01–0.02, as a standing wave should.
+- **The plasma does not oscillate.**
+
+### What this corrects
+
+- **Not frozen, not carried by the flow.** Snapshots every 1 (10 periods) and every 0.1 (one period) sample the same phase each time, so the pattern looked stationary and drifting at the flow speed. The 0.95 correlations between t = 5 and 6 and between t = 7 and 8 come from this.
+- **No sudden growth around t = 2–3.** The jump from 0.012 to 0.077 between t = 2 and 3 in part 5 above, and the "growth" in the snapshots-every-0.1 run (`runs/early_a1_dts01`, `runs/figures/ripple_spacetime_early.png`), are the snapshot phase drifting slowly against the oscillation (the period is not exactly 0.1 and changes as the shock moves out).
+- **Collisions-off test (`runs/colloff_a1_2_26`, every exchange term off for 2 ≤ t < 2.6; test code reverted, not committed):** its sign flip and dip are probably also phase, not a collapse. What stands: with no coupling at all, the oscillation persists at full amplitude, so the coupling neither causes it in that window nor damps it.
+- **All single-snapshot ripple RMS values in this handoff** (the t = 10 tables, `visc1`/`visc2`/resolution comparisons, the one-at-a-time runs) are single-phase samples. They can be off by a factor of several in either direction, so the comparisons between runs are not reliable. The qualitative points hold: PIP has no ripple, the plasma has none, and it is present in every SAMS run.
+
+### Reading
+
+- **The neutrals carry an undamped acoustic standing wave about 10 cells long** between the symmetry plane at x = 0 and the sub-shock.
+- **Why it isn't damped:** a 10-cell wave is poorly resolved; the shock viscosity is switched off away from compression by its limiter, and `visc1` was cut from 0.8 to 0.1 (commit c6d4638) to avoid an odd-even mode. The plasma's magnetic field stiffens it and it shows nothing.
+- **PIP (a different scheme) has none.**
+- **Unknown:** what excites it (start-up transient, the reflecting boundary, or the moving shock) and what feeds its growth.
+
+### Code audit of the neutral solver (`LARE3DNeutralFluid` against `LARE3DSingleTemperature` and upstream)
+
+The NF hydro step is line-for-line the ST step without B, and both match upstream `sams-project-uk/SAMS` main LARE apart from B. No difference found that would act in this 1D problem. Found, not fixed (awaiting a decision):
+
+- **`LARE3DNeutralFluid/yremap.cpp:10`:** `return;` at the start of `remap_y` (inherited from upstream 72ac9d5). Inert in 1D; wrong in 2D/3D.
+- **`LARE3DSingleTemperature`: `p_e` is allocated (`setup.cpp:198`) but never assigned**, then used at `lagran.cpp:619` (`data.pressure = data.p_e + data.p_i`) and `:798` (`data.energy_ion -= dv*data.p_e/data.rho`). Upstream 497ac35 fixed this (pressure = p\_i, line removed). If the memory is zero-initialised it is harmless; otherwise it is a real plasma bug.
+- **`shock_heating`:** `dy*dy` where `dx*dy` is meant, and a z-index offset, in both packages. Inert in 1D.
+- **Missing `pw::fence()` calls** after some kernels. Matters on GPU only.
+
+### Test 1: pure hydro with the reflecting wall is clean (`runs/hydro_wall_rke`, 45 s on 1 rank)
+
+Both LARE packages side by side, no coupling: x in [0, 20], dx 0.04, ρ 1, P 0.05, v\_x = −6 towards a symmetry-plane wall at x = 0 (the same `reflectionBC` and parities as the half-domain two-fluid run), zero-gradient inflow at x = 20, `rke` on, `visc1` 0.1, `visc2` 1, snapshots every 0.01 to t = 3. The post-shock sound speed (≈ 4.5) is close to the neutrals' 3.9. Built with the new `PROB=wall` option in `runs/hydro_build.sh`. Control without the wall: `runs/hydro_collide20_rke` (x in [−20, 20], same cells).
+
+| t | Shock x | v\_x RMS behind the shock, max over 0.25 in t (both packages identical) |
+| --- | --- | --- |
+| 0.25–0.5 | 0.8 | 0.027 |
+| 1.0–1.25 | 2.3 | 0.013 |
+| 2.0–2.25 | 4.3 | 0.009 |
+| 2.75–3.0 | 5.8 | 0.007 |
+
+- **No standing wave:** no period near 0.1 at x = 0.35–0.65 (`runs/figures/ripple_period_hydro_wall.png`), and residuals of ±0.01–0.02, under 0.3% of the inflow speed (in the two-fluid run the ripple is ±0.12 on a flow of about 0.5).
+- **It decays** instead of growing; in the interior (0.6 < x < 3) the RMS at t = 2 is 0.0016.
+- **The control without the wall gives the same numbers,** so the reflecting boundary adds nothing.
+- **The LARE scheme with this boundary does not produce the oscillation on its own** in a uniform post-shock state.
+
+### Test 2: when and where it starts (`runs/fine_a1_dts001`, t 0–2.3; `runs/start_a1_dts001`, t 0–0.5, is a duplicate of its start)
+
+`runs/ripple_onset.py`: at fixed vertices, v\_x,n minus its running mean in time over one period (0.1), maximum in each 0.1 window. Before t ≈ 0.5 the values only show the outflow front passing.
+
+The neutral flow during start-up:
+- **The neutrals flow outward from the sheet,** against the plasma (v\_x,p ≈ −0.85 inwards).
+- **v\_x,n ramps from 0 at the wall to about 0.5 at a neutral outflow front,** moving out at about 0.75 (x = 0.52 at t = 0.5, 0.91 at t = 1, 1.65 at t = 2). It runs well ahead of the plasma sub-shock (0.46 at t = 1).
+- **The oscillation lives in this outflow region.**
+
+| t | x = 0.04 | 0.08 | 0.16 | 0.24 | 0.36 | 0.48 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.6 | 0.011 | 0.008 | 0.014 | 0.015 | 0.010 | (front) |
+| 0.8 | 0.017 | 0.019 | 0.013 | 0.012 | 0.013 | 0.013 |
+| 1.0 | 0.024 | 0.031 | 0.013 | 0.027 | 0.028 | 0.025 |
+| 1.2 | 0.027 | 0.037 | 0.006 | 0.038 | 0.033 | 0.023 |
+| 1.4 | 0.033 | 0.051 | 0.011 | 0.050 | 0.028 | 0.023 |
+| 1.6 | 0.044 | 0.068 | 0.027 | 0.062 | 0.015 | 0.059 |
+| 1.8 | 0.058 | 0.086 | 0.045 | 0.071 | 0.022 | 0.084 |
+| 2.0 | 0.065 | 0.098 | 0.058 | 0.067 | 0.049 | 0.101 |
+
+The plasma at the same points stays at 0.002–0.006 throughout, except as the sub-shock passes.
+
+- **It appears at t ≈ 0.6–0.7, everywhere in the outflow region at once,** as a standing pattern with a node near x = 0.16 at first; the nodes drift as the region widens. There is no sign of it starting at the wall alone or at a front and spreading.
+- **It grows roughly linearly, not exponentially:** about +0.006 per 0.1 at x = 0.08, from 0.008 at t = 0.6 to 0.10 at t = 2.1. Linear growth looks more like a steady forcing near resonance than a numerical instability with a fixed growth rate.
+- **It needs the two-fluid set-up:**
+  - Test 1 rules out the scheme with the wall in a uniform post-shock state.
+  - The collisions-off window showed that once present it doesn't decay without coupling.
+  - What differs in the two-fluid run: the neutral region is a smooth, accelerating outflow, heated and pushed by friction with the counter-streaming plasma, and its sound speed rises with time (0.3 → 1.4 near the sheet by t = 0.5, 3.9 by t = 2).
+
+### Next steps
+
+- **Same two-fluid run on the full domain** (no symmetry plane), snapshots every 0.01 to t ≈ 1.5. This would settle the boundary in the real problem, where the wall sits in hot, low-density neutrals with an outflow and not the uniform gas of test 1.
+- **Neutral-only hydro with a smooth outflow ramp** (or a prescribed friction force and heating), to see whether a driven, accelerating LARE flow at this resolution excites the mode without the plasma.
+- **Damping check:** `visc1` back to 0.8 in the neutrals only, with snapshots every 0.01. The odd-even mode that prompted the cut was in the plasma run.
+- **Upstream patches:** the MPI halo fix is on branch `fix/mpi-staggered-halo` (pushed); others on hold. The audit fixes above await a decision.
+
+## Status update, 19 Nov 2026: code-audit fixes applied; results unchanged
+
+**Fixes:**
+- **`LARE3DSingleTemperature/lagran.cpp`:** `pressure = p_i` and the `p_e` energy line commented out, as upstream (`upstream/TwoFluidWIP`, `upstream/LareVariations`) has them. `p_e` is allocated with `malloc` and never set; our commit `e13c8da` had put it back in the pressure and energy updates.
+- **`LARE3DNeutralFluid/yremap.cpp`:** removed the `return;` at the top of `remap_y`, which was inherited from upstream `72ac9d5` and skipped the whole y remap. The body is the plasma y-remap without B and is complete.
+- **`shock_heating` in `LARE`, `LARE3DSingleTemperature` and `LARE3DNeutralFluid`:**
+  - the x and y edges of the lower and upper z faces now use velocities at `iz−1` and `iz`, matching the edge viscosities `alpha1`/`alpha2` (they used `iz` and `iz+1`, one level too high);
+  - two z-edge terms now use the face area `dx*dy` instead of `dy*dy`.
+  
+  Upstream's newer `shock_viscosity` kernel uses this convention; the same `shock_heating` code is in upstream main.
+
+**Checks (α0 = 1, dx 0.04, every correction, 3 ranks):**
+- **`p_e` fix alone (`runs/pe_fix_a1_t1`):** bit-identical to `runs/base_a1_dts1` at t = 1, apart from a 10⁻³¹⁸ denormal in one diagnostic. So `p_e` was zero in practice and no earlier result is affected.
+- **All fixes (`runs/audit_fix_a1_t1`):** differences from `base_a1_dts1` at t = 1 are at the 10⁻¹⁰ relative level, from the neutral y remap now running in the invariant direction.
+- **Oscillation (`runs/audit_fix_fine_dts001`, snapshots every 0.01 to t = 2.3):** `ripple_envelope.py` gives the same envelope as `fine_a1_dts001` to every printed digit (peak RMS 0.031 → 0.090 between t = 1.4 and 2.3).
+- **t = 10 (`runs/audit_fix_a1_t10`):** front 3.980, sub-shock 3.940, ρ\_n 0.02115 against 0.02114, T\_n 26.742 against 26.743. Ripple RMS in this one snapshot 0.032 against 0.033 (a single-phase sample, see 18 Nov 15:00).
+
+**Summary figures for meetings:**
+- **Script:** `runs/figures/progress_figures.py` writes `progress_1_fix_ladder`, `progress_2_convergence` and `progress_3_neutral_bug` (png and pdf).
+- **Page:** `runs/figures/progress_page.html`, the three figures with captions.
