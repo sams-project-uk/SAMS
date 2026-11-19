@@ -23,6 +23,9 @@
 
 #include "petscStiffSolver.h"
 
+// Built only with PETSc (CMake USE_PETSC=ON); petscStiffSolverStub.cpp replaces it otherwise
+#ifdef SAMS_HAVE_PETSC
+
 #include <petsc.h>
 
 #include <algorithm>
@@ -628,3 +631,5 @@ void finalizePETSc() {
 }
 
 } // namespace SAMS_PETSC
+
+#endif // SAMS_HAVE_PETSC

@@ -15,6 +15,8 @@ option(ARRAY_BOUNDS_CHECKING "Enable array bounds checking" OFF)
 option(ARRAY_SET_CHECKER "Enable array set element checking" OFF)
 #Enable MPI
 option(MPI "Enable MPI" OFF)
+#PETSc is needed only for the implicit two-fluid source solver (PIP implicit=true); OFF builds without it
+option(USE_PETSC "Build the PETSc implicit two-fluid source solver" ON)
 #Enable Kokkos CUDA backend
 option(KOKKOS_CUDA "Enable Kokkos with CUDA backend" OFF)
 #Enable Kokkos HIP backend
@@ -57,6 +59,7 @@ endif()
 # ==============================================================================
 # PETSc Configuration
 # ==============================================================================
+if(USE_PETSC)
 find_package(PkgConfig REQUIRED)
 # Finds 'petsc' through pkg-config. For a PETSc installed in a custom prefix, add
 # <prefix>/lib/pkgconfig to PKG_CONFIG_PATH (or CMAKE_PREFIX_PATH) before running cmake.
@@ -101,6 +104,10 @@ if(PETSC_FOUND)
   else()
     message(STATUS "Could not find petscconf.h in the PETSc include dirs; skipping the MPI consistency check")
   endif()
+endif()
+add_compile_definitions(SAMS_HAVE_PETSC)
+else()
+  message(STATUS "PETSc disabled (USE_PETSC=OFF): the implicit two-fluid source solver (implicit=true) is not available")
 endif()
 # ==============================================================================
 
@@ -305,7 +312,10 @@ if (KOKKOS_CUDA OR KOKKOS_HIP OR KOKKOS_SYCL OR KOKKOS_OPENMP)
   target_link_libraries(sams PRIVATE Kokkos::kokkos)
 endif()
 
-target_link_libraries(sams PRIVATE ${MPI_CXX_LIBRARIES} PkgConfig::PETSC)
+target_link_libraries(sams PRIVATE ${MPI_CXX_LIBRARIES})
+if(USE_PETSC)
+  target_link_libraries(sams PRIVATE PkgConfig::PETSC)
+endif()
 target_include_directories(sams 
     PRIVATE 
     ${MPI_CXX_INCLUDE_PATH}

@@ -2524,6 +2524,13 @@ void PIP<T_EOS>::printConfiguration(typename LARE::LARE3DST<T_EOS>::simulationDa
         warn("the build contains uncommitted changes; the git commit above does not fully identify the code.");
     printf("=====================================================\n");
     std::fflush(stdout);
+#ifndef SAMS_HAVE_PETSC
+    if (ps.implicit && ps.collisions) {
+        std::fprintf(stderr, "implicit=true needs the PETSc source solver, but this build has no PETSc (CMake USE_PETSC=OFF). "
+                             "Set implicit=false or rebuild with -DUSE_PETSC=ON.\n");
+        std::abort();
+    }
+#endif
 }
 
 #if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL) || defined(KOKKOS_CUDA) || defined(USE_CUDA) || defined(USE_HIP)
