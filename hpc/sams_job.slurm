@@ -2,7 +2,8 @@
 # Slurm job for a SAMS run that continues itself from checkpoints until it is complete.
 #
 # Submit from (or with --chdir to) the run directory:
-#     mkdir -p $RUNS/long_a1 && cd $RUNS/long_a1
+#     source $HOME/SAMS/hpc/env_dial3.sh        (sets SAMS_SCRATCH=/scratch/dp446/$USER)
+#     mkdir -p $SAMS_SCRATCH/long_a1 && cd $SAMS_SCRATCH/long_a1
 #     sbatch --export=ALL,SAMS_ROOT=$HOME/SAMS,SAMS_BIN=$HOME/sams_bin/sams_L10000_dx02,CKPT_DT=50 $HOME/SAMS/hpc/sams_job.slurm
 #
 # Each job:
@@ -23,15 +24,19 @@
 #   MAX_CHAIN   maximum number of jobs in the chain                       [30]
 #   CHAIN       job number in the chain (set by the script)               [1]
 #   ENV_FILE    environment to source                                     [$SAMS_ROOT/hpc/env_dial3.sh]
+#   LAUNCH      MPI launcher                     ["mpirun -np $SLURM_NTASKS --bind-to core"]
+#               (the launcher that works with openmpi4/intel on DIaL3; "srun --cpu-bind=cores" also possible)
 #
 #SBATCH --job-name=sams
-#SBATCH --account=CHANGE_ME
-#SBATCH --partition=CHANGE_ME
+#SBATCH -A dp446                     # DiRAC project account
+#SBATCH -p slurm                     # DIaL3 standard partition (maximum 4 days)
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=128
+#SBATCH --ntasks-per-node=128        # one rank per core
 #SBATCH --cpus-per-task=1
-#SBATCH --time=24:00:00
+#SBATCH --exclusive
+#SBATCH --time=72:00:00
 #SBATCH --output=slurm-%j.out
+#SBATCH --mail-type=END,FAIL         # add your address on the sbatch line: --mail-user=...
 
 set -euo pipefail
 : "${SAMS_ROOT:?set SAMS_ROOT (sbatch --export=ALL,SAMS_ROOT=...)}"
@@ -77,7 +82,7 @@ echo "Job $SLURM_JOB_ID (chain $CHAIN/$MAX_CHAIN) on $SLURM_NTASKS ranks in $PWD
      "SAMS_CHECKPOINT_WALLTIME=${SAMS_CHECKPOINT_WALLTIME:-unset} restart=${SAMS_RESTART:-no}"
 { echo "===== job $SLURM_JOB_ID, chain $CHAIN, $(date -u +%Y-%m-%dT%H:%M:%SZ), restart=${SAMS_RESTART:-no} ====="; } >> run.log
 set +e
-srun --cpu-bind=cores ./sams $PACKAGES >> run.log 2>&1
+${LAUNCH:-mpirun -np $SLURM_NTASKS --bind-to core} ./sams $PACKAGES >> run.log 2>&1
 rc=$?
 set -e
 echo "SAMS exited with status $rc; run status: $(status)"

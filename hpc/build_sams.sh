@@ -15,7 +15,7 @@
 #   Time      T_END [10]  DTS [10] (snapshot interval)
 #   Numerics  RKE_P, RKE_N [on] (remap kinetic-energy correction per fluid)  RME [on]  VFH [on]
 #             (energy-conserving frictional heating)  VISC1 [0.1]  VISC2 [1.0]  IMPLICIT [off]
-#   Build     BUILD_DIR [<repo>/build-hpc]  USE_PETSC [OFF]  JOBS [8]  CMAKE_EXTRA [] (e.g. "-DCMAKE_CXX_FLAGS=-march=znver2")
+#   Build     BUILD_DIR [<repo>/build-hpc]  USE_PETSC [OFF]  USE_NETCDF [OFF] (only ion_rec_nlevel needs it)  JOBS [8]  CMAKE_EXTRA [] (e.g. "-DCMAKE_CXX_FLAGS=-march=znver2")
 #
 # Example (the long run: L = 10000, dx = 0.2, t = 10000, a snapshot every 100):
 #   X_HALF=10000 NX=100000 T_END=10000 DTS=100 hpc/build_sams.sh $HOME/sams_bin/sams_L10000_dx02
@@ -63,9 +63,27 @@ edit(C, [("data.visc1 = 0.1;  // was 0.8", f"data.visc1 = {e('VISC1', '0.1')};  
           f"                plasma_source.implicit = {tf(on('IMPLICIT', 'off'))};\n")])
 PY
 
-# Configure every time (quick once cached), so a changed USE_PETSC or CMAKE_EXTRA takes effect
+# The compiler must handle C++20 (concepts, <filesystem>): check in a few seconds before a long build
+probe=$(mktemp -d)
+cat > "$probe/p.cpp" <<'CPP'
+#include <concepts>
+#include <filesystem>
+#include <mpi.h>
+template<typename T> concept Number = std::integral<T> || std::floating_point<T>;
+template<Number T> T twice(T x) { return 2 * x; }
+int main() { return twice(0) + static_cast<int>(std::filesystem::path("a").string().size()) - 1; }
+CPP
+if ! mpicxx -std=c++20 "$probe/p.cpp" -o "$probe/p" > "$probe/log" 2>&1; then
+    head -20 "$probe/log"
+    echo "build_sams.sh: '$(command -v mpicxx)' cannot compile C++20 ($(mpicxx --version 2>/dev/null | head -1))."
+    echo "  With the Intel compilers, load a newer GCC (10 or later) for the C++ library, see hpc/env_dial3.sh."
+    rm -rf "$probe"; exit 1
+fi
+rm -rf "$probe"
+
+# Configure every time (quick once cached), so a changed USE_PETSC, USE_NETCDF or CMAKE_EXTRA takes effect
 {
-    cmake -S "$ROOT" -B "$BUILD_DIR" -DMPI=ON -DCMAKE_BUILD_TYPE=Release -DUSE_PETSC="${USE_PETSC:-OFF}" \
+    cmake -S "$ROOT" -B "$BUILD_DIR" -DMPI=ON -DCMAKE_BUILD_TYPE=Release -DUSE_PETSC="${USE_PETSC:-OFF}" -DUSE_NETCDF="${USE_NETCDF:-OFF}" \
           -DMPI_CXX_COMPILER="$(command -v mpicxx)" -DMPI_C_COMPILER="$(command -v mpicc)" ${CMAKE_EXTRA:-} \
           > "$BUILD_DIR.cmake.log" 2>&1 || { tail -30 "$BUILD_DIR.cmake.log"; echo "CMake failed (log: $BUILD_DIR.cmake.log)"; exit 1; }
 }
@@ -78,7 +96,7 @@ mkdir -p "$(dirname "$out")"
 cp "$BUILD_DIR/sams" "$out"
 {
     echo "built $(date -u +%Y-%m-%dT%H:%M:%SZ) from $VERSION"
-    for k in ALPHA0 X_HALF NX HALF T_END DTS RKE_P RKE_N RME VFH VISC1 VISC2 IMPLICIT USE_PETSC CMAKE_EXTRA; do
+    for k in ALPHA0 X_HALF NX HALF T_END DTS RKE_P RKE_N RME VFH VISC1 VISC2 IMPLICIT USE_PETSC USE_NETCDF CMAKE_EXTRA; do
         echo "$k=${!k-default}"
     done
 } > "$out.config"

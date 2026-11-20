@@ -26,7 +26,9 @@
 #include "variableRegistry.h"
 #include "axisRegistry.h"
 
-#include <netcdf.h>
+#ifdef SAMS_HAVE_NETCDF
+#include <netcdf.h>   // only for the ion_rec_nlevel rate tables (CMake USE_NETCDF)
+#endif
 #include <functional>
 #include <cstring>
 #include <string>
@@ -1196,6 +1198,12 @@ DEVICEPREFIX INLINE LARE::T_dataType get_radiative_ionisation(
 ///////////////////////////////////////
 template<typename T_EOS> 
 void PIP<T_EOS>::two_fluid_read_rates(data_two_fluid_source &plasma_source){
+#ifndef SAMS_HAVE_NETCDF
+    // Built without NetCDF (CMake USE_NETCDF=OFF): the rate tables are only needed by ion_rec_nlevel
+    std::fprintf(stderr, "ion_rec_nlevel needs the atomic rate tables (%s), but this build has no NetCDF "
+                         "(CMake USE_NETCDF=OFF). Rebuild with -DUSE_NETCDF=ON.\n", plasma_source.data_path.c_str());
+    std::abort();
+#else
 
     int ncid = -1;
     std::string data_path=plasma_source.data_path;
@@ -1311,6 +1319,7 @@ void PIP<T_EOS>::two_fluid_read_rates(data_two_fluid_source &plasma_source){
             n_tsamp, n_lower, n_upper, plasma_source.level_offset);
 
     return;
+#endif // SAMS_HAVE_NETCDF
 }
 
 template<typename T_EOS> 

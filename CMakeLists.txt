@@ -17,6 +17,8 @@ option(ARRAY_SET_CHECKER "Enable array set element checking" OFF)
 option(MPI "Enable MPI" OFF)
 #PETSc is needed only for the implicit two-fluid source solver (PIP implicit=true); OFF builds without it
 option(USE_PETSC "Build the PETSc implicit two-fluid source solver" ON)
+#NetCDF is needed only to read the atomic rate tables of the n-level ionisation model (PIP ion_rec_nlevel)
+option(USE_NETCDF "Build with NetCDF (atomic rate tables for ion_rec_nlevel)" ON)
 #Enable Kokkos CUDA backend
 option(KOKKOS_CUDA "Enable Kokkos with CUDA backend" OFF)
 #Enable Kokkos HIP backend
@@ -41,6 +43,7 @@ option(DEBUG_COMPILE "Compile with -O0 (debug compile mode)" OFF)
 option(ALLOW_RANK_INCONSISTENCY "Allow rank inconsistency in queries for whole code events (terminate, output)" OFF)
 
 ##################################
+if(USE_NETCDF)
 # Prefer imported NetCDF targets when available
 if(TARGET NetCDF::NetCDF_C)
   set(NETCDF_LINK_TARGET NetCDF::NetCDF_C)
@@ -53,6 +56,13 @@ if(NOT NetCDF_INCLUDE_DIRS)
 endif()
 if(NOT NetCDF_LIBRARIES)
   find_library(NetCDF_LIBRARIES netcdf)
+endif()
+if(NOT NETCDF_LINK_TARGET AND (NOT NetCDF_LIBRARIES OR NOT NetCDF_INCLUDE_DIRS))
+  message(FATAL_ERROR "NetCDF not found. It is only needed for ion_rec_nlevel: configure with -DUSE_NETCDF=OFF to build without it.")
+endif()
+add_compile_definitions(SAMS_HAVE_NETCDF)
+else()
+  message(STATUS "NetCDF disabled (USE_NETCDF=OFF): ion_rec_nlevel (atomic rate tables) is not available")
 endif()
 ##################################
 
@@ -234,7 +244,8 @@ if (HAVE_OPENMP)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
-find_package(HDF5 REQUIRED COMPONENTS CXX)
+# The HDF5 writer uses the C API only (hdf5.h), so a parallel HDF5 without the C++ library also works
+find_package(HDF5 REQUIRED COMPONENTS C)
 
 #Recursively gather all .cpp source files in src/
 file(GLOB_RECURSE SAMS_SOURCES src/*.cpp)
@@ -299,10 +310,13 @@ target_link_libraries(sams PRIVATE ${HDF5_LIBRARIES})
 target_link_libraries(sams PRIVATE stdc++)
 
 ####################################
-if(NETCDF_LINK_TARGET)
-  target_link_libraries(sams PRIVATE ${NETCDF_LINK_TARGET})
-else()
-  target_link_libraries(sams PRIVATE ${NetCDF_LIBRARIES})
+if(USE_NETCDF)
+  if(NETCDF_LINK_TARGET)
+    target_link_libraries(sams PRIVATE ${NETCDF_LINK_TARGET})
+  else()
+    target_link_libraries(sams PRIVATE ${NetCDF_LIBRARIES})
+    target_include_directories(sams PRIVATE ${NetCDF_INCLUDE_DIRS})
+  endif()
 endif()
 ####################################
 
