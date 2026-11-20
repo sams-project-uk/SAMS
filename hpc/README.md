@@ -22,7 +22,7 @@ Things not yet tried on DIaL3 are marked **(untested)**.
 - **malloc:** `MALLOC_MMAP_MAX_=0` and `MALLOC_TRIM_THRESHOLD_`, as for PIP.
 - **Scratch:** `SAMS_SCRATCH=/scratch/dp446/$USER` for run directories.
 
-On top of that, SAMS needs a **C++20** compiler. The environment points the OpenMPI wrappers at Intel's LLVM-based `icpx`/`icx` (`OMPI_CXX=icpx`), because the classic `icpc` doesn't fully support C++20. `icpx` uses the C++ library of the GCC on `PATH`, which must be GCC 10 or newer. **(untested)** `build_sams.sh` checks this first. If its check fails, load a newer GCC module in `env_dial3.sh` (`module avail gcc`).
+On top of that, SAMS needs a **C++20** compiler. The environment points the OpenMPI wrappers at Intel's LLVM-based `icpx`/`icx` (`OMPI_CXX=icpx`), because the classic `icpc` doesn't fully support C++20. `icpx` uses the C++ library of a GCC installation, and the system GCC is too old for C++20 (no `<concepts>`). `env_dial3.sh` therefore loads the newest GCC 10–12 module it finds and passes it to `icpx` with `--gcc-toolchain` (via `OMPI_CXXFLAGS`). To choose a different one, set `SAMS_GCC_MODULE=gcc/<version>` before sourcing. **(untested)** `build_sams.sh` checks that C++20 compiles before the long build.
 
 **NetCDF and PETSc aren't needed.** NetCDF is used only by the n-level ionisation model, PETSc only by the implicit two-fluid solver. `build_sams.sh` builds without both (`USE_NETCDF=OFF`, `USE_PETSC=OFF`), and a run that asks for either feature stops at start-up with a message.
 

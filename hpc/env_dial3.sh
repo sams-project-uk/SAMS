@@ -17,9 +17,18 @@ if command -v module > /dev/null 2>&1; then
     module load intel-oneapi/2022.1.2
     module load openmpi4/intel/4.0.5
     module load cmake 2> /dev/null || true
-    # The Intel compilers use the C++ standard library of the GCC found on PATH. C++20 needs GCC 10 or
-    # newer; if build_sams.sh reports that C++20 does not compile, load a newer GCC here, e.g.
-    #     module avail gcc        then        module load gcc/<11 or newer>
+    # The Intel compilers use the C++ standard library of a GCC installation; the system GCC is too old
+    # for C++20 (<concepts>). Load a GCC module for its libstdc++: GCC 10-12 (icpx 2022 is clang 14,
+    # which may not parse the GCC 13+ headers). Override with SAMS_GCC_MODULE=gcc/<version>.
+    if [ -z "${SAMS_GCC_MODULE:-}" ]; then
+        SAMS_GCC_MODULE=$(module -t avail gcc 2>&1 | grep -E '^gcc[^/]*/1[0-2]([.][0-9]+)*$' | sort -V | tail -1)
+    fi
+    if [ -n "$SAMS_GCC_MODULE" ] && module load "$SAMS_GCC_MODULE" 2> /dev/null; then
+        echo "env_dial3.sh: using $SAMS_GCC_MODULE for the C++ standard library"
+    else
+        echo "env_dial3.sh: WARNING: no GCC 10-12 module found (module -t avail gcc); C++20 will not compile." >&2
+        echo "  Set SAMS_GCC_MODULE=<module> before sourcing this file." >&2
+    fi
 else
     echo "env_dial3.sh: no 'module' command here; using the tools already on PATH"
 fi
@@ -28,6 +37,13 @@ fi
 # C++20. (OpenMPI's mpicxx/mpicc honour OMPI_CXX/OMPI_CC.)
 if command -v icpx > /dev/null 2>&1; then
     export OMPI_CXX=icpx OMPI_CC=icx
+    # Point icpx explicitly at the GCC on PATH (the module's), not whatever it finds by default, and
+    # put that GCC's newer libstdc++ ahead of the system one at run time.
+    GCC_PREFIX=$(dirname "$(dirname "$(command -v gcc)")")
+    if [ "$GCC_PREFIX" != /usr ]; then
+        export OMPI_CXXFLAGS="--gcc-toolchain=$GCC_PREFIX${OMPI_CXXFLAGS:+ $OMPI_CXXFLAGS}"
+        [ -d "$GCC_PREFIX/lib64" ] && export LD_LIBRARY_PATH=$GCC_PREFIX/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+    fi
 fi
 
 # openmpi4/intel/4.0.5 was built against PMIx 3 (/cm/shared/apps/cm-pmix3/3.1.4), but that directory
