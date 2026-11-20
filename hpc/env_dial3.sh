@@ -39,10 +39,19 @@ if command -v icpx > /dev/null 2>&1; then
     export OMPI_CXX=icpx OMPI_CC=icx
     # Point icpx explicitly at the GCC on PATH (the module's), not whatever it finds by default, and
     # put that GCC's newer libstdc++ ahead of the system one at run time.
-    GCC_PREFIX=$(dirname "$(dirname "$(command -v gcc)")")
-    if [ "$GCC_PREFIX" != /usr ]; then
+    # The prefix is found from GCC itself: <prefix>/lib*/gcc/<triple>/<version>/libgcc.a. (HPE's
+    # /opt/gcc/<v>/bin is only a front end; the installation icpx needs is elsewhere, e.g. .../snos.)
+    GCC_LIBGCC=$(gcc -print-libgcc-file-name 2> /dev/null)
+    GCC_PREFIX=$(realpath -m "$(dirname "$GCC_LIBGCC")/../../../..")
+    if [ -n "$GCC_LIBGCC" ] && [ "$GCC_PREFIX" != /usr ]; then
         export OMPI_CXXFLAGS="--gcc-toolchain=$GCC_PREFIX${OMPI_CXXFLAGS:+ $OMPI_CXXFLAGS}"
-        [ -d "$GCC_PREFIX/lib64" ] && export LD_LIBRARY_PATH=$GCC_PREFIX/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+        GCC_STDCXX_DIR=$(dirname "$(gcc -print-file-name=libstdc++.so)")
+        [ -d "$GCC_STDCXX_DIR" ] && export LD_LIBRARY_PATH=$GCC_STDCXX_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+        selected=$(echo | icpx --gcc-toolchain="$GCC_PREFIX" -x c++ -fsyntax-only -v - 2>&1 | grep 'Selected GCC installation')
+        case "$selected" in
+            *"$GCC_PREFIX"*) echo "env_dial3.sh: icpx uses GCC in $GCC_PREFIX" ;;
+            *) echo "env_dial3.sh: WARNING: icpx did not accept $GCC_PREFIX (${selected:-no GCC selected}); libgcc is $GCC_LIBGCC" >&2 ;;
+        esac
     fi
 fi
 
