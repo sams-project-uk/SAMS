@@ -81,10 +81,19 @@ if ! mpicxx -std=c++20 "$probe/p.cpp" -o "$probe/p" > "$probe/log" 2>&1; then
 fi
 rm -rf "$probe"
 
+# The compiler must be given to CMake directly: CMakeLists.txt sets mpicxx only after project() has
+# already picked the system c++ (GCC 8 on DIaL3). A build directory configured with another compiler
+# is started again, because CMake cannot change the compiler of an existing cache.
+CXX_PATH=$(command -v mpicxx); CC_PATH=$(command -v mpicc)
+if [ -f "$BUILD_DIR/CMakeCache.txt" ] && ! grep -qx "CMAKE_CXX_COMPILER:[A-Z]*=$CXX_PATH" "$BUILD_DIR/CMakeCache.txt"; then
+    echo "build_sams.sh: $BUILD_DIR was configured with another compiler; starting it again"
+    rm -rf "$BUILD_DIR"
+fi
 # Configure every time (quick once cached), so a changed USE_PETSC, USE_NETCDF or CMAKE_EXTRA takes effect
 {
     cmake -S "$ROOT" -B "$BUILD_DIR" -DMPI=ON -DCMAKE_BUILD_TYPE=Release -DUSE_PETSC="${USE_PETSC:-OFF}" -DUSE_NETCDF="${USE_NETCDF:-OFF}" \
-          -DMPI_CXX_COMPILER="$(command -v mpicxx)" -DMPI_C_COMPILER="$(command -v mpicc)" ${CMAKE_EXTRA:-} \
+          -DCMAKE_CXX_COMPILER="$CXX_PATH" -DCMAKE_C_COMPILER="$CC_PATH" \
+          -DMPI_CXX_COMPILER="$CXX_PATH" -DMPI_C_COMPILER="$CC_PATH" ${CMAKE_EXTRA:-} \
           > "$BUILD_DIR.cmake.log" 2>&1 || { tail -30 "$BUILD_DIR.cmake.log"; echo "CMake failed (log: $BUILD_DIR.cmake.log)"; exit 1; }
 }
 touch "$ROOT/src/main.cpp"
