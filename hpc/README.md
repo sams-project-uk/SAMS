@@ -8,6 +8,7 @@ The scripts in this directory are:
 | --- | --- |
 | `env_dial3.sh` | Compiler, MPI, HDF5 and run-time settings. Same stack as PIP on DIaL3. |
 | `build_sams.sh` | Builds an executable for one set-up. The grid and parameters are compiled in. |
+| `validate_a1_t1.slurm` | Short Slurm job for the t = 1 validation run (section 4). |
 | `sams_job.slurm` | Slurm job that checkpoints before its time limit and resubmits itself until the run is complete. |
 | `compare_snapshots.py` | Compares two runs' snapshot files, bit for bit or within a tolerance. |
 
@@ -56,7 +57,15 @@ The DIaL3 nodes are AMD EPYC. `CMAKE_EXTRA="-DCMAKE_CXX_FLAGS=-march=core-avx2"`
 
 ## 4. Validate against the workstation
 
-Run the t = 1 baseline on 3 ranks, the same number as the workstation reference. A short interactive job is enough:
+Run the t = 1 baseline on 3 ranks, the same number as the workstation reference. The simplest way is the batch script. It runs in `$SAMS_SCRATCH/val_a1_t1` and writes its output to `sams_val-<jobid>.out` in the submission directory:
+
+```bash
+sbatch $HOME/TwoFluidWIP/hpc/validate_a1_t1.slurm
+# or, with the workstation reference copied to DIaL3, to compare at the end:
+sbatch --export=ALL,REF=<workstation SAMS_testdata> $HOME/TwoFluidWIP/hpc/validate_a1_t1.slurm
+```
+
+Or the same by hand in an interactive job:
 
 ```bash
 srun -A dp446 -p slurm -N 1 -n 3 --time=00:30:00 --pty bash      # or a small batch job
