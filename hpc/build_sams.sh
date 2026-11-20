@@ -76,7 +76,7 @@ CPP
 if ! mpicxx -std=c++20 "$probe/p.cpp" -o "$probe/p" > "$probe/log" 2>&1; then
     head -20 "$probe/log"
     echo "build_sams.sh: '$(command -v mpicxx)' cannot compile C++20 ($(mpicxx --version 2>/dev/null | head -1))."
-    echo "  With the Intel compilers, load a newer GCC (10 or later) for the C++ library, see hpc/env_dial3.sh."
+    echo "  Source hpc/env_dial3.sh first; it loads a GCC 10-12 module (set SAMS_GCC_MODULE to choose one)."
     rm -rf "$probe"; exit 1
 fi
 rm -rf "$probe"

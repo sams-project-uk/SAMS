@@ -22,7 +22,7 @@ Things not yet tried on DIaL3 are marked **(untested)**.
 - **malloc:** `MALLOC_MMAP_MAX_=0` and `MALLOC_TRIM_THRESHOLD_`, as for PIP.
 - **Scratch:** `SAMS_SCRATCH=/scratch/dp446/$USER` for run directories.
 
-On top of that, SAMS needs a **C++20** compiler. The environment points the OpenMPI wrappers at Intel's LLVM-based `icpx`/`icx` (`OMPI_CXX=icpx`), because the classic `icpc` doesn't fully support C++20. `icpx` uses the C++ library of a GCC installation, and the system GCC is too old for C++20 (no `<concepts>`). `env_dial3.sh` therefore loads the newest GCC 10–12 module it finds and passes it to `icpx` with `--gcc-toolchain` (via `OMPI_CXXFLAGS`). To choose a different one, set `SAMS_GCC_MODULE=gcc/<version>` before sourcing. **(untested)** `build_sams.sh` checks that C++20 compiles before the long build.
+On top of that, SAMS needs a **C++20** compiler, and the system GCC 8 is too old. `env_dial3.sh` loads the newest GCC 10–12 module it finds (on DIaL3, `gcc/12.2.0`). To choose a different one, set `SAMS_GCC_MODULE=gcc/<version>` before sourcing. The OpenMPI wrappers then use that GCC (`OMPI_CXX=g++`). SAMS uses only the C APIs of MPI and HDF5, so the Intel-built OpenMPI and HDF5 link with it. Intel's `icpx` is still available with `SAMS_CXX=intel`, but `icpx` 2022 is clang 14. It rejects SAMS's C++20 code: it requires `typename` in places where C++20 lets you leave it out (P0634). `build_sams.sh` checks that C++20 compiles before the long build, and passes `mpicxx` to CMake as the compiler.
 
 **NetCDF and PETSc aren't needed.** NetCDF is used only by the n-level ionisation model, PETSc only by the implicit two-fluid solver. `build_sams.sh` builds without both (`USE_NETCDF=OFF`, `USE_PETSC=OFF`), and a run that asks for either feature stops at start-up with a message.
 
@@ -136,7 +136,7 @@ A checkpoint is one file per rank holding every registered array, including ghos
 
 ## 8. Troubleshooting
 
-- **`build_sams.sh: ... cannot compile C++20`:** load a newer GCC (10 or later) in `env_dial3.sh`, since `icpx` uses its C++ library. Check that `mpicxx --version` shows `icpx`.
+- **`build_sams.sh: ... cannot compile C++20`:** check that `env_dial3.sh` loaded a GCC 10–12 module and that `mpicxx --version` shows that GCC.
 - **`unexpected version of PMIx`:** `env_dial3.sh` didn't find the PMIx 3 library (it prints a warning). Check `/cm/shared/apps/cm-pmix3/`.
 - **CMake can't find HDF5:** check `HDF5_DIR` in `env_dial3.sh`, and that `h5pcc` is on `PATH`.
 - **`implicit=true needs the PETSc source solver` / `ion_rec_nlevel needs the atomic rate tables`:** this build has no PETSc / NetCDF (the defaults). Neither is used by the collisions-only runs.

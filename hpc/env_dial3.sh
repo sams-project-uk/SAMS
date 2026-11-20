@@ -17,14 +17,14 @@ if command -v module > /dev/null 2>&1; then
     module load intel-oneapi/2022.1.2
     module load openmpi4/intel/4.0.5
     module load cmake 2> /dev/null || true
-    # The Intel compilers use the C++ standard library of a GCC installation; the system GCC is too old
-    # for C++20 (<concepts>). Load a GCC module for its libstdc++: GCC 10-12 (icpx 2022 is clang 14,
-    # which may not parse the GCC 13+ headers). Override with SAMS_GCC_MODULE=gcc/<version>.
+    # SAMS needs C++20, and the system GCC 8 is too old. Load a GCC module (newest 10-12 by default;
+    # override with SAMS_GCC_MODULE=gcc/<version>). It is the compiler by default (SAMS_CXX=gnu), or
+    # supplies the C++ standard library for icpx (SAMS_CXX=intel).
     if [ -z "${SAMS_GCC_MODULE:-}" ]; then
         SAMS_GCC_MODULE=$(module -t avail gcc 2>&1 | grep -E '^gcc[^/]*/1[0-2]([.][0-9]+)*$' | sort -V | tail -1)
     fi
     if [ -n "$SAMS_GCC_MODULE" ] && module load "$SAMS_GCC_MODULE" 2> /dev/null; then
-        echo "env_dial3.sh: using $SAMS_GCC_MODULE for the C++ standard library"
+        echo "env_dial3.sh: loaded $SAMS_GCC_MODULE"
     else
         echo "env_dial3.sh: WARNING: no GCC 10-12 module found (module -t avail gcc); C++20 will not compile." >&2
         echo "  Set SAMS_GCC_MODULE=<module> before sourcing this file." >&2
@@ -33,36 +33,35 @@ else
     echo "env_dial3.sh: no 'module' command here; using the tools already on PATH"
 fi
 
-# Use the LLVM-based icpx/icx behind the OpenMPI wrappers: the classic icpc does not fully support
-# C++20. (OpenMPI's mpicxx/mpicc honour OMPI_CXX/OMPI_CC.)
-if command -v icpx > /dev/null 2>&1; then
+# The compiler behind the OpenMPI wrappers (mpicxx/mpicc honour OMPI_CXX/OMPI_CC).
+#   SAMS_CXX=gnu (default): GCC from the module above. SAMS uses only the C APIs of MPI and HDF5, so the
+#     Intel-built OpenMPI and HDF5 link fine with it.
+#   SAMS_CXX=intel: icpx/icx. icpx 2022 is clang 14, which lacks parts of C++20 that SAMS uses (e.g.
+#     omitting 'typename' before dependent types, P0634), so it only works with a newer oneAPI module.
+unset OMPI_CXXFLAGS
+GCC_LIBGCC=$(gcc -print-libgcc-file-name 2> /dev/null)
+GCC_PREFIX=$(realpath -m "$(dirname "$GCC_LIBGCC")/../../../..")
+if [ -n "$GCC_LIBGCC" ] && [ "$GCC_PREFIX" != /usr ]; then
+    # The module's newer libstdc++ ahead of the system one at run time
+    GCC_STDCXX_DIR=$(dirname "$(gcc -print-file-name=libstdc++.so)")
+    [ -d "$GCC_STDCXX_DIR" ] && export LD_LIBRARY_PATH=$GCC_STDCXX_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+fi
+if [ "${SAMS_CXX:-gnu}" = intel ] && command -v icpx > /dev/null 2>&1; then
     export OMPI_CXX=icpx OMPI_CC=icx
-    # Point icpx explicitly at the GCC on PATH (the module's), not whatever it finds by default, and
-    # put that GCC's newer libstdc++ ahead of the system one at run time.
-    # The prefix is found from GCC itself: <prefix>/lib*/gcc/<triple>/<version>/libgcc.a. (HPE's
-    # /opt/gcc/<v>/bin is only a front end; the installation icpx needs is elsewhere, e.g. .../snos.)
-    GCC_LIBGCC=$(gcc -print-libgcc-file-name 2> /dev/null)
-    GCC_PREFIX=$(realpath -m "$(dirname "$GCC_LIBGCC")/../../../..")
     if [ -n "$GCC_LIBGCC" ] && [ "$GCC_PREFIX" != /usr ]; then
-        # HPE's GCC keeps its C++ headers in a non-standard place (e.g. include/g++) that icpx does not
-        # look in, so give icpx g++'s own C++ include directories explicitly.
+        # Point icpx at the module's GCC. The prefix comes from GCC itself (HPE's /opt/gcc/<v>/bin is a
+        # front end; the installation is e.g. .../snos), and its C++ headers are where icpx does not
+        # look (include/g++), so pass g++'s own C++ include directories too.
         GCC_CXX_INC=
         for d in $(echo | g++ -x c++ -E -v - 2>&1 | sed -n '/search starts here:/,/End of search list/p' | grep -E '^ /.*/(c|g)\+\+'); do
             GCC_CXX_INC="$GCC_CXX_INC -isystem $d"
         done
-        export OMPI_CXXFLAGS="--gcc-toolchain=$GCC_PREFIX${GCC_CXX_INC:+ -nostdinc++$GCC_CXX_INC}${OMPI_CXXFLAGS:+ $OMPI_CXXFLAGS}"
-        GCC_STDCXX_DIR=$(dirname "$(gcc -print-file-name=libstdc++.so)")
-        [ -d "$GCC_STDCXX_DIR" ] && export LD_LIBRARY_PATH=$GCC_STDCXX_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-        selected=$(echo | icpx --gcc-toolchain="$GCC_PREFIX" -x c++ -fsyntax-only -v - 2>&1 | grep 'Selected GCC installation')
-        case "$selected" in
-            *"$GCC_PREFIX"*) echo "env_dial3.sh: icpx uses GCC in $GCC_PREFIX" ;;
-            *) echo "env_dial3.sh: WARNING: icpx did not accept $GCC_PREFIX (${selected:-no GCC selected}); libgcc is $GCC_LIBGCC" >&2 ;;
-        esac
-        if ! echo '#include <concepts>' | icpx -std=c++20 $OMPI_CXXFLAGS -x c++ -fsyntax-only - > /dev/null 2>&1; then
-            echo "env_dial3.sh: WARNING: icpx still cannot find <concepts>. C++ includes from g++:${GCC_CXX_INC:- none}" >&2
-        fi
+        export OMPI_CXXFLAGS="--gcc-toolchain=$GCC_PREFIX${GCC_CXX_INC:+ -nostdinc++$GCC_CXX_INC}"
     fi
+else
+    export OMPI_CXX=g++ OMPI_CC=gcc
 fi
+echo "env_dial3.sh: mpicxx uses $(command -v $OMPI_CXX) ($($OMPI_CXX --version 2> /dev/null | head -1))"
 
 # openmpi4/intel/4.0.5 was built against PMIx 3 (/cm/shared/apps/cm-pmix3/3.1.4), but that directory
 # no longer holds libpmix.so.2, so the loader falls back to the system PMIx 2.2.5 in /lib64 (same
