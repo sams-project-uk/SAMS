@@ -99,7 +99,7 @@ fi
 }
 touch "$ROOT/src/main.cpp"
 if ! make -C "$BUILD_DIR" -j"${JOBS:-8}" > "$BUILD_DIR.make.log" 2>&1; then
-    grep -E "error|Error" -A3 "$BUILD_DIR.make.log" | head -40
+    grep -E "error|Error|undefined reference|cannot find|DSO missing|multiple definition" -A3 "$BUILD_DIR.make.log" | head -40
     echo "Build failed (log: $BUILD_DIR.make.log)"; exit 1
 fi
 mkdir -p "$(dirname "$out")"
