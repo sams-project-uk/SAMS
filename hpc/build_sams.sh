@@ -84,11 +84,15 @@ rm -rf "$probe"
 # The compiler must be given to CMake directly: CMakeLists.txt sets mpicxx only after project() has
 # already picked the system c++ (GCC 8 on DIaL3). A build directory configured with another compiler
 # is started again, because CMake cannot change the compiler of an existing cache.
+# The wrapper's path does not change when OMPI_CXX does, so compare what mpicxx really runs too
+# (objects left by another compiler would otherwise be reused).
 CXX_PATH=$(command -v mpicxx); CC_PATH=$(command -v mpicc)
-if [ -f "$BUILD_DIR/CMakeCache.txt" ] && ! grep -qx "CMAKE_CXX_COMPILER:[A-Z]*=$CXX_PATH" "$BUILD_DIR/CMakeCache.txt"; then
-    echo "build_sams.sh: $BUILD_DIR was configured with another compiler; starting it again"
+COMPILER_ID="$CXX_PATH | $(mpicxx --showme 2>/dev/null) | $(mpicxx --version 2>/dev/null | head -1) | ${SAMS_LINK_LIBS:-}"
+if [ -f "$BUILD_DIR/CMakeCache.txt" ] && [ "$(cat "$BUILD_DIR/.sams_compiler" 2>/dev/null)" != "$COMPILER_ID" ]; then
+    echo "build_sams.sh: $BUILD_DIR was built with another compiler (or before this check); starting it again"
     rm -rf "$BUILD_DIR"
 fi
+mkdir -p "$BUILD_DIR"; printf '%s' "$COMPILER_ID" > "$BUILD_DIR/.sams_compiler"
 # Configure every time (quick once cached), so a changed USE_PETSC, USE_NETCDF or CMAKE_EXTRA takes effect
 {
     cmake -S "$ROOT" -B "$BUILD_DIR" -DMPI=ON -DCMAKE_BUILD_TYPE=Release -DUSE_PETSC="${USE_PETSC:-OFF}" -DUSE_NETCDF="${USE_NETCDF:-OFF}" \
