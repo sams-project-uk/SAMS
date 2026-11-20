@@ -93,7 +93,8 @@ fi
 {
     cmake -S "$ROOT" -B "$BUILD_DIR" -DMPI=ON -DCMAKE_BUILD_TYPE=Release -DUSE_PETSC="${USE_PETSC:-OFF}" -DUSE_NETCDF="${USE_NETCDF:-OFF}" \
           -DCMAKE_CXX_COMPILER="$CXX_PATH" -DCMAKE_C_COMPILER="$CC_PATH" \
-          -DMPI_CXX_COMPILER="$CXX_PATH" -DMPI_C_COMPILER="$CC_PATH" ${CMAKE_EXTRA:-} \
+          -DMPI_CXX_COMPILER="$CXX_PATH" -DMPI_C_COMPILER="$CC_PATH" \
+          -DCMAKE_CXX_STANDARD_LIBRARIES="${SAMS_LINK_LIBS:-}" ${CMAKE_EXTRA:-} \
           > "$BUILD_DIR.cmake.log" 2>&1 || { tail -30 "$BUILD_DIR.cmake.log"; echo "CMake failed (log: $BUILD_DIR.cmake.log)"; exit 1; }
 }
 touch "$ROOT/src/main.cpp"

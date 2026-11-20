@@ -38,7 +38,7 @@ fi
 #     Intel-built OpenMPI and HDF5 link fine with it.
 #   SAMS_CXX=intel: icpx/icx. icpx 2022 is clang 14, which lacks parts of C++20 that SAMS uses (e.g.
 #     omitting 'typename' before dependent types, P0634), so it only works with a newer oneAPI module.
-unset OMPI_CXXFLAGS
+unset OMPI_CXXFLAGS SAMS_LINK_LIBS
 GCC_LIBGCC=$(gcc -print-libgcc-file-name 2> /dev/null)
 GCC_PREFIX=$(realpath -m "$(dirname "$GCC_LIBGCC")/../../../..")
 if [ -n "$GCC_LIBGCC" ] && [ "$GCC_PREFIX" != /usr ]; then
@@ -60,6 +60,16 @@ if [ "${SAMS_CXX:-gnu}" = intel ] && command -v icpx > /dev/null 2>&1; then
     fi
 else
     export OMPI_CXX=g++ OMPI_CC=gcc
+    # The HDF5 (and OpenMPI) built with the Intel compilers call Intel runtime routines (libintlc etc.),
+    # which icx links automatically but g++ does not. build_sams.sh adds these to the link line.
+    SAMS_LINK_LIBS=
+    for lib in libintlc.so.5 libimf.so libsvml.so libirng.so; do
+        for d in ${LD_LIBRARY_PATH//:/ }; do
+            if [ -e "$d/$lib" ]; then SAMS_LINK_LIBS="$SAMS_LINK_LIBS $d/$lib"; INTEL_RT_DIR=$d; break; fi
+        done
+    done
+    [ -n "$SAMS_LINK_LIBS" ] && SAMS_LINK_LIBS="$SAMS_LINK_LIBS -Wl,-rpath,$INTEL_RT_DIR"
+    export SAMS_LINK_LIBS
 fi
 echo "env_dial3.sh: mpicxx uses $(command -v $OMPI_CXX) ($($OMPI_CXX --version 2> /dev/null | head -1))"
 
