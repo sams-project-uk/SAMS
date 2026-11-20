@@ -5,3 +5,9 @@
 /cmake_install.cmake
 /build/
 scripts/__pycache__/
+
+# hpc/build_sams.sh outputs
+sams_bin/
+build-hpc/
+build-hpc.*.log
+.build_sams.lock

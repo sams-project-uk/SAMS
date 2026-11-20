@@ -2,9 +2,9 @@
 # Slurm job for a SAMS run that continues itself from checkpoints until it is complete.
 #
 # Submit from (or with --chdir to) the run directory:
-#     source $HOME/SAMS/hpc/env_dial3.sh        (sets SAMS_SCRATCH=/scratch/dp446/$USER)
+#     source $HOME/TwoFluidWIP/hpc/env_dial3.sh        (sets SAMS_SCRATCH=/scratch/dp446/$USER)
 #     mkdir -p $SAMS_SCRATCH/long_a1 && cd $SAMS_SCRATCH/long_a1
-#     sbatch --export=ALL,SAMS_ROOT=$HOME/SAMS,SAMS_BIN=$HOME/sams_bin/sams_L10000_dx02,CKPT_DT=50 $HOME/SAMS/hpc/sams_job.slurm
+#     sbatch --export=ALL,SAMS_ROOT=$HOME/TwoFluidWIP,SAMS_BIN=$HOME/TwoFluidWIP/sams_bin/sams_L10000_dx02,CKPT_DT=50 $HOME/TwoFluidWIP/hpc/sams_job.slurm
 #
 # Each job:
 #   - copies the executable into the run directory on the first job (later jobs reuse that copy, so a

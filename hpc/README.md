@@ -30,8 +30,8 @@ On top of that, SAMS needs a **C++20** compiler, and the system GCC 8 is too old
 
 ```bash
 cd $HOME
-git clone https://github.com/AstroSnow/SAMS_PI.git SAMS
-cd SAMS && git checkout TwoFluidWIP
+git clone https://github.com/AstroSnow/SAMS_PI.git TwoFluidWIP
+cd TwoFluidWIP && git checkout TwoFluidWIP
 source hpc/env_dial3.sh                  # warns about anything missing
 ```
 
@@ -41,13 +41,13 @@ Every set-up is its own executable. The settings are environment variables; the 
 
 ```bash
 source hpc/env_dial3.sh
-mkdir -p $HOME/sams_bin
+mkdir -p $HOME/TwoFluidWIP/sams_bin
 
 # Validation: the alpha0 = 1 baseline to t = 1 (same as the workstation runs)
-T_END=1 DTS=0.1 hpc/build_sams.sh $HOME/sams_bin/sams_a1_t1
+T_END=1 DTS=0.1 hpc/build_sams.sh $HOME/TwoFluidWIP/sams_bin/sams_a1_t1
 
 # The long run: L = 10 000, dx = 0.2, t = 10 000, a snapshot every 100
-X_HALF=10000 NX=100000 T_END=10000 DTS=100 hpc/build_sams.sh $HOME/sams_bin/sams_L10000_dx02
+X_HALF=10000 NX=100000 T_END=10000 DTS=100 hpc/build_sams.sh $HOME/TwoFluidWIP/sams_bin/sams_L10000_dx02
 ```
 
 Each build writes a `.config` file next to the executable. It records the settings and the git commit. The build edits the two `TwoFluidTest` source files and restores them afterwards. A lock stops two builds from running at the same time.
@@ -60,16 +60,16 @@ Run the t = 1 baseline on 3 ranks, the same number as the workstation reference.
 
 ```bash
 srun -A dp446 -p slurm -N 1 -n 3 --time=00:30:00 --pty bash      # or a small batch job
-source $HOME/SAMS/hpc/env_dial3.sh
+source $HOME/TwoFluidWIP/hpc/env_dial3.sh
 mkdir -p $SAMS_SCRATCH/val_a1_t1 && cd $SAMS_SCRATCH/val_a1_t1
-cp $HOME/sams_bin/sams_a1_t1 ./sams && ln -s $HOME/SAMS/data data && mkdir -p SAMS_testdata
+cp $HOME/TwoFluidWIP/sams_bin/sams_a1_t1 ./sams && ln -s $HOME/TwoFluidWIP/data data && mkdir -p SAMS_testdata
 mpirun -np 3 --bind-to core ./sams LARE3DST LARE3DNF PIP TwoFluidTest > run.log 2>&1
 ```
 
 Copy the workstation reference across (`runs/outfix_1/SAMS_testdata` on the workstation: same set-up, 3 ranks, t = 1, snapshots every 0.1), then compare:
 
 ```bash
-python3 $HOME/SAMS/hpc/compare_snapshots.py <workstation SAMS_testdata> SAMS_testdata --rtol 1e-8
+python3 $HOME/TwoFluidWIP/hpc/compare_snapshots.py <workstation SAMS_testdata> SAMS_testdata --rtol 1e-8
 ```
 
 A different compiler and CPU change the round-off, so the runs won't be bit-identical. Differences around 10⁻¹⁰ relative mean the build is good; anything near 10⁻³ or more means something is wrong.
@@ -85,11 +85,11 @@ Keep at least a few hundred cells per rank.
 ## 6. The long run
 
 ```bash
-source $HOME/SAMS/hpc/env_dial3.sh
+source $HOME/TwoFluidWIP/hpc/env_dial3.sh
 mkdir -p $SAMS_SCRATCH/long_a1_L10000_dx02 && cd $SAMS_SCRATCH/long_a1_L10000_dx02
 sbatch --mail-user=<your address> \
-       --export=ALL,SAMS_ROOT=$HOME/SAMS,SAMS_BIN=$HOME/sams_bin/sams_L10000_dx02,CKPT_DT=100 \
-       $HOME/SAMS/hpc/sams_job.slurm
+       --export=ALL,SAMS_ROOT=$HOME/TwoFluidWIP,SAMS_BIN=$HOME/TwoFluidWIP/sams_bin/sams_L10000_dx02,CKPT_DT=100 \
+       $HOME/TwoFluidWIP/hpc/sams_job.slurm
 ```
 
 The job header asks for 1 node (128 ranks), `--exclusive`, 72 h on partition `slurm`, account `dp446`. Change `--nodes` there if the scaling test says so, but keep it the same for the whole run.

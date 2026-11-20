@@ -18,7 +18,7 @@
 #   Build     BUILD_DIR [<repo>/build-hpc]  USE_PETSC [OFF]  USE_NETCDF [OFF] (only ion_rec_nlevel needs it)  JOBS [8]  CMAKE_EXTRA [] (e.g. "-DCMAKE_CXX_FLAGS=-march=znver2")
 #
 # Example (the long run: L = 10000, dx = 0.2, t = 10000, a snapshot every 100):
-#   X_HALF=10000 NX=100000 T_END=10000 DTS=100 hpc/build_sams.sh $HOME/sams_bin/sams_L10000_dx02
+#   X_HALF=10000 NX=100000 T_END=10000 DTS=100 hpc/build_sams.sh $HOME/TwoFluidWIP/sams_bin/sams_L10000_dx02
 set -euo pipefail
 out=$(realpath -m "${1:?usage: build_sams.sh <output executable>}")
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
