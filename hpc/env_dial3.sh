@@ -44,7 +44,13 @@ if command -v icpx > /dev/null 2>&1; then
     GCC_LIBGCC=$(gcc -print-libgcc-file-name 2> /dev/null)
     GCC_PREFIX=$(realpath -m "$(dirname "$GCC_LIBGCC")/../../../..")
     if [ -n "$GCC_LIBGCC" ] && [ "$GCC_PREFIX" != /usr ]; then
-        export OMPI_CXXFLAGS="--gcc-toolchain=$GCC_PREFIX${OMPI_CXXFLAGS:+ $OMPI_CXXFLAGS}"
+        # HPE's GCC keeps its C++ headers in a non-standard place (e.g. include/g++) that icpx does not
+        # look in, so give icpx g++'s own C++ include directories explicitly.
+        GCC_CXX_INC=
+        for d in $(echo | g++ -x c++ -E -v - 2>&1 | sed -n '/search starts here:/,/End of search list/p' | grep -E '^ /.*/(c|g)\+\+'); do
+            GCC_CXX_INC="$GCC_CXX_INC -isystem $d"
+        done
+        export OMPI_CXXFLAGS="--gcc-toolchain=$GCC_PREFIX${GCC_CXX_INC:+ -nostdinc++$GCC_CXX_INC}${OMPI_CXXFLAGS:+ $OMPI_CXXFLAGS}"
         GCC_STDCXX_DIR=$(dirname "$(gcc -print-file-name=libstdc++.so)")
         [ -d "$GCC_STDCXX_DIR" ] && export LD_LIBRARY_PATH=$GCC_STDCXX_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
         selected=$(echo | icpx --gcc-toolchain="$GCC_PREFIX" -x c++ -fsyntax-only -v - 2>&1 | grep 'Selected GCC installation')
@@ -52,6 +58,9 @@ if command -v icpx > /dev/null 2>&1; then
             *"$GCC_PREFIX"*) echo "env_dial3.sh: icpx uses GCC in $GCC_PREFIX" ;;
             *) echo "env_dial3.sh: WARNING: icpx did not accept $GCC_PREFIX (${selected:-no GCC selected}); libgcc is $GCC_LIBGCC" >&2 ;;
         esac
+        if ! echo '#include <concepts>' | icpx -std=c++20 $OMPI_CXXFLAGS -x c++ -fsyntax-only - > /dev/null 2>&1; then
+            echo "env_dial3.sh: WARNING: icpx still cannot find <concepts>. C++ includes from g++:${GCC_CXX_INC:- none}" >&2
+        fi
     fi
 fi
 
