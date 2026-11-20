@@ -53,6 +53,11 @@ namespace TWOFLUID
         LARE::volumeArray source_v_x_n; // velocity source term
         LARE::volumeArray source_v_y_n; // velocity source term
         LARE::volumeArray source_v_z_n; // velocity source term
+        // Collisional part of the velocity sources (before the ionisation/recombination terms are added).
+        // vertex_frictional_heating returns the kinetic energy lost in THIS exchange as heat; the
+        // ionisation/recombination momentum terms carry their own frictional heating in source_energy*.
+        LARE::volumeArray source_v_x_col, source_v_y_col, source_v_z_col;
+        LARE::volumeArray source_v_x_n_col, source_v_y_n_col, source_v_z_n_col;
         LARE::volumeArray source_energy_n; // energy source term
         LARE::volumeArray source_kinetic_energy_n; // kinetic energy source term (for diagnostics only)
         
@@ -138,6 +143,10 @@ namespace TWOFLUID
         // the drift peaks). With this flag the cell heating keeps only the thermal exchange, and the kinetic
         // energy each vertex loses in the momentum exchange (exact, from the old and new velocities and the
         // vertex masses m_v = 1/8 sum rho cv) is returned as heat to the 8 cells around it, half to each fluid.
+        // Only the COLLISIONAL velocity change counts (source_v_*_col): the ionisation/recombination momentum
+        // terms move momentum with the mass that changes species, and their frictional heating
+        // (Gamma_ion rho_n |v_D|^2/2 to the plasma, Gamma_rec rho_p |v_D|^2/2 to the neutrals) is already in
+        // the IR energy sources. Counting them here too doubled that heating and made it frame-dependent.
         bool vertex_frictional_heating=false;
         // Diagnostic (off by default): total energy of both fluids (cell internal rho e V + vertex kinetic
         // m_v |v|^2 / 2, m_v = 1/8 of the mass of the 8 cells around the vertex, half weight on the x
@@ -187,7 +196,7 @@ namespace TWOFLUID
         bool substepping=false;
         int substep_iter=0;
         int substep_max_nsteps=50; // set a maximum number of step. Not done yet
-        SAMS::T_dataType  substep_dt=1.0;
+        SAMS::T_dataType  substep_dt=0.0; // set before every source update; 0 until then (start-up sources use the current mass)
         SAMS::T_dataType  substep_max_speedup=1000.0; //Maximum substeps. The excess decreases the timestep
         SAMS::T_dataType  substep_time=0.0; //to make sure that the tiem is correct after the substeps
         
@@ -454,6 +463,14 @@ namespace TWOFLUID
                 } else {
                     //Explicit time integration
                     plasma_source.substep_dt=0.5*data.dt;//0.5 from strang split.
+                    if (plasma_source.ion_rec_empirical || plasma_source.ion_rec_nlevel) {
+                        // With ionisation/recombination the sources are recomputed here instead of reusing those of
+                        // the previous half-step: the IR updates divide by the mass AFTER the update, which the
+                        // reused sources computed for the mass before that half-step (energy then not conserved
+                        // where ionisation is fast). Collisions alone exchange no mass and keep the reuse.
+                        get_ac(data,dataNeutral,plasma_source);
+                        get_two_fluid_source(data,dataNeutral,plasma_source);
+                    }
                     if (plasma_source.check_source_energy) sourceEnergyBefore(data, dataNeutral);
                     apply_two_fluid_source(data,dataNeutral,plasma_source);
                     if (plasma_source.check_source_energy) sourceEnergyAfter(data, dataNeutral, plasma_source, timeData);

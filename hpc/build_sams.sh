@@ -15,6 +15,8 @@
 #   Time      T_END [10]  DTS [10] (snapshot interval)
 #   Numerics  RKE_P, RKE_N [on] (remap kinetic-energy correction per fluid)  RME [on]  VFH [on]
 #             (energy-conserving frictional heating)  VISC1 [0.1]  VISC2 [1.0]  IMPLICIT [off]
+#   Physics   IR [off] (ionisation/recombination)  IPOT [on] (ionisation potential loss, with IR)
+#   Checks    CHECK_SE [off] (source energy check; 1 rank only)
 #   Build     BUILD_DIR [<repo>/build-hpc]  USE_PETSC [OFF]  USE_NETCDF [OFF] (only ion_rec_nlevel needs it)  JOBS [8]  CMAKE_EXTRA [] (e.g. "-DCMAKE_CXX_FLAGS=-march=znver2")
 #
 # Example (the long run: L = 10000, dx = 0.2, t = 10000, a snapshot every 100):
@@ -48,7 +50,9 @@ edit(H, [("SAMS::T_dataType t_end = 100.0;", f"SAMS::T_dataType t_end = {e('T_EN
          ("SAMS::T_dataType x_half = 2000.0;", f"SAMS::T_dataType x_half = {e('X_HALF', '250.0')};"),
          ("SAMS::T_indexType nx = 200000; // dx = 0.02", f"SAMS::T_indexType nx = {e('NX', '12500')};"),
          ("SAMS::T_dataType alpha0 = 1.0;   // collisional", f"SAMS::T_dataType alpha0 = {e('ALPHA0', '1.0')};   // collisional"),
-         ("bool half_domain = true;", f"bool half_domain = {tf(on('HALF'))};")])
+         ("bool half_domain = true;", f"bool half_domain = {tf(on('HALF'))};"),
+         ("bool ionisation_recombination = false;", f"bool ionisation_recombination = {tf(on('IR', 'off'))};"),
+         ("bool ionisation_potential = true;", f"bool ionisation_potential = {tf(on('IPOT'))};")])
 edit(C, [("data.visc1 = 0.1;  // was 0.8", f"data.visc1 = {e('VISC1', '0.1')};  // was 0.8"),
          ("            data.visc2 = 1.0;\n", f"            data.visc2 = {e('VISC2', '1.0')};\n"),
          ("data.dt_snapshots = data.t_end / 10;", f"data.dt_snapshots = {e('DTS', '10.0')};"),
@@ -60,7 +64,8 @@ edit(C, [("data.visc1 = 0.1;  // was 0.8", f"data.visc1 = {e('VISC1', '0.1')};  
          ("                plasma_source.alpha0 = sh21.alpha0;\n",
           f"                plasma_source.alpha0 = sh21.alpha0;\n"
           f"                plasma_source.vertex_frictional_heating = {tf(on('VFH'))};\n"
-          f"                plasma_source.implicit = {tf(on('IMPLICIT', 'off'))};\n")])
+          f"                plasma_source.implicit = {tf(on('IMPLICIT', 'off'))};\n"
+          f"                plasma_source.check_source_energy = {tf(on('CHECK_SE', 'off'))};\n")])
 PY
 
 # The compiler must handle C++20 (concepts, <filesystem>): check in a few seconds before a long build
@@ -110,7 +115,7 @@ mkdir -p "$(dirname "$out")"
 cp "$BUILD_DIR/sams" "$out"
 {
     echo "built $(date -u +%Y-%m-%dT%H:%M:%SZ) from $VERSION"
-    for k in ALPHA0 X_HALF NX HALF T_END DTS RKE_P RKE_N RME VFH VISC1 VISC2 IMPLICIT USE_PETSC USE_NETCDF CMAKE_EXTRA; do
+    for k in ALPHA0 X_HALF NX HALF T_END DTS RKE_P RKE_N RME VFH VISC1 VISC2 IR IPOT IMPLICIT CHECK_SE USE_PETSC USE_NETCDF CMAKE_EXTRA; do
         echo "$k=${!k-default}"
     done
 } > "$out.config"

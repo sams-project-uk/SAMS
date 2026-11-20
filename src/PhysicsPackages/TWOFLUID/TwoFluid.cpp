@@ -114,6 +114,14 @@ namespace TWOFLUID
         varRegistry.registerVariable<T_dataType>("PIPSource/vz", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
         
         varRegistry.registerVariable<T_dataType>("PIPSource/vz_n", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        // Collisional part of the velocity sources, for vertex_frictional_heating (registered: the first
+        // source half-step of a step reuses the sources of the previous step, so restarts need them)
+        varRegistry.registerVariable<T_dataType>("PIPSource/vx_col", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vy_col", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vz_col", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vx_n_col", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vy_n_col", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
+        varRegistry.registerVariable<T_dataType>("PIPSource/vz_n_col", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Y", ghosts, SAMS::staggerType::HALF_CELL), SAMS::dimension("Z", ghosts, SAMS::staggerType::HALF_CELL));
         
         varRegistry.registerVariable<T_dataType>("PIPSource/gm_ion", pw::arrayTags::accelerated, SAMS::dimension("X", ghosts), SAMS::dimension("Y", ghosts), SAMS::dimension("Z", ghosts));
         
@@ -201,6 +209,18 @@ namespace TWOFLUID
         pw::assign(plasma_source.source_v_z, 0.0);
         varRegistry.fillPPArray("PIPSource/vz_n", plasma_source.source_v_z_n);
         pw::assign(plasma_source.source_v_z_n, 0.0);
+        varRegistry.fillPPArray("PIPSource/vx_col", plasma_source.source_v_x_col);
+        pw::assign(plasma_source.source_v_x_col, 0.0);
+        varRegistry.fillPPArray("PIPSource/vy_col", plasma_source.source_v_y_col);
+        pw::assign(plasma_source.source_v_y_col, 0.0);
+        varRegistry.fillPPArray("PIPSource/vz_col", plasma_source.source_v_z_col);
+        pw::assign(plasma_source.source_v_z_col, 0.0);
+        varRegistry.fillPPArray("PIPSource/vx_n_col", plasma_source.source_v_x_n_col);
+        pw::assign(plasma_source.source_v_x_n_col, 0.0);
+        varRegistry.fillPPArray("PIPSource/vy_n_col", plasma_source.source_v_y_n_col);
+        pw::assign(plasma_source.source_v_y_n_col, 0.0);
+        varRegistry.fillPPArray("PIPSource/vz_n_col", plasma_source.source_v_z_n_col);
+        pw::assign(plasma_source.source_v_z_n_col, 0.0);
         
         varRegistry.fillPPArray("PIPSource/gm_ion", plasma_source.gm_ion);
         pw::assign(plasma_source.gm_ion, 0.0);
@@ -257,6 +277,16 @@ namespace TWOFLUID
         
         //Calculate the source terms for the two-fluid interactions
         get_collisional_source_terms(data,dataNeutral,plasma_source);
+        if (plasma_source.vertex_frictional_heating) {
+            // Keep the collisional velocity sources: the frictional heating is the kinetic energy lost in this
+            // exchange only (the ionisation/recombination terms added below carry their own heating)
+            pw::assign(plasma_source.source_v_x_col, plasma_source.source_v_x);
+            pw::assign(plasma_source.source_v_y_col, plasma_source.source_v_y);
+            pw::assign(plasma_source.source_v_z_col, plasma_source.source_v_z);
+            pw::assign(plasma_source.source_v_x_n_col, plasma_source.source_v_x_n);
+            pw::assign(plasma_source.source_v_y_n_col, plasma_source.source_v_y_n);
+            pw::assign(plasma_source.source_v_z_n_col, plasma_source.source_v_z_n);
+        }
         
         //Calculate the source terms for Ionisation/recombination
         if (plasma_source.ion_rec_empirical) {
@@ -291,6 +321,33 @@ namespace TWOFLUID
         
         if (plasma_source.collisions){
             using Range = portableWrapper::Range;
+            const bool vfh = plasma_source.vertex_frictional_heating;
+            const bool ir_on = plasma_source.ion_rec_empirical || plasma_source.ion_rec_nlevel;
+            const SAMS::T_dataType sdt = plasma_source.substep_dt;
+            // Energy-conserving frictional heating (see twofluid.h), part 1: vertex masses m_v = 1/8 sum rho cv
+            // BEFORE this half-step, and (with ionisation/recombination) the plasma share of the IR heating,
+            // Gamma_ion rho_n / (Gamma_ion rho_n + Gamma_rec rho_p) at the vertex
+            portableWrapper::portableArrayManager fhManager;
+            LARE::volumeArray m0p, m0n, fp_ir;
+            if (vfh) {
+                fhManager.allocate(m0p, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+                fhManager.allocate(m0n, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+                fhManager.allocate(fp_ir, Range(0, data.nx), Range(0, data.ny), Range(0, data.nz));
+                portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
+                    SAMS::T_dataType mp = 0.0, mn = 0.0, fion = 0.0, frec = 0.0;
+                    for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c) {
+                        mp += data.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);
+                        mn += dataNeutral.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);   // same grid
+                        if (ir_on) {
+                            fion += plasma_source.gm_ion(ix + a, iy + b, iz + c) * dataNeutral.rho(ix + a, iy + b, iz + c);
+                            frec += plasma_source.gm_rec(ix + a, iy + b, iz + c) * data.rho(ix + a, iy + b, iz + c);
+                        }
+                    }
+                    m0p(ix,iy,iz) = 0.125*mp; m0n(ix,iy,iz) = 0.125*mn;
+                    fp_ir(ix,iy,iz) = (fion + frec) > 0.0 ? fion/(fion + frec) : 0.5;
+                }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
+                portableWrapper::fence();
+            }
             // Cell-centred quantities (densities, specific energies): interior cells 1..n
             portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
                 //Mass exchange terms
@@ -300,40 +357,64 @@ namespace TWOFLUID
                 data.energy_ion(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy(ix,iy,iz);
                 dataNeutral.energy(ix,iy,iz)+=plasma_source.substep_dt*plasma_source.source_energy_n(ix,iy,iz);
             }, Range(1,data.nx), Range(1,data.ny), Range(1,data.nz));
-            if (plasma_source.vertex_frictional_heating) {
-                // Energy-conserving frictional heating (see twofluid.h): the kinetic energy each vertex loses in
-                // the momentum exchange below, from its old and new velocities, goes 1/8 to each of the 8 cells
-                // around it, half to each fluid. Vertex mass m_v = 1/8 sum of rho cv of those cells. On a domain
-                // boundary the ghost cells' share matches the half weight of the boundary vertices.
-                portableWrapper::portableArrayManager fhManager;
-                LARE::volumeArray fheat;
-                fhManager.allocate(fheat, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
-                portableWrapper::assign(fheat, 0.0);
-                const SAMS::T_dataType sdt = plasma_source.substep_dt;
+            if (vfh) {
+                // Part 2: with ionisation/recombination the densities changed: refresh their ghost cells (as is done
+                // after the source step anyway) so that the new vertex masses are exactly those the next step sees
+                if (ir_on && harness_ptr) {
+                    portableWrapper::fence();
+                    harness_ptr->variableRegistry.applyBoundaryConditions("rho");
+                    harness_ptr->variableRegistry.applyBoundaryConditions("LARENF/rho");
+                    portableWrapper::fence();
+                }
+                // Part 3: the kinetic energy each vertex loses in this half-step, from its old and new masses and
+                // velocities, goes back as heat, 1/8 to each of the 8 cells around it: the collisional part half to
+                // each fluid, the ionisation/recombination part by fp_ir (the model's 1/2 Gamma_ion rho_n |v_D|^2 to the
+                // plasma and 1/2 Gamma_rec rho_p |v_D|^2 to the neutrals). On a domain boundary the ghost cells' share
+                // matches the half weight of the boundary vertices.
+                LARE::volumeArray fheat_p, fheat_n;
+                fhManager.allocate(fheat_p, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+                fhManager.allocate(fheat_n, Range(-1, data.nx + 2), Range(-1, data.ny + 2), Range(-1, data.nz + 2));
+                portableWrapper::assign(fheat_p, 0.0);
+                portableWrapper::assign(fheat_n, 0.0);
                 portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                    SAMS::T_dataType mp = 0.0, mn = 0.0;
-                    for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c) {
-                        mp += data.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);
-                        mn += dataNeutral.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);   // same grid
+                    const SAMS::T_dataType mp0 = m0p(ix,iy,iz), mn0 = m0n(ix,iy,iz);
+                    SAMS::T_dataType mp1 = mp0, mn1 = mn0;
+                    if (ir_on) {
+                        mp1 = 0.0; mn1 = 0.0;
+                        for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c) {
+                            mp1 += data.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);
+                            mn1 += dataNeutral.rho(ix + a, iy + b, iz + c) * data.cv(ix + a, iy + b, iz + c);
+                        }
+                        mp1 *= 0.125; mn1 *= 0.125;
                     }
-                    mp *= 0.125; mn *= 0.125;
                     const SAMS::T_dataType vx = data.vx(ix,iy,iz), vy = data.vy(ix,iy,iz), vz = data.vz(ix,iy,iz);
                     const SAMS::T_dataType nx_ = dataNeutral.vx(ix,iy,iz), ny_ = dataNeutral.vy(ix,iy,iz), nz_ = dataNeutral.vz(ix,iy,iz);
-                    const SAMS::T_dataType vx1 = vx + sdt*plasma_source.source_v_x(ix,iy,iz), vy1 = vy + sdt*plasma_source.source_v_y(ix,iy,iz),
-                                           vz1 = vz + sdt*plasma_source.source_v_z(ix,iy,iz);
-                    const SAMS::T_dataType nx1 = nx_ + sdt*plasma_source.source_v_x_n(ix,iy,iz), ny1 = ny_ + sdt*plasma_source.source_v_y_n(ix,iy,iz),
-                                           nz1 = nz_ + sdt*plasma_source.source_v_z_n(ix,iy,iz);
-                    const SAMS::T_dataType dke = 0.5*mp*((vx1*vx1 + vy1*vy1 + vz1*vz1) - (vx*vx + vy*vy + vz*vz))
-                                               + 0.5*mn*((nx1*nx1 + ny1*ny1 + nz1*nz1) - (nx_*nx_ + ny_*ny_ + nz_*nz_));
-                    const SAMS::T_dataType q = -0.125*dke;
-                    for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c)
-                        portableWrapper::atomic::accelerated::Add(fheat(ix + a, iy + b, iz + c), q);
+                    const SAMS::T_dataType v2p0 = vx*vx + vy*vy + vz*vz, v2n0 = nx_*nx_ + ny_*ny_ + nz_*nz_;
+                    // Collisional part: velocity change from the collisional exchange only (source_v_*_col), old masses
+                    const SAMS::T_dataType cx = vx + sdt*plasma_source.source_v_x_col(ix,iy,iz), cy = vy + sdt*plasma_source.source_v_y_col(ix,iy,iz),
+                                           cz = vz + sdt*plasma_source.source_v_z_col(ix,iy,iz);
+                    const SAMS::T_dataType cnx = nx_ + sdt*plasma_source.source_v_x_n_col(ix,iy,iz), cny = ny_ + sdt*plasma_source.source_v_y_n_col(ix,iy,iz),
+                                           cnz = nz_ + sdt*plasma_source.source_v_z_n_col(ix,iy,iz);
+                    const SAMS::T_dataType dke_col = 0.5*mp0*((cx*cx + cy*cy + cz*cz) - v2p0) + 0.5*mn0*((cnx*cnx + cny*cny + cnz*cnz) - v2n0);
+                    // Whole half-step: all velocity sources and the change of mass
+                    const SAMS::T_dataType px = vx + sdt*plasma_source.source_v_x(ix,iy,iz), py = vy + sdt*plasma_source.source_v_y(ix,iy,iz),
+                                           pz = vz + sdt*plasma_source.source_v_z(ix,iy,iz);
+                    const SAMS::T_dataType qx = nx_ + sdt*plasma_source.source_v_x_n(ix,iy,iz), qy = ny_ + sdt*plasma_source.source_v_y_n(ix,iy,iz),
+                                           qz = nz_ + sdt*plasma_source.source_v_z_n(ix,iy,iz);
+                    const SAMS::T_dataType dke_all = 0.5*mp1*(px*px + py*py + pz*pz) + 0.5*mn1*(qx*qx + qy*qy + qz*qz)
+                                                   - 0.5*mp0*v2p0 - 0.5*mn0*v2n0;
+                    const SAMS::T_dataType q_col = -dke_col, q_ir = ir_on ? -(dke_all - dke_col) : 0.0;   // collisions only: no IR part
+                    const SAMS::T_dataType f = fp_ir(ix,iy,iz);
+                    const SAMS::T_dataType qp = 0.125*(0.5*q_col + f*q_ir), qn = 0.125*(0.5*q_col + (1.0 - f)*q_ir);
+                    for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c) {
+                        portableWrapper::atomic::accelerated::Add(fheat_p(ix + a, iy + b, iz + c), qp);
+                        portableWrapper::atomic::accelerated::Add(fheat_n(ix + a, iy + b, iz + c), qn);
+                    }
                 }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
                 portableWrapper::fence();
                 portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-                    const SAMS::T_dataType h = 0.5*fheat(ix,iy,iz)/data.cv(ix,iy,iz);   // heat per volume, per fluid
-                    data.energy_ion(ix,iy,iz)    += h/data.rho(ix,iy,iz);
-                    dataNeutral.energy(ix,iy,iz) += h/dataNeutral.rho(ix,iy,iz);
+                    data.energy_ion(ix,iy,iz)    += fheat_p(ix,iy,iz)/data.cv(ix,iy,iz)/data.rho(ix,iy,iz);
+                    dataNeutral.energy(ix,iy,iz) += fheat_n(ix,iy,iz)/data.cv(ix,iy,iz)/dataNeutral.rho(ix,iy,iz);
                 }, Range(1,data.nx), Range(1,data.ny), Range(1,data.nz));
                 portableWrapper::fence();
             }
@@ -846,65 +927,44 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
 //Get the source terms for the IR rates
     template<typename T_EOS>
  void PIP<T_EOS>::get_ion_rec_source_terms(LARE::LARE3DST<T_EOS>::simulationData &data, LARE::LARE3DNF<T_EOS>::simulationData &dataNeutral, data_two_fluid_source &plasma_source){	
-
     const bool ion_potential_on = plasma_source.ionisation_potential && plasma_source.ion_rec_empirical;
-
+    const bool vfh = plasma_source.vertex_frictional_heating;
+    // Explicit update: velocities and specific energies change by (exchanged amount)/(NEW mass), which is the
+    // exact conservative update (m' v' = m v + transfers, with m' = m + dt (ionisation - recombination)) and
+    // cannot overshoot when a step ionises a large fraction of the plasma (e.g. the tenuous plasma at the
+    // start of a run). With the old mass the update overshoots once dt*Gamma_ion*rho_n/rho_p nears 1.
+    // The implicit solver integrates the continuous equations, so it uses the instantaneous mass (sdt = 0).
+    const SAMS::T_dataType sdt = plasma_source.implicit ? 0.0 : plasma_source.substep_dt;
     using Range = portableWrapper::Range;
     portableWrapper::applyKernel(LAMBDA(T_indexType ix, T_indexType iy, T_indexType iz) {
-    
         //Mass source terms
         plasma_source.source_mass(ix,iy,iz)  += plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)-plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);
         plasma_source.source_mass_n(ix,iy,iz) +=-plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)+plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);
-        
-        SAMS::T_dataType  rho_plasma_vertex=  (data.rho(ix  , iy  , iz  ) + 
-                                        data.rho(ix+1, iy  , iz  ) + 
-                                        data.rho(ix  , iy+1, iz  ) + 
-                                        data.rho(ix+1, iy+1, iz  ) + 
-                                        data.rho(ix  , iy  , iz+1) + 
-                                        data.rho(ix+1, iy  , iz+1) + 
-                                        data.rho(ix  , iy+1, iz+1) + 
-                                        data.rho(ix+1, iy+1, iz+1))* 
-                                        0.125;
-        SAMS::T_dataType  Gm_ion_vertex=      (plasma_source.gm_ion(ix  , iy  , iz  ) + 
-                                        plasma_source.gm_ion(ix+1, iy  , iz  ) + 
-                                        plasma_source.gm_ion(ix  , iy+1, iz  ) + 
-                                        plasma_source.gm_ion(ix+1, iy+1, iz  ) + 
-                                        plasma_source.gm_ion(ix  , iy  , iz+1) + 
-                                        plasma_source.gm_ion(ix+1, iy  , iz+1) + 
-                                        plasma_source.gm_ion(ix  , iy+1, iz+1) + 
-                                        plasma_source.gm_ion(ix+1, iy+1, iz+1))* 
-                                        0.125;
-        SAMS::T_dataType  Gm_rec_vertex=      (plasma_source.gm_rec(ix  , iy  , iz  ) + 
-                                        plasma_source.gm_rec(ix+1, iy  , iz  ) + 
-                                        plasma_source.gm_rec(ix  , iy+1, iz  ) + 
-                                        plasma_source.gm_rec(ix+1, iy+1, iz  ) + 
-                                        plasma_source.gm_rec(ix  , iy  , iz+1) + 
-                                        plasma_source.gm_rec(ix+1, iy  , iz+1) + 
-                                        plasma_source.gm_rec(ix  , iy+1, iz+1) + 
-                                        plasma_source.gm_rec(ix+1, iy+1, iz+1))* 
-                                        0.125;
-        SAMS::T_dataType  rho_neutral_vertex=  (dataNeutral.rho(ix  , iy  , iz  ) + 
-                                         dataNeutral.rho(ix+1, iy  , iz  ) + 
-                                         dataNeutral.rho(ix  , iy+1, iz  ) + 
-                                         dataNeutral.rho(ix+1, iy+1, iz  ) + 
-                                         dataNeutral.rho(ix  , iy  , iz+1) + 
-                                         dataNeutral.rho(ix+1, iy  , iz+1) + 
-                                         dataNeutral.rho(ix  , iy+1, iz+1) + 
-                                         dataNeutral.rho(ix+1, iy+1, iz+1))* 
-                                         0.125;
-        
+        // Vertex values: densities, and the ionisation and recombination MASS FLUXES Gamma_ion rho_n and
+        // Gamma_rec rho_p as the average of the 8 cell fluxes. The vertex momentum change must use the same
+        // mass flux as the cells (the vertex mass is the average of the cell masses); the product of the
+        // averaged rate and the averaged density differs from it where they vary, by a factor 2 next to the
+        // ionised current sheet, which removed kinetic energy that no heating term returned.
+        SAMS::T_dataType rho_plasma_vertex = 0.0, rho_neutral_vertex = 0.0, ion_flux_vertex = 0.0, rec_flux_vertex = 0.0;
+        for (int a = 0; a <= 1; ++a) for (int b = 0; b <= 1; ++b) for (int c = 0; c <= 1; ++c) {
+            rho_plasma_vertex  += data.rho(ix + a, iy + b, iz + c);
+            rho_neutral_vertex += dataNeutral.rho(ix + a, iy + b, iz + c);
+            ion_flux_vertex    += plasma_source.gm_ion(ix + a, iy + b, iz + c) * dataNeutral.rho(ix + a, iy + b, iz + c);
+            rec_flux_vertex    += plasma_source.gm_rec(ix + a, iy + b, iz + c) * data.rho(ix + a, iy + b, iz + c);
+        }
+        rho_plasma_vertex *= 0.125; rho_neutral_vertex *= 0.125; ion_flux_vertex *= 0.125; rec_flux_vertex *= 0.125;
+        rho_plasma_vertex  += sdt*(ion_flux_vertex - rec_flux_vertex);   // mass after this update (explicit)
+        rho_neutral_vertex += sdt*(rec_flux_vertex - ion_flux_vertex);
         //Velocity source terms
         SAMS::T_dataType  v_D_x  =  data.vx(ix,iy,iz) - dataNeutral.vx(ix,iy,iz); //Drift velocity in the x-direction
         SAMS::T_dataType  v_D_y  =  data.vy(ix,iy,iz) - dataNeutral.vy(ix,iy,iz); //Drift velocity in the y-direction
         SAMS::T_dataType  v_D_z  =  data.vz(ix,iy,iz) - dataNeutral.vz(ix,iy,iz); //Drift velocity in the z-direction
-        plasma_source.source_v_x(ix,iy,iz) -= Gm_ion_vertex*rho_neutral_vertex*v_D_x/rho_plasma_vertex;
-        plasma_source.source_v_y(ix,iy,iz) -= Gm_ion_vertex*rho_neutral_vertex*v_D_y/rho_plasma_vertex;
-        plasma_source.source_v_z(ix,iy,iz) -= Gm_ion_vertex*rho_neutral_vertex*v_D_z/rho_plasma_vertex;
-        plasma_source.source_v_x_n(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_x/rho_neutral_vertex;
-        plasma_source.source_v_y_n(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_y/rho_neutral_vertex;
-        plasma_source.source_v_z_n(ix,iy,iz) += Gm_rec_vertex*rho_plasma_vertex*v_D_z/rho_neutral_vertex;
-        
-        
+        plasma_source.source_v_x(ix,iy,iz) -= ion_flux_vertex*v_D_x/rho_plasma_vertex;
+        plasma_source.source_v_y(ix,iy,iz) -= ion_flux_vertex*v_D_y/rho_plasma_vertex;
+        plasma_source.source_v_z(ix,iy,iz) -= ion_flux_vertex*v_D_z/rho_plasma_vertex;
+        plasma_source.source_v_x_n(ix,iy,iz) += rec_flux_vertex*v_D_x/rho_neutral_vertex;
+        plasma_source.source_v_y_n(ix,iy,iz) += rec_flux_vertex*v_D_y/rho_neutral_vertex;
+        plasma_source.source_v_z_n(ix,iy,iz) += rec_flux_vertex*v_D_z/rho_neutral_vertex;
         //Get velocity at cell centres
         SAMS::T_dataType  vx_centre=  (data.vx(ix  , iy  , iz  ) + 
                                         data.vx(ix-1, iy  , iz  ) + 
@@ -979,13 +1039,16 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
 
         SAMS::T_dataType vd2 = dvx*dvx + dvy*dvy + dvz*dvz;
        
+        // Frictional heating of the exchanged mass, 1/2 Gamma |v_D|^2 (eqs. 3 and 7). With vertex_frictional_heating
+        // it is returned exactly at the vertices instead (apply_two_fluid_source), so it is not added here.
+        if (!vfh) {
         plasma_source.source_energy(ix,iy,iz)+=plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz)*\
                         0.5*vd2 \
                         /data.rho(ix,iy,iz);
-        //printf("getting neutral energy source terms \n");
         plasma_source.source_energy_n(ix,iy,iz)+=plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz)*\
                         0.5*vd2\
                         /dataNeutral.rho(ix,iy,iz);
+        }
         
         // Thermal energy exchanged by ionisation/recombination (Snow & Hillier 2021, eqs. 3 and 7),
         // written for the SPECIFIC internal energy eps that SAMS evolves (P = (gamma-1) rho eps).
@@ -1009,9 +1072,10 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
         const SAMS::T_dataType eps_n = dataNeutral.energy(ix,iy,iz);
         const SAMS::T_dataType ion_flux = plasma_source.gm_ion(ix,iy,iz)*dataNeutral.rho(ix,iy,iz); // mass rate neutral -> plasma
         const SAMS::T_dataType rec_flux = plasma_source.gm_rec(ix,iy,iz)*data.rho(ix,iy,iz);        // mass rate plasma -> neutral
-
-        plasma_source.source_energy(ix,iy,iz)   += (ion_flux*(eps_n - eps_p) + 0.5*rec_flux*eps_p)/data.rho(ix,iy,iz);
-        plasma_source.source_energy_n(ix,iy,iz) += rec_flux*(0.5*eps_p - eps_n)/dataNeutral.rho(ix,iy,iz);
+        const SAMS::T_dataType rho_p_new = data.rho(ix,iy,iz) + sdt*(ion_flux - rec_flux);           // masses after this update
+        const SAMS::T_dataType rho_n_new = dataNeutral.rho(ix,iy,iz) + sdt*(rec_flux - ion_flux);
+        plasma_source.source_energy(ix,iy,iz)   += (ion_flux*(eps_n - eps_p) + 0.5*rec_flux*eps_p)/rho_p_new;
+        plasma_source.source_energy_n(ix,iy,iz) += rec_flux*(0.5*eps_p - eps_n)/rho_n_new;
 
         // Ionisation potential and arbitrary heating (eq. 7: -phi_I + A_heat in the plasma energy
         // equation). ion_loss = -phi_I and ion_heating = A_heat are energy DENSITY rates and do not
