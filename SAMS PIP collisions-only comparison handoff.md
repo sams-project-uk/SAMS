@@ -1562,3 +1562,123 @@ The plasma at the same points stays at 0.002–0.006 throughout, except as the s
 **Summary figures for meetings:**
 - **Script:** `runs/figures/progress_figures.py` writes `progress_1_fix_ladder`, `progress_2_convergence` and `progress_3_neutral_bug` (png and pdf).
 - **Page:** `runs/figures/progress_page.html`, the three figures with captions.
+
+## Status update, 25 Nov 2026: restart and HPC support, DIaL3 validated, and ionisation/recombination (no ionisation potential) matches PIP
+
+### 1. The ripple: the symmetry plane is ruled out; accepted for now
+
+**Full-domain run (`runs/full_a1_dts001`):** x in [−250, 250], 12 500 cells (dx 0.04), 6 ranks, snapshots every 0.01 to t = 1.5.
+- **Same as the half-domain run:** the oscillation's onset (t ≈ 0.6–0.7) and growth match, at every measured point, on both sides of the sheet (`runs/ripple_onset.py`).
+- **Conclusion:** the symmetry plane plays no part.
+
+**Decision:** the remaining standing sound wave in the neutrals is taken as the limit of a second-order scheme without explicit viscosity. Explicit viscosity will be added later.
+
+### 2. Code changes since 19 Nov
+
+| Commit | Change |
+| --- | --- |
+| `47433d3` | `main` calls `MPI_Finalize`. Every MPI run used to end with OpenMPI's "exited without calling finalize" error and a non-zero exit status. |
+| `f605661` | Checkpoint/restart module, `src/Checkpoint/` (details below). |
+| `a7f2ef6` | Output and allocation fixes (details below). |
+| `2dde262` | PETSc optional (CMake `USE_PETSC`, default ON). |
+| `1fa01fa`, `cbcee6c` | `hpc/` scripts for DIaL3; NetCDF optional (`USE_NETCDF`); HDF5 C library only. |
+| `7d256ef` | Ionisation/recombination fixes (section 4). **Local, not pushed.** |
+
+**Restart (`f605661`):**
+- **Format:** one binary file per rank with every registered array (ghost cells included), the time state, the snapshot count and the package state. Package state comes from optional `saveCheckpoint` / `loadCheckpoint` hooks, used by PIP and TwoFluidTest.
+- **Control:**
+  - `SAMS_CHECKPOINT_DT`, `_STEPS` and `_WALLTIME` set when to write; with the wall-time limit, SAMS writes a checkpoint and stops cleanly;
+  - `SAMS_CHECKPOINT_DIR` sets where;
+  - `SAMS_RESTART` continues from a checkpoint.
+- **Tested:** a restarted run is bit-identical to an uninterrupted one, including a restart after a wall-time stop.
+- **Bug found by the test:** after a restart, LARE's shock-viscosity limiter read a stale package copy of dt. The runner now calls `getTimestep` after loading.
+
+**Output and allocation (`a7f2ef6`):**
+- **PIP diagnostic arrays read past the end of their arrays.** These are `source_*`, `ac`, `gm_ion`, `gm_rec` and `ion_loss`. They are now written on the interior, like LARE's own arrays. **This changes their shape in the snapshot files.**
+- **Registered arrays are zeroed** when allocated.
+- **Single-point axes:** the axis set-up no longer reads past the end of a one-point axis.
+- **Effect on results:** all fluid datasets are unchanged.
+
+**HPC (`hpc/`):**
+- `hpc/README.md` is the guide.
+- `build_sams.sh` builds one executable per set-up.
+- `sams_job.slurm` checkpoints before the job's time limit and resubmits itself.
+- `compare_snapshots.py` compares runs bit for bit or within a tolerance.
+- Since then the `hpc/` scripts have been adapted on DIaL3 (GCC 12 behind `mpicxx`, Intel runtime libraries). Those 10 commits are on `origin/TwoFluidWIP`. There is also an MPI decomposition fix on `origin/fix/decompose-axis-oob` (`00ac9a7`).
+- **The local branch has diverged** (1 local commit, 10 remote). It needs a rebase or merge before the next push.
+
+### 3. DIaL3 validation run (`runs/val_a1_t1`, copied back from DIaL3)
+
+**Set-up:** the α0 = 1 collisions-only baseline to t = 1, snapshots every 0.1, 3 ranks. Built from `00ac9a7` (the `hpc/` updates plus the MPI decomposition fix).
+
+**Against the workstation run of the same set-up (`runs/outfix_1`):**
+- **Bit-identical** in every dataset of all 12 snapshots. The two builds do the same floating-point operations: no `-march`, no FMA contraction.
+- **Speed:** 119 s on DIaL3 against 261 s on the workstation, about 2.2× faster per rank.
+
+**Against PIP second order at t = 1** (`runs/pip_coll_t1_o2_dx004`, `runs/pip_coll_t1_o2_dx001`; figure `runs/figures/dial3_val_t1_vs_pip.png`):
+
+| Run | Plasma sub-shock x | Neutral outflow front x | ρ\_n, x < 0.3 | T\_n, x < 0.3 |
+| --- | --- | --- | --- | --- |
+| PIP o2, dx 0.04 | 0.420 | 0.86 | 0.0858 | 7.90 |
+| PIP o2, dx 0.01 | 0.465 | 0.785 | 0.0750 | 8.87 |
+| SAMS on DIaL3, dx 0.04 | 0.460 | 0.84 | 0.0775 | 8.32 |
+
+SAMS at dx 0.04 is closer to the dx 0.01 PIP reference than PIP is at the same dx, as at t = 10.
+
+### 4. Ionisation and recombination, no ionisation potential: SAMS matches PIP
+
+**Set-up:** α0 = 1, τ\_IR = 10⁻³, T0 = 10⁴ K, half domain L = 250, as for collisions only.
+- **SAMS:** `sh21.ionisation_recombination = true`, `sh21.ionisation_potential = false`. Build switches `IR=on IPOT=off`.
+- **PIP:** `flag_IR = 3`, `flag_IR_type = 1`. `flag_IR_type = 1` has the same exchange terms as 0, without the potential loss `ion_pot` and without the background heating `arb_heat`. `scripts/pip_collonly_run.sh` takes `FLAG_IR` and `FLAG_IR_TYPE`.
+
+**Model check, line by line:**
+- **Identical in both codes:**
+  - the rates, including PIP's `tfac` and SAMS's `T_norm`, which both reduce to (5/3)(β/2)/(f\_n + 2f\_p);
+  - the electron temperature, γP/(2ρ);
+  - n0 = 10¹⁶;
+  - the mass, momentum and energy exchange terms (PIP's conservative form rewritten for SAMS's velocities and specific energies), including the ½ on the recombination energy.
+- **Time-step limit (a difference in dt only, not in the model):** PIP limits IR by the net rate times 0.1; SAMS uses `dt_multiplier` (0.8).
+
+**SAMS fixes (`7d256ef`), all in the explicit update with IR on:**
+1. **Double-counted IR heating:** `vertex_frictional_heating` also returned the kinetic energy lost to the IR momentum terms, half to each fluid, on top of the IR heating already in the energy sources. That double-counted the heating and made it frame-dependent. It now returns each vertex's exact kinetic-energy change over the whole source half-step:
+   - the collisional part, from the stored collisional velocity sources `PIPSource/v*_col`, half to each fluid;
+   - the IR part split Γ\_ion ρ\_n : Γ\_rec ρ\_p;
+   - the cell-centred IR friction heating is skipped in that case.
+
+   The old vertex masses are taken before the density update, the new ones after refreshing the density ghost cells.
+2. **IR vertex momentum:** it used the averaged rate times the averaged density instead of the average of the cell mass fluxes. That was a factor of 2 too large next to the ionised sheet.
+3. **New-mass update:** the IR velocity and specific-energy updates divided by the old mass. They overshot, and went NaN by t ≈ 0.004, where a step ionises a large fraction of the thin initial plasma. They now divide by the mass after the update, the exact conservative form. `substep_dt` defaults to 0.
+4. **Fresh sources:** with IR on, the sources are recomputed for the first Strang half-step.
+
+**Energy check:** source energy, 1 rank, L = 50, t = 2. Total energy over the source steps is conserved to 0.02% of the kinetic energy removed. Before the fixes it was −45%, or NaN. Collisions-only runs stay bit-identical.
+
+**Time step:** no 0.1 factor is needed in SAMS. Every run, SAMS and PIP, stayed at its CFL step to t = 10.
+
+**Results at t = 10:**
+- **Figures:** `runs/figures/ir_t10_t10.png`; resolution in `runs/figures/ir_t10_resolution.png`.
+- **Runs:** `runs/ir_t10_sams{,_dx002,_dx001}`, `runs/pip_ir_t10_o{1,2}_dx004`, `runs/pip_ir_t10_o2_dx001`.
+
+| Run | Ionisation front x (ξ\_i = ½) | ρ\_p, x < 0.2 | ρ\_n, x < 0.2 | T, x < 0.2 | v\_x,n, 0.6 < x < 1 | ρ\_n, 1 < x < 3 |
+| --- | --- | --- | --- | --- | --- | --- |
+| PIP o2, dx 0.04 | 0.481 | 2.305 | 0.0550 | 0.1873 | −0.1245 | 0.7873 |
+| **PIP o2, dx 0.01** | **0.456** | **2.334** | **0.0590** | **0.1860** | **−0.1237** | **0.7912** |
+| SAMS, dx 0.04 | 0.477 | 2.220 | 0.0379 | 0.1959 | −0.1118 | 0.7973 |
+| SAMS, dx 0.02 | 0.459 | 2.281 | 0.0475 | 0.1908 | −0.1189 | 0.7943 |
+| **SAMS, dx 0.01** | **0.452** | **2.332** | **0.0587** | **0.1862** | **−0.1273** | **0.7928** |
+
+- **Physics:** without the ionisation-potential loss, the sheet ionises almost completely (98–99%). The ionised region drives a much weaker fast wave into the plasma than in the collisions-only runs. At x = 1, t = 1: v\_x,p ≈ −0.05 with IR against −0.89 without. Both codes show this.
+- **Convergence:** SAMS converges onto PIP.
+  - At dx 0.01 the inner region matches to 0.1% in ρ\_p and T, and 0.5% in ρ\_n.
+  - The ionisation front agrees to 0.004.
+  - The neutral plateau agrees to 0.2%.
+- **Neutral inflow behind the front:** 10% slower in SAMS at dx 0.04, closing with resolution (3% faster than PIP at dx 0.01).
+- **Dip at x ≈ 1:** a small dip appears in both codes only at dx 0.01.
+- **Cost:** SAMS dx 0.04 took 39 min on 3 ranks; PIP o2 dx 0.04 took 4 min on 1 rank.
+
+### Next steps
+
+- **Far-field check at late time (t ≈ 50–100, large domain L = 2000):** the solution should approach single-fluid MHD once ionisation equilibrium is reached (`scripts/mhd_riemann_exact.py`).
+- **IRIP:** switch the ionisation-potential loss on (SAMS `IPOT=on`, PIP `flag_IR_type = 0`) and repeat the comparison.
+- **Git:** rebase or merge the local branch onto `origin/TwoFluidWIP` (and `fix/decompose-axis-oob`), then push.
+- **On DIaL3:** the scaling test, then the long t = 10 000 run (`hpc/README.md`).
+- **Small remaining IR energy error (0.02%):** the collisional heat exchange still divides by the mass before the update in cells where IR changes it.
