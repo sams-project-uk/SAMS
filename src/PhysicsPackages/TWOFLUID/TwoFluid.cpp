@@ -1081,8 +1081,9 @@ fprintf(stdout, "  radiative_excitation     (%d->%d) : %e\n",
         // equation). ion_loss = -phi_I and ion_heating = A_heat are energy DENSITY rates and do not
         // change the plasma mass, so the specific energy changes by their sum divided by rho_p.
         if (ion_potential_on) {
+            // energy density rates: divided by the plasma mass after this update, like the terms above
             plasma_source.source_energy(ix,iy,iz) +=
-                (plasma_source.ion_heating(ix,iy,iz) + plasma_source.ion_loss(ix,iy,iz))/data.rho(ix,iy,iz);
+                (plasma_source.ion_heating(ix,iy,iz) + plasma_source.ion_loss(ix,iy,iz))/rho_p_new;
         }
         
     }, Range(0,data.nx), Range(0,data.ny), Range(0,data.nz));
