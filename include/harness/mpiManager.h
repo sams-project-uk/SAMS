@@ -735,7 +735,7 @@ namespace SAMS
         bool isEdge(int axis, SAMS::domain::edges edgeType) const
         {
             //Always on an edge if axis is not decomposed
-            if (axis > Dims-1){
+            if (axis < 0 || axis > Dims-1){
                 return true;
             }
             int neighborIndex = axis * 2 + (edgeType==SAMS::domain::edges::lower ? 0 : 1);
@@ -747,6 +747,7 @@ namespace SAMS
          */
         bool isEdgeNP(int axis, SAMS::domain::edges edgeType) const
         {
+            if (axis < 0 || axis > Dims-1) return true; //Not decomposed
             if (edgeType == SAMS::domain::edges::lower) {
                 return coords[axis] == 0;
             } else {
@@ -759,6 +760,7 @@ namespace SAMS
          */
         bool isPeriodic(int axis) const
         {
+            if (axis < 0) return false; //Not decomposed
             return periods[axis] != 0;
         }
 
@@ -792,8 +794,11 @@ namespace SAMS
             }*/
            #ifdef USE_MPI
             //Now set part of the global axis that is on this processor
+            //A non-decomposed axis (axis < 0) starts at 0. Indexing coords/dims with -1 reads the
+            //member before the array (dims[-1] is part of rootComm), which is undefined and divides
+            //by zero when that word happens to be 0 (e.g. OpenMPI with a non-PIE executable).
             size_t localLB = 0;
-            for(int i=0; i<coords[axis]; i++){
+            for(int i=0; axis >= 0 && i<coords[axis]; i++){
                 size_t procElements = globalElements / dims[axis];
                 size_t remainder = globalElements % dims[axis];
                 if (i < remainder)
