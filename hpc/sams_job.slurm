@@ -23,6 +23,7 @@
 #   WALL_MARGIN seconds kept free at the end of each job                  [900]
 #   MAX_CHAIN   maximum number of jobs in the chain                       [30]
 #   CHAIN       job number in the chain (set by the script)               [1]
+#   MAIL_TO     address for the END/FAIL mail of later jobs in the chain  [none]
 #   ENV_FILE    environment to source                                     [$SAMS_ROOT/hpc/env_dial3.sh]
 #   LAUNCH      MPI launcher                     ["mpirun -np $SLURM_NTASKS --bind-to core"]
 #               (the launcher that works with openmpi4/intel on DIaL3; "srun --cpu-bind=cores" also possible)
@@ -91,7 +92,9 @@ case "$(status)" in
     complete) echo "Run complete" ;;
     stopped_walltime)
         if [ "$CHAIN" -lt "$MAX_CHAIN" ]; then
-            sbatch --export=ALL,CHAIN=$((CHAIN + 1)) "$SAMS_ROOT/hpc/sams_job.slurm"
+            # same job name and node count (a restart needs the same number of ranks), same mail address
+            sbatch -J "${SLURM_JOB_NAME:-sams}" --nodes="${SLURM_JOB_NUM_NODES:-1}" ${MAIL_TO:+--mail-user=$MAIL_TO} \
+                   --export=ALL,CHAIN=$((CHAIN + 1)) "$SAMS_ROOT/hpc/sams_job.slurm"
         else
             echo "MAX_CHAIN ($MAX_CHAIN) reached: resubmit by hand to continue"
         fi ;;

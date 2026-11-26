@@ -129,6 +129,31 @@ Rough figures for the long run:
 
 Keep runs on `$SAMS_SCRATCH` and copy the snapshots home when done.
 
+
+### The three long runs: collisions only, IR and IRIP (`long_runs.sh`)
+
+`hpc/long_runs.sh` runs the long run (α0 = 1, half domain [0, 10 000], dx = 0.2, t = 10 000, a snapshot every 100) for three cases at once:
+
+| Case | Physics | PIP equivalent |
+| --- | --- | --- |
+| `coll` | thermal collisions only | `flag_IR = 0` |
+| `ir` | collisions + ionisation/recombination, no ionisation potential | `flag_IR = 3`, `flag_IR_type = 1` |
+| `irip` | collisions + ionisation/recombination + ionisation potential loss | `flag_IR = 3`, `flag_IR_type = 0` |
+
+```bash
+cd $HOME/TwoFluidWIP && git pull
+source hpc/env_dial3.sh
+hpc/long_runs.sh build                          # three executables in sams_bin/ (login node, a few minutes each)
+MAIL_TO=<your address> hpc/long_runs.sh submit  # three chained one-node jobs, run directories under $SAMS_SCRATCH
+hpc/long_runs.sh status                         # time, step and status of each run, and the queue
+```
+
+- **Run directories:** `$SAMS_SCRATCH/long_{coll,ir,irip}_a1_L10000_dx02`.
+- **Selecting cases:** `submit irip` (or `build ir`, etc.) handles one case only.
+- **Restarting:** submitting again in a run directory that already has a run continues it.
+- **Node count:** `NODES=2` before `submit` uses 2 nodes per run. Keep it the same for the whole run.
+- **Expected length:** about 12 h per run on one node, if the code scales to 128 ranks (step 5). The chain covers any overrun.
+
 ## 7. Restart files: details
 
 These are controlled by environment variables, which `sams_job.slurm` sets. They can also be used directly:
